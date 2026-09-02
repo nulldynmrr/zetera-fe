@@ -1,26 +1,152 @@
+/* ─────────────────────────────────────────────
+   Zetera Academic Design System (Fluento Clean Edition)
+   Reference: /docs/DESIGN.md
+   ───────────────────────────────────────────── */
+
+/* Fonts */
+@import url("https://api.fontshare.com/v2/css?f[]=switzer@400,500,540,600,700&f[]=basier-circle@500,600,700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap");
+
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ── Core Palette ── */
+  --color-emerald-primary: #00C988;
+  --color-emerald-dark: #059669;
+  --color-emerald-light: #e6f9f2;
+  --color-emerald-border: #a7f3d0;
+  
+  --color-portrait-ink: #0f172a;
+  --color-slate-ink: #111827;
+  --color-graphite-body: #374151;
+  --color-slate-helper: #6b7280;
+  --color-slate-muted: #9ca3af;
+  
+  --color-ash-divider: #f1f5f9;
+  --color-mist-border: #e2e8f0;
+  --color-white-canvas: #ffffff;
+  --color-neutral-bg: #fefefe;
+
+  /* ── Dual-Tone Mesh Stat Gradients (Fluento Style) ── */
+  --mesh-cyan: linear-gradient(135deg, #e0f2fe 0%, #eff6ff 40%, #ffffff 90%);
+  --mesh-mint: linear-gradient(135deg, #dcfce7 0%, #ecfdf5 40%, #ffffff 90%);
+  --mesh-purple: linear-gradient(135deg, #f3e8ff 0%, #faf5ff 40%, #ffffff 90%);
+  --mesh-pink: linear-gradient(135deg, #fce7f3 0%, #fdf2f8 40%, #ffffff 90%);
+  --mesh-orange: linear-gradient(135deg, #ffedd5 0%, #fff7ed 40%, #ffffff 90%);
+
+  /* ── Accents & Badges ── */
+  --color-blue-accent: #2563eb;
+  --color-blue-wash: #eff6ff;
+  --color-purple-accent: #9333ea;
+  --color-purple-wash: #faf5ff;
+  --color-amber-accent: #f59e0b;
+  --color-amber-wash: #fffbeb;
+  --color-rose-accent: #e11d48;
+  --color-rose-wash: #fff1f2;
+
+  --color-mint-wash: #dcfce7;
+  --color-sky-wash: #e0f2fe;
+  --color-peach-wash: #ffedd5;
+
+  /* ── Typography ── */
+  --font-display: "Plus Jakarta Sans", "Basier Circle", -apple-system, sans-serif;
+  --font-body: "Inter", "Switzer", -apple-system, sans-serif;
+
+  /* ── Radii ── */
+  --radius-nav: 9999px;
+  --radius-cards: 16px;
+  --radius-cards-sm: 12px;
+  --radius-inputs: 10px;
+  --radius-buttons: 9999px;
+  --radius-pill: 9999px;
+
+  /* ── Shadows: Flat Style ── */
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --shadow-floating-nav: none;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #fefefe;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #fefefe;
+  color: var(--color-slate-ink);
+  font-family: var(--font-body);
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* Flat Clean Card Style */
+.card-fluento {
+  background: var(--color-white-canvas);
+  border-radius: var(--radius-cards);
+  border: 1px solid var(--color-mist-border);
+  box-shadow: none !important;
+  transition: border-color 0.15s ease;
+}
+
+.card-fluento:hover {
+  border-color: #cbd5e1;
+  box-shadow: none !important;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+/* Figma-like Canvas Navigation & Cursors */
+.figma-canvas-viewport .react-flow__pane {
+  cursor: grab !important;
+}
+
+.figma-canvas-viewport .react-flow__pane.dragging,
+.figma-canvas-viewport .react-flow__pane:active {
+  cursor: grabbing !important;
+}
+
+.figma-canvas-viewport .react-flow__node {
+  cursor: pointer !important;
+}
+
+.figma-canvas-viewport .react-flow__viewport {
+  transition: transform 0.08s cubic-bezier(0.16, 1, 0.3, 1);
 }
