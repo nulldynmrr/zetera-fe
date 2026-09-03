@@ -24,6 +24,11 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  Telescope,
+  Download,
+  Zap,
+  Star,
+  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -36,6 +41,7 @@ import {
   type Journal,
   type JournalStatus,
   type JournalSourceType,
+  type NormalizedPaper,
 } from "@/lib/api-client";
 
 export default function JournalsPage() {
@@ -82,6 +88,16 @@ export default function JournalsPage() {
   const [autoCheckingId, setAutoCheckingId] = useState<string | null>(null);
   const [expandedNodeJournals, setExpandedNodeJournals] = useState<Record<string, boolean>>({});
   const [expandedAiAnalysis, setExpandedAiAnalysis] = useState<Record<string, boolean>>({});
+
+  // ── Journal Discovery (cari jurnal by topik) ──
+  const [showDiscovery, setShowDiscovery] = useState(false);
+  const [discoveryQuery, setDiscoveryQuery] = useState("");
+  const [discoveryDomain, setDiscoveryDomain] = useState<"GENERAL" | "HEALTH" | "AI_CS">("GENERAL");
+  const [discoveryLoading, setDiscoveryLoading] = useState(false);
+  const [discoveryResults, setDiscoveryResults] = useState<NormalizedPaper[]>([]);
+  const [discoveryMeta, setDiscoveryMeta] = useState<{ searchId: string; tookMs: number; expandedQuery: string; domainHint: string } | null>(null);
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
 
   // Load project & journals
   const loadData = useCallback(async () => {
@@ -441,6 +457,53 @@ export default function JournalsPage() {
     }
   };
 
+  // ── Journal Discovery Handlers ──────────────────────────
+  const handleDiscoverySearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!discoveryQuery.trim()) return;
+
+    try {
+      setDiscoveryLoading(true);
+      setDiscoveryResults([]);
+      setDiscoveryMeta(null);
+
+      const res = await api.journals.discovery.search(projectId, {
+        query: discoveryQuery.trim(),
+        domainHint: discoveryDomain,
+        limitPerProvider: 8,
+      });
+
+      setDiscoveryResults(res.candidates || []);
+      setDiscoveryMeta({
+        searchId: res.searchId,
+        tookMs: res.tookMs,
+        expandedQuery: res.expandedQuery,
+        domainHint: res.domainHint,
+      });
+    } catch (err: any) {
+      alert(err.message || "Pencarian jurnal gagal. Coba lagi.");
+    } finally {
+      setDiscoveryLoading(false);
+    }
+  };
+
+  const handleImportCandidate = async (candidate: NormalizedPaper) => {
+    const uniqueKey = candidate.doi || candidate.externalId;
+    try {
+      setImportingId(uniqueKey);
+      const res = await api.journals.discovery.import(projectId, candidate);
+
+      setJournals((prev) => [res.journal, ...prev.filter((j) => j.id !== res.journal.id)]);
+      setImportedIds((prev) => new Set([...prev, uniqueKey]));
+    } catch (err: any) {
+      alert(err.message || "Gagal mengimpor jurnal");
+    } finally {
+      setImportingId(null);
+    }
+  };
+
+
+
   if (isLoading || loading) {
     return (
       <div
@@ -568,6 +631,29 @@ export default function JournalsPage() {
 
           {/* Right: Import Actions */}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* Discovery: Cari Jurnal by Topik */}
+            <button
+              id="btn-discovery-open"
+              onClick={() => { setShowDiscovery(true); setDiscoveryResults([]); setDiscoveryMeta(null); }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "7px 14px",
+                borderRadius: 9999,
+                background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                color: "#ffffff",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                border: "none",
+                boxShadow: "0 2px 8px rgba(99,102,241,0.35)",
+              }}
+            >
+              <Telescope size={14} />
+              <span>Cari Jurnal by Topik</span>
+            </button>
+
             {/* Upload PDF */}
             <label
               style={{
@@ -617,6 +703,160 @@ export default function JournalsPage() {
             </Button>
           </div>
         </header>
+
+        {/* ── JOURNAL DISCOVERY SIDE DRAWER ── */}
+        {showDiscovery && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9999,
+              display: "flex",
+              alignItems: "stretch",
+              justifyContent: "flex-end",
+            }}
+          >
+            <div
+              onClick={() => setShowDiscovery(false)}
+              style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(3px)" }}
+            />
+            <div
+              style={{
+                position: "relative",
+                width: "min(680px, 96vw)",
+                background: "#fff",
+                boxShadow: "-6px 0 36px rgba(0,0,0,0.18)",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+              }}
+            >
+              {/* Header */}
+              <div style={{ background: "linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%)", padding: "20px 24px 16px", color: "#fff", flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Telescope size={22} />
+                    <span style={{ fontSize: 17, fontWeight: 800 }}>Cari Jurnal by Topik</span>
+                  </div>
+                  <button onClick={() => setShowDiscovery(false)} style={{ background: "rgba(255,255,255,0.2)", border: "none", borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff" }}>
+                    <X size={16} />
+                  </button>
+                </div>
+                <p style={{ margin: 0, fontSize: 12.5, opacity: 0.9 }}>Cari ke OpenAlex · Semantic Scholar · CORE · PubMed · arXiv · Crossref secara paralel dalam &lt;3 detik.</p>
+              </div>
+
+              {/* Search Form */}
+              <form onSubmit={handleDiscoverySearch} style={{ padding: "14px 24px 12px", borderBottom: "1px solid #e2e8f0", background: "#fafafa", flexShrink: 0 }}>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                  <input
+                    id="discovery-query-input"
+                    type="text"
+                    value={discoveryQuery}
+                    onChange={(e) => setDiscoveryQuery(e.target.value)}
+                    placeholder={project?.title ? `Cari jurnal untuk "${project.title.slice(0, 40)}"...` : "Ketik topik penelitian..."}
+                    style={{ flex: 1, padding: "9px 14px", borderRadius: 10, border: "1.5px solid #c7d2fe", fontSize: 13.5, fontFamily: "inherit", outline: "none", background: "#fff", color: "#0f172a" }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={discoveryLoading || !discoveryQuery.trim()}
+                    style={{ padding: "9px 18px", borderRadius: 10, border: "none", background: discoveryLoading ? "#a5b4fc" : "linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 13, cursor: discoveryLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 6 }}
+                  >
+                    {discoveryLoading ? <RefreshCw size={14} /> : <Search size={14} />}
+                    {discoveryLoading ? "Mencari..." : "Cari"}
+                  </button>
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 11.5, color: "#64748b", fontWeight: 600 }}>Domain:</span>
+                  {(["GENERAL", "HEALTH", "AI_CS"] as const).map((d) => (
+                    <button key={d} type="button" onClick={() => setDiscoveryDomain(d)}
+                      style={{ padding: "3px 10px", borderRadius: 9999, border: `1.5px solid ${discoveryDomain === d ? "#6366f1" : "#e2e8f0"}`, background: discoveryDomain === d ? "#eef2ff" : "#fff", color: discoveryDomain === d ? "#4338ca" : "#64748b", fontWeight: discoveryDomain === d ? 700 : 500, fontSize: 11.5, cursor: "pointer" }}
+                    >
+                      {d === "GENERAL" ? "🔬 Umum" : d === "HEALTH" ? "🏥 Kesehatan" : "💻 AI / CS"}
+                    </button>
+                  ))}
+                </div>
+              </form>
+
+              {/* Results */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "0 24px 24px" }}>
+                {discoveryMeta && !discoveryLoading && (
+                  <div style={{ padding: "8px 0", fontSize: 12, color: "#64748b", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ background: "#f1f5f9", padding: "2px 8px", borderRadius: 6 }}><Zap size={10} style={{ marginRight: 2, verticalAlign: "middle" }} />{(discoveryMeta.tookMs / 1000).toFixed(1)}s</span>
+                    <span style={{ background: "#f1f5f9", padding: "2px 8px", borderRadius: 6 }}>{discoveryResults.length} hasil</span>
+                    {discoveryMeta.expandedQuery !== discoveryQuery && <span style={{ color: "#8b5cf6", fontStyle: "italic", fontSize: 11 }}>Diperluas: "{discoveryMeta.expandedQuery}"</span>}
+                  </div>
+                )}
+
+                {discoveryLoading && (
+                  <div style={{ padding: "52px 0", textAlign: "center", color: "#6366f1" }}>
+                    <Sparkles size={28} style={{ marginBottom: 10 }} />
+                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Mencari di 6+ provider akademik secara paralel...</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>OpenAlex · Semantic Scholar · CORE · PubMed · arXiv · Crossref</div>
+                  </div>
+                )}
+
+                {!discoveryLoading && discoveryMeta === null && (
+                  <div style={{ padding: "60px 0", textAlign: "center" }}>
+                    <Telescope size={40} style={{ color: "#c7d2fe", marginBottom: 12 }} />
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>Ketikkan topik penelitian untuk mulai mencari</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>Bisa pakai Bahasa Indonesia — AI menerjemahkan otomatis</div>
+                  </div>
+                )}
+
+                {!discoveryLoading && discoveryResults.length === 0 && discoveryMeta !== null && (
+                  <div style={{ padding: "48px 0", textAlign: "center" }}>
+                    <AlertCircle size={28} style={{ color: "#f59e0b", marginBottom: 8 }} />
+                    <div style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}>Tidak ada hasil. Coba kata kunci Bahasa Inggris atau domain lain.</div>
+                  </div>
+                )}
+
+                {!discoveryLoading && discoveryResults.map((paper, idx) => {
+                  const uniqueKey = paper.doi || paper.externalId;
+                  const isImported = importedIds.has(uniqueKey);
+                  const isImporting = importingId === uniqueKey;
+                  const providerColors: Record<string, string> = { OPENALEX: "#0284c7", SEMANTIC_SCHOLAR: "#9333ea", CORE: "#d97706", PUBMED: "#059669", ARXIV: "#dc2626", CROSSREF: "#64748b" };
+                  const pColor = providerColors[paper.provider] || "#64748b";
+
+                  return (
+                    <div key={`${uniqueKey}-${idx}`} style={{ borderBottom: "1px solid #f1f5f9", padding: "14px 0", opacity: isImported ? 0.65 : 1 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a", lineHeight: 1.4, marginBottom: 4 }}>
+                            {paper.url ? (
+                              <a href={paper.url} target="_blank" rel="noreferrer" style={{ color: "#0f172a", textDecoration: "none" }}>
+                                {paper.title} <ExternalLink size={11} style={{ opacity: 0.4, verticalAlign: "middle" }} />
+                              </a>
+                            ) : paper.title}
+                          </div>
+                          <div style={{ fontSize: 11.5, color: "#64748b", marginBottom: 5 }}>
+                            {paper.authors && <span>{paper.authors.slice(0, 80)}{paper.authors.length > 80 ? "..." : ""}</span>}
+                            {paper.year && <span style={{ marginLeft: 8, fontWeight: 600, color: "#475569" }}>{paper.year}</span>}
+                            {paper.publication && <span style={{ marginLeft: 8, fontStyle: "italic" }}>· {paper.publication.slice(0, 50)}</span>}
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                            <span style={{ padding: "1px 7px", borderRadius: 9999, fontSize: 10.5, fontWeight: 700, background: pColor + "18", color: pColor, border: `1px solid ${pColor}30` }}>{paper.provider}</span>
+                            {paper.citedByCount > 0 && <span style={{ padding: "1px 7px", borderRadius: 9999, fontSize: 10.5, background: "#f8fafc", color: "#64748b", border: "1px solid #e2e8f0" }}><Star size={9} style={{ marginRight: 2, verticalAlign: "middle" }} />{paper.citedByCount.toLocaleString()}</span>}
+                            {paper.openAccessPdfUrl && <a href={paper.openAccessPdfUrl} target="_blank" rel="noreferrer" style={{ padding: "1px 7px", borderRadius: 9999, fontSize: 10.5, fontWeight: 600, background: "#ecfdf5", color: "#059669", border: "1px solid #a7f3d0", textDecoration: "none" }}>PDF Gratis</a>}
+                            {paper.isRetracted && <span style={{ padding: "1px 7px", borderRadius: 9999, fontSize: 10.5, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>⚠ RETRACTED</span>}
+                            {paper.isInDoaj && <span style={{ padding: "1px 7px", borderRadius: 9999, fontSize: 10.5, background: "#fffbeb", color: "#d97706", border: "1px solid #fed7aa" }}>DOAJ ✓</span>}
+                          </div>
+                          {paper.abstract && <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 6, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{paper.abstract}</div>}
+                        </div>
+                        <button
+                          disabled={isImported || isImporting || paper.isRetracted}
+                          onClick={() => handleImportCandidate(paper)}
+                          style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, border: "none", background: isImported ? "#f0fdf4" : isImporting ? "#e0e7ff" : "#6366f1", color: isImported ? "#059669" : isImporting ? "#6366f1" : "#fff", fontSize: 12, fontWeight: 700, cursor: (isImported || isImporting || paper.isRetracted) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 5, minWidth: 90, justifyContent: "center" }}
+                        >
+                          {isImported ? <><CheckCircle2 size={13} /> Tersimpan</> : isImporting ? <><RefreshCw size={13} /> Menyimpan...</> : <><Download size={13} /> Import</>}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── SEPARATE EXTRACTION & SCREENING PROGRESS BANNER (MASALAH 1) ── */}
         {uploadStepInfo && (

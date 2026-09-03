@@ -293,7 +293,38 @@ export interface Journal {
   createdAt: string;
   updatedAt: string;
   nodeMappings?: JournalNodeMapping[];
+  // Discovery fields
+  sourceProvider?: string | null;
+  externalId?: string | null;
+  openAccessPdfUrl?: string | null;
+  hasFullPdf?: boolean | null;
+  linkPreviewImage?: string | null;
+  linkPreviewTitle?: string | null;
+  citedByCount?: number | null;
+  isRetracted?: boolean;
+  isInDoaj?: boolean;
 }
+
+export interface NormalizedPaper {
+  externalId: string;
+  provider: "OPENALEX" | "SEMANTIC_SCHOLAR" | "CORE" | "PUBMED" | "ARXIV" | "CROSSREF" | "UPLOAD" | "MANUAL";
+  title: string;
+  authors: string;
+  year: number | null;
+  publication: string | null;
+  doi: string | null;
+  url: string | null;
+  abstract: string | null;
+  openAccessPdfUrl: string | null;
+  citedByCount: number;
+  isRetracted: boolean;
+  isInDoaj: boolean;
+  domainHint: "GENERAL" | "HEALTH" | "AI_CS";
+  relevanceScore?: number;
+  rankingScore?: number;
+  providers?: string[];
+}
+
 
 export interface ProjectFrameworkResponse {
   project: ResearchProject;
@@ -592,7 +623,41 @@ export const api = {
         journal: Journal;
         newMappings: JournalNodeMapping[];
       }>(`/api/projects/${projectId}/journals/${journalId}/analyze`),
+
+    // ── Journal Discovery (PRD 011) ──────────────────────────
+    discovery: {
+      search: (projectId: string, body: { query: string; domainHint?: string; limitPerProvider?: number }) =>
+        http.post<{
+          success: boolean;
+          searchId: string;
+          query: string;
+          expandedQuery: string;
+          domainHint: string;
+          totalFound: number;
+          tookMs: number;
+          candidates: NormalizedPaper[];
+        }>(`/api/projects/${projectId}/journals/search`, body),
+
+      getCache: (projectId: string, searchId: string) =>
+        http.get<{
+          success: boolean;
+          searchId: string;
+          query: string;
+          domainHint: string;
+          candidates: NormalizedPaper[];
+          createdAt: string;
+        }>(`/api/projects/${projectId}/journals/search/${searchId}`),
+
+      import: (projectId: string, candidate: NormalizedPaper) =>
+        http.post<{
+          success: boolean;
+          message: string;
+          journal: Journal;
+          gateVerification: { pass: boolean; status: string; tier: string; isRetracted: boolean; reasons: string[] };
+        }>(`/api/projects/${projectId}/journals/candidates/import`, { candidate }),
+    },
   },
+
 
   // AI Screening & Auto-Populate Framework (Fase 3 & 4)
   screening: {

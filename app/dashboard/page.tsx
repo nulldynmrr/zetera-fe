@@ -21,6 +21,8 @@ import {
   GraduationCap,
   FolderGit2,
   FileText,
+  Home,
+  Shield,
 } from "lucide-react";
 import { AcademicMark, Button } from "@/components/ui/Button";
 import { MvpMatrix } from "@/components/ui/MvpMatrix";
@@ -49,8 +51,6 @@ export default function DashboardPage() {
   const [creating, setCreating] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Active top tab
-  const [activeTab, setActiveTab] = useState<"dashboard" | "framework" | "journals" | "synthesis" | "gaps">("dashboard");
 
   // Load real projects from database + check onboarding
   const fetchProjects = async () => {
@@ -222,7 +222,7 @@ export default function DashboardPage() {
             </span>
           </Link>
 
-          {/* Center Nav Pill Tabs */}
+          {/* Center Nav: Top-Level Clean IA */}
           <nav
             style={{
               display: "flex",
@@ -234,39 +234,85 @@ export default function DashboardPage() {
               border: "1px solid #e2e8f0",
             }}
           >
-            {[
-              { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={15} /> },
-              { id: "framework", label: "Framework", icon: <Network size={15} /> },
-              { id: "journals", label: "Journals", icon: <BookOpen size={15} /> },
-              { id: "synthesis", label: "AI Synthesis", icon: <Sparkles size={15} /> },
-              { id: "gaps", label: "Research Gaps", icon: <Target size={15} /> },
-            ].map((tab) => {
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    padding: "7px 16px",
-                    borderRadius: "9999px",
-                    border: "none",
-                    background: isActive ? "var(--color-emerald-primary)" : "transparent",
-                    color: isActive ? "#ffffff" : "#475569",
-                    fontWeight: isActive ? 600 : 500,
-                    fontSize: 13,
-                    cursor: "pointer",
-                    transition: "all 0.15s ease",
-                    boxShadow: "none",
-                  }}
-                >
-                  {tab.icon}
-                  {tab.label}
-                </button>
-              );
-            })}
+            <Link
+              href="/"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                padding: "7px 16px",
+                borderRadius: "9999px",
+                textDecoration: "none",
+                color: "#475569",
+                fontWeight: 500,
+                fontSize: 13,
+                transition: "all 0.15s ease",
+              }}
+            >
+              <Home size={15} />
+              Rumah
+            </Link>
+
+            <Link
+              href="/dashboard"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                padding: "7px 16px",
+                borderRadius: "9999px",
+                textDecoration: "none",
+                background: "var(--color-emerald-primary)",
+                color: "#ffffff",
+                fontWeight: 600,
+                fontSize: 13,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+              }}
+            >
+              <FolderGit2 size={15} />
+              Proyek Saya
+            </Link>
+
+            <Link
+              href="/library"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                padding: "7px 16px",
+                borderRadius: "9999px",
+                textDecoration: "none",
+                color: "#475569",
+                fontWeight: 500,
+                fontSize: 13,
+                transition: "all 0.15s ease",
+              }}
+            >
+              <BookOpen size={15} />
+              Pustaka Template
+            </Link>
+
+            {user?.role === "ADMIN" && (
+              <Link
+                href="/admin-only"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  padding: "7px 16px",
+                  borderRadius: "9999px",
+                  textDecoration: "none",
+                  color: "#0284c7",
+                  background: "#e0f2fe",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Shield size={15} />
+                Admin
+              </Link>
+            )}
           </nav>
 
           {/* Right Utility Actions */}
