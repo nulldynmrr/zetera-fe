@@ -458,9 +458,12 @@ export default function JournalsPage() {
   };
 
   // ── Journal Discovery Handlers ──────────────────────────
-  const handleDiscoverySearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!discoveryQuery.trim()) return;
+  const handleDiscoverySearch = async (e?: React.FormEvent, overrideQuery?: string) => {
+    if (e) e.preventDefault();
+    const q = (overrideQuery ?? discoveryQuery).trim();
+    if (!q) return;
+
+    if (overrideQuery) setDiscoveryQuery(overrideQuery);
 
     try {
       setDiscoveryLoading(true);
@@ -468,7 +471,7 @@ export default function JournalsPage() {
       setDiscoveryMeta(null);
 
       const res = await api.journals.discovery.search(projectId, {
-        query: discoveryQuery.trim(),
+        query: q,
         domainHint: discoveryDomain,
         limitPerProvider: 8,
       });
@@ -577,11 +580,16 @@ export default function JournalsPage() {
                 <h1
                   style={{
                     fontFamily: "var(--font-display)",
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: 700,
                     color: "#0f172a",
                     margin: 0,
+                    maxWidth: 460,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
+                  title={project?.title || "Library Jurnal"}
                 >
                   {project?.title || "Library Jurnal"}
                 </h1>
@@ -594,6 +602,8 @@ export default function JournalsPage() {
                       borderRadius: 6,
                       background: "#e0f2fe",
                       color: "#0369a1",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
                     }}
                   >
                     {project.field}
@@ -634,7 +644,14 @@ export default function JournalsPage() {
             {/* Discovery: Cari Jurnal by Topik */}
             <button
               id="btn-discovery-open"
-              onClick={() => { setShowDiscovery(true); setDiscoveryResults([]); setDiscoveryMeta(null); }}
+              onClick={() => {
+                setShowDiscovery(true);
+                if (project?.title && !discoveryQuery) {
+                  setDiscoveryQuery(project.title);
+                }
+                setDiscoveryResults([]);
+                setDiscoveryMeta(null);
+              }}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -746,25 +763,59 @@ export default function JournalsPage() {
               </div>
 
               {/* Search Form */}
-              <form onSubmit={handleDiscoverySearch} style={{ padding: "14px 24px 12px", borderBottom: "1px solid #e2e8f0", background: "#fafafa", flexShrink: 0 }}>
-                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                  <input
-                    id="discovery-query-input"
-                    type="text"
-                    value={discoveryQuery}
-                    onChange={(e) => setDiscoveryQuery(e.target.value)}
-                    placeholder={project?.title ? `Cari jurnal untuk "${project.title.slice(0, 40)}"...` : "Ketik topik penelitian..."}
-                    style={{ flex: 1, padding: "9px 14px", borderRadius: 10, border: "1.5px solid #c7d2fe", fontSize: 13.5, fontFamily: "inherit", outline: "none", background: "#fff", color: "#0f172a" }}
-                  />
+              <form onSubmit={(e) => handleDiscoverySearch(e)} style={{ padding: "14px 24px 12px", borderBottom: "1px solid #e2e8f0", background: "#fafafa", flexShrink: 0 }}>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <div style={{ position: "relative", flex: 1 }}>
+                    <input
+                      id="discovery-query-input"
+                      type="text"
+                      value={discoveryQuery}
+                      onChange={(e) => setDiscoveryQuery(e.target.value)}
+                      placeholder={project?.title ? `Cari jurnal untuk "${project.title.slice(0, 40)}"...` : "Ketik topik penelitian..."}
+                      style={{ width: "100%", padding: "9px 36px 9px 14px", borderRadius: 10, border: "1.5px solid #c7d2fe", fontSize: 13.5, fontFamily: "inherit", outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" }}
+                    />
+                    {discoveryQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setDiscoveryQuery("")}
+                        title="Kosongkan untuk ketik manual"
+                        style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "#f1f5f9", border: "none", borderRadius: 9999, width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#64748b" }}
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
                   <button
                     type="submit"
                     disabled={discoveryLoading || !discoveryQuery.trim()}
                     style={{ padding: "9px 18px", borderRadius: 10, border: "none", background: discoveryLoading ? "#a5b4fc" : "linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 13, cursor: discoveryLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 6 }}
                   >
-                    {discoveryLoading ? <RefreshCw size={14} /> : <Search size={14} />}
+                    {discoveryLoading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
                     {discoveryLoading ? "Mencari..." : "Cari"}
                   </button>
                 </div>
+
+                {/* Quick Suggestion Chips */}
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+                  <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>💡 Saran Cepat:</span>
+                  {project?.title && (
+                    <button
+                      type="button"
+                      onClick={() => setDiscoveryQuery(project.title)}
+                      style={{ padding: "2px 8px", borderRadius: 6, background: discoveryQuery === project.title ? "#e0e7ff" : "#fff", color: discoveryQuery === project.title ? "#4338ca" : "#475569", border: `1px solid ${discoveryQuery === project.title ? "#a5b4fc" : "#e2e8f0"}`, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                    >
+                      🎯 Pakai Judul Skripsi
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setDiscoveryQuery("")}
+                    style={{ padding: "2px 8px", borderRadius: 6, background: !discoveryQuery ? "#e0e7ff" : "#fff", color: !discoveryQuery ? "#4338ca" : "#475569", border: `1px solid ${!discoveryQuery ? "#a5b4fc" : "#e2e8f0"}`, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                  >
+                    ✍️ Ketik Topik Lain
+                  </button>
+                </div>
+
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <span style={{ fontSize: 11.5, color: "#64748b", fontWeight: 600 }}>Domain:</span>
                   {(["GENERAL", "HEALTH", "AI_CS"] as const).map((d) => (
@@ -796,10 +847,63 @@ export default function JournalsPage() {
                 )}
 
                 {!discoveryLoading && discoveryMeta === null && (
-                  <div style={{ padding: "60px 0", textAlign: "center" }}>
-                    <Telescope size={40} style={{ color: "#c7d2fe", marginBottom: 12 }} />
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>Ketikkan topik penelitian untuk mulai mencari</div>
-                    <div style={{ fontSize: 12, color: "#94a3b8" }}>Bisa pakai Bahasa Indonesia — AI menerjemahkan otomatis</div>
+                  <div style={{ padding: "24px 0", textAlign: "center" }}>
+                    {project?.title ? (
+                      <div style={{ background: "linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%)", borderRadius: 14, border: "1.5px solid #c7d2fe", padding: "20px 22px", textAlign: "left" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#4f46e5", marginBottom: 6 }}>
+                          <Sparkles size={14} />
+                          <span>Topik Skripsi Terdeteksi:</span>
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#1e1b4b", lineHeight: 1.45, marginBottom: 14 }}>
+                          "{project.title}"
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleDiscoverySearch(undefined, project.title)}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: "8px 16px",
+                              borderRadius: 10,
+                              background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                              color: "#fff",
+                              fontWeight: 700,
+                              fontSize: 13,
+                              border: "none",
+                              cursor: "pointer",
+                              boxShadow: "0 2px 8px rgba(99,102,241,0.3)",
+                            }}
+                          >
+                            <Zap size={14} />
+                            <span>Langsung Cari Jurnal untuk Judul Ini</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDiscoveryQuery("")}
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: 10,
+                              background: "#fff",
+                              color: "#475569",
+                              fontWeight: 600,
+                              fontSize: 12.5,
+                              border: "1px solid #cbd5e1",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Ketik Topik Manual
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ padding: "40px 0" }}>
+                        <Telescope size={40} style={{ color: "#c7d2fe", marginBottom: 12 }} />
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>Ketikkan topik penelitian untuk mulai mencari</div>
+                        <div style={{ fontSize: 12, color: "#94a3b8" }}>Bisa pakai Bahasa Indonesia — AI menerjemahkan otomatis</div>
+                      </div>
+                    )}
                   </div>
                 )}
 
