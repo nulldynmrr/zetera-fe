@@ -358,7 +358,11 @@ export default function CustomBabSetupPage() {
   const handleSaveAndProceed = async () => {
     setSaving(true);
     try {
-      const res = await api.projects.customOutline.save(projectId, babs);
+      const sanitized = babs.map((b) => ({
+        ...b,
+        subChapters: Array.isArray(b.subChapters) ? b.subChapters : [],
+      }));
+      const res = await api.projects.customOutline.save(projectId, sanitized);
       if (res.success) {
         // Redirect to Outline Blueprint
         router.push(`/projects/${projectId}/outline`);
@@ -578,7 +582,7 @@ export default function CustomBabSetupPage() {
                       {bab.roman} {bab.title}
                     </span>
                     <span style={{ fontSize: 12, color: "#94a3b8" }}>
-                      ({bab.subChapters.length} sub-bab)
+                      ({(bab.subChapters || []).length} sub-bab)
                     </span>
                   </div>
 
@@ -591,7 +595,7 @@ export default function CustomBabSetupPage() {
                 {isExpanded && (
                   <div style={{ padding: "18px 20px" }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      {bab.subChapters.map((sub, idx) => {
+                      {(bab.subChapters || []).map((sub, idx) => {
                         const isSubSub = sub.depth === 3 || sub.itemId.split(".").length > 2;
 
                         return (
