@@ -586,6 +586,12 @@ export const api = {
       return http.upload<{ success: boolean; data: Journal }>(`/api/projects/${projectId}/journals/upload`, formData);
     },
 
+    getPdfProxyUrl: (projectId: string, journalId: string) => {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const token = getToken();
+      return `${baseUrl}/api/projects/${projectId}/journals/${journalId}/pdf-proxy${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+    },
+
     extractPdf: (projectId: string, journalId: string) =>
       http.post<{ success: boolean; message: string; data: Journal }>(`/api/projects/${projectId}/journals/${journalId}/extract`),
 

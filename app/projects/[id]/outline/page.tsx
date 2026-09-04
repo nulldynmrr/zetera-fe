@@ -2966,7 +2966,13 @@ export default function OutlinePage() {
         isOpen={!!previewJournal}
         onClose={() => setPreviewJournal(null)}
         title={previewJournal?.title || ""}
-        pdfUrl={previewJournal?.filePath || previewJournal?.pdfStoragePath}
+        pdfUrl={
+          previewJournal
+            ? (previewJournal.filePath || previewJournal.openAccessPdfUrl || previewJournal.pdfStoragePath
+                ? api.journals.getPdfProxyUrl(projectId, previewJournal.id)
+                : null)
+            : null
+        }
         doi={previewJournal?.doi}
         authors={previewJournal?.authors}
         year={previewJournal?.year}

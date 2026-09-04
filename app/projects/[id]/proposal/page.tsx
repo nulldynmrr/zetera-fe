@@ -150,9 +150,8 @@ function A4Sheet({
   return (
     <div
       id={sheetId}
-      className={`a4-print-sheet ${marginPreset === "4433" ? "a4-print-sheet-4433" : ""} ${
-        !isIncludedInPrint ? "sheet-hidden-for-print" : ""
-      }`}
+      className={`a4-print-sheet ${marginPreset === "4433" ? "a4-print-sheet-4433" : ""} ${!isIncludedInPrint ? "sheet-hidden-for-print" : ""
+        }`}
       style={{
         width: "210mm",
         minHeight: "297mm",
@@ -384,7 +383,14 @@ export default function ProposalPage() {
   const [aiInputPrompt, setAiInputPrompt] = useState("");
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [aiChatMessages, setAiChatMessages] = useState<
-    { sender: "ai" | "user"; text: string; time: string }[]
+    {
+      sender: "ai" | "user";
+      text: string;
+      time: string;
+      revisedContent?: string;
+      explanation?: string;
+      usedCitations?: string[];
+    }[]
   >([
     {
       sender: "ai",
@@ -1293,6 +1299,51 @@ export default function ProposalPage() {
     triggerAutoSave();
   };
 
+  const handleInsertAiDraftToDocument = (text: string) => {
+    if (!text) return;
+    if (activeTab === "bab1") {
+      setProposalData((prev: any) => ({
+        ...prev,
+        bab1: {
+          ...prev?.bab1,
+          latarBelakang: prev?.bab1?.latarBelakang ? `${prev.bab1.latarBelakang}\n\n${text}` : text,
+        },
+      }));
+    } else if (activeTab === "bab2") {
+      setProposalData((prev: any) => ({
+        ...prev,
+        bab2: {
+          ...prev?.bab2,
+          landasanTeori: prev?.bab2?.landasanTeori ? `${prev.bab2.landasanTeori}\n\n${text}` : text,
+        },
+      }));
+    } else if (activeTab === "bab3") {
+      setProposalData((prev: any) => ({
+        ...prev,
+        bab3: {
+          ...prev?.bab3,
+          desainPenelitian: prev?.bab3?.desainPenelitian ? `${prev.bab3.desainPenelitian}\n\n${text}` : text,
+        },
+      }));
+    } else if (activeTab === "abstract") {
+      setAbstractData((prev) => ({
+        ...prev,
+        indo: prev.indo ? `${prev.indo}\n\n${text}` : text,
+      }));
+    } else {
+      setProposalData((prev: any) => ({
+        ...prev,
+        bab1: {
+          ...prev?.bab1,
+          latarBelakang: prev?.bab1?.latarBelakang ? `${prev.bab1.latarBelakang}\n\n${text}` : text,
+        },
+      }));
+    }
+    triggerAutoSave();
+    setSaveDraftStatus("saved");
+    setTimeout(() => setSaveDraftStatus("idle"), 2500);
+  };
+
   const handleSendAiMessage = async () => {
     if (!aiInputPrompt.trim() || isAiThinking) return;
     const userText = aiInputPrompt.trim();
@@ -1302,20 +1353,63 @@ export default function ProposalPage() {
     setAiInputPrompt("");
     setIsAiThinking(true);
 
+    // Ambil draft konten section aktif saat ini
+    let currentContent = "";
+    if (activeTab === "bab1") {
+      currentContent = proposalData?.bab1?.latarBelakang || "";
+    } else if (activeTab === "bab2") {
+      currentContent = proposalData?.bab2?.landasanTeori || "";
+    } else if (activeTab === "bab3") {
+      currentContent = proposalData?.bab3?.desainPenelitian || "";
+    } else if (activeTab === "abstract") {
+      currentContent = abstractData.indo || "";
+    }
+
+    const conversationHistory = aiChatMessages.slice(-4).map((m) => ({
+      role: m.sender === "user" ? "user" : "assistant",
+      content: m.text,
+    }));
+
     try {
-      // Simulate AI response for interactive assistance
-      setTimeout(() => {
-        let reply = `Berikut adalah draf saran untuk "${userText}":\n\nBerdasarkan kerangka penelitian ${coverData.title}, telaah literatur menunjukkan bahwa integrasi variabel empiris perlu didukung oleh data primer kuesioner berskala Likert 5-poin.`;
-        if (userText.toLowerCase().includes("outline")) {
-          reply = `Struktur outline yang direkomendasikan untuk ${coverData.title}:\n1.1 Latar Belakang & Research Gap\n1.2 Identifikasi Masalah\n1.3 Rumusan Masalah\n1.4 Tujuan Penelitian\n1.5 Manfaat Penelitian Teoretis & Praktis`;
-        }
+      const res = await api.proposal.chat(projectId, {
+        sectionId: activeTab,
+        command: userText,
+        currentContent,
+        conversationHistory,
+      });
+
+      if (res && res.revisedContent) {
         setAiChatMessages((prev) => [
           ...prev,
-          { sender: "ai", text: reply, time: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) },
+          {
+            sender: "ai",
+            text: res.explanation ? `${res.explanation}\n\n${res.revisedContent}` : res.revisedContent,
+            time: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+            revisedContent: res.revisedContent,
+            explanation: res.explanation,
+            usedCitations: res.usedCitations,
+          },
         ]);
-        setIsAiThinking(false);
-      }, 1000);
-    } catch (e) {
+      } else {
+        setAiChatMessages((prev) => [
+          ...prev,
+          {
+            sender: "ai",
+            text: res?.explanation || "AI Co-Writer telah menyelesaikan analisis.",
+            time: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
+      }
+    } catch (err: any) {
+      setAiChatMessages((prev) => [
+        ...prev,
+        {
+          sender: "ai",
+          text: `Gagal memproses bantuan AI: ${err.message || "Pastikan server backend terhubung."}`,
+          time: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+    } finally {
       setIsAiThinking(false);
     }
   };
@@ -3117,7 +3211,7 @@ export default function ProposalPage() {
               {/* Greeting Card */}
               <div style={{ background: "#F8FAFC", borderRadius: 10, padding: "12px 14px", border: "1px solid #E2E8F0" }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "#0F172A", marginBottom: 4 }}>
-                  👋 Hai {profile?.namaLengkap ? profile.namaLengkap.split(" ")[0] : "Andi"}!
+                  👋 Hai {profile?.namaLengkap ? profile.namaLengkap.split(" ")[0] : "Zeeetrea fimm"}!
                 </div>
                 <div style={{ fontSize: 11.5, color: "#64748B", lineHeight: 1.4 }}>
                   Saya siap membantu penulisan skripsi & proposal Anda.
@@ -3177,7 +3271,7 @@ export default function ProposalPage() {
                     key={idx}
                     style={{
                       alignSelf: msg.sender === "user" ? "flex-end" : "flex-start",
-                      maxWidth: "90%",
+                      maxWidth: "92%",
                       padding: "10px 12px",
                       borderRadius: 10,
                       background: msg.sender === "user" ? "#4338CA" : "#F1F5F9",
@@ -3187,6 +3281,68 @@ export default function ProposalPage() {
                     }}
                   >
                     <div style={{ whiteSpace: "pre-wrap" }}>{msg.text}</div>
+
+                    {/* Rujukan sitasi yang dipakai */}
+                    {msg.usedCitations && msg.usedCitations.length > 0 && (
+                      <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {msg.usedCitations.map((c, cIdx) => (
+                          <span key={cIdx} style={{ fontSize: 10, background: "#E0E7FF", color: "#3730A3", padding: "2px 6px", borderRadius: 4 }}>
+                            📚 {c}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Tombol aksi langsung ke naskah */}
+                    {msg.sender === "ai" && msg.revisedContent && (
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #CBD5E1", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => handleInsertAiDraftToDocument(msg.revisedContent!)}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            background: "#4338CA",
+                            color: "#FFFFFF",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "4px 8px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <PlusCircle size={12} />
+                          <span>Sisipkan ke Naskah ({activeTab.toUpperCase()})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(msg.revisedContent!);
+                            setLastSavedTime("Draf AI disalin!");
+                            setTimeout(() => setLastSavedTime(null), 2500);
+                          }}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            background: "#E2E8F0",
+                            color: "#334155",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "4px 8px",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Copy size={12} />
+                          <span>Salin</span>
+                        </button>
+                      </div>
+                    )}
+
                     <div style={{ fontSize: 9.5, opacity: 0.7, marginTop: 4, textAlign: "right" }}>{msg.time}</div>
                   </div>
                 ))}
@@ -3667,30 +3823,114 @@ export default function ProposalPage() {
 
       {/* ════ MODAL: SISIPKAN SITASI ════ */}
       {showCitationPickerModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
-          <div style={{ background: "#FFFFFF", borderRadius: 12, width: "100%", maxWidth: 520, padding: 22, border: "1px solid #CBD5E1" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Pilih Sitasi Jurnal</h3>
-              <button onClick={() => setShowCitationPickerModal(false)} style={{ background: "transparent", border: "none", cursor: "pointer" }}>✕</button>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
+          <div style={{ background: "#FFFFFF", borderRadius: 14, width: "100%", maxWidth: 560, padding: 22, border: "1px solid #CBD5E1", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "#0F172A" }}>Pilih Sitasi Referensi</h3>
+                <span style={{ fontSize: 11, fontWeight: 700, background: "#EEF2FF", color: "#4338CA", padding: "2px 8px", borderRadius: 9999 }}>
+                  Gaya: {citationStyle}
+                </span>
+              </div>
+              <button onClick={() => setShowCitationPickerModal(false)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748B" }}>✕</button>
             </div>
+            <p style={{ fontSize: 12, color: "#64748B", margin: "0 0 14px" }}>
+              Klik sitasi untuk menyalin format in-text atau langsung sisipkan ke naskah sub-bab aktif ({activeTab.toUpperCase()}).
+            </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
-              {references.map((ref) => (
-                <div
-                  key={ref.id}
-                  onClick={() => {
-                    const primaryAuthor = ref.authors.split(",")[0] || ref.authors;
-                    const citation = `(${primaryAuthor}, ${ref.year})`;
-                    navigator.clipboard.writeText(citation);
-                    alert(`Sitasi "${citation}" disalin ke clipboard! Silakan paste pada teks naskah.`);
-                    setShowCitationPickerModal(false);
-                  }}
-                  style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #E2E8F0", background: "#F8FAFC", cursor: "pointer" }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{ref.title}</div>
-                  <div style={{ fontSize: 11, color: "#64748B" }}>{ref.authors} ({ref.year}) • {ref.publication}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 340, overflowY: "auto" }}>
+              {references.length === 0 ? (
+                <div style={{ padding: 20, textAlign: "center", color: "#64748B", fontSize: 13 }}>
+                  Belum ada daftar referensi/jurnal approved.
                 </div>
-              ))}
+              ) : (
+                references.map((ref, idx) => {
+                  const normStyle = (citationStyle || "IEEE").toUpperCase();
+                  const rawAuthor = (ref.authors || "Penulis").split(/;|\band\b|&/gi)[0].trim();
+                  const primaryAuthor = rawAuthor.includes(",") ? rawAuthor.split(",")[0].trim() : (rawAuthor.split(" ").pop() || rawAuthor);
+                  const year = ref.year || "2026";
+                  const inTextCitation =
+                    normStyle === "IEEE" || normStyle === "VANCOUVER"
+                      ? `[${idx + 1}]`
+                      : normStyle === "MLA"
+                        ? `(${primaryAuthor})`
+                        : normStyle === "CHICAGO"
+                          ? `(${primaryAuthor} ${year})`
+                          : `(${primaryAuthor}, ${year})`;
+
+                  return (
+                    <div
+                      key={ref.id}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1px solid #E2E8F0",
+                        background: "#F8FAFC",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                          <span style={{ fontSize: 11.5, fontWeight: 700, background: "#E0F2FE", color: "#0369A1", padding: "1px 7px", borderRadius: 5 }}>
+                            {inTextCitation}
+                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#0F172A", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {ref.title}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#64748B" }}>
+                          {ref.authors} ({ref.year}) • {ref.publication}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleInsertAiDraftToDocument(` ${inTextCitation} `);
+                            setShowCitationPickerModal(false);
+                          }}
+                          style={{
+                            background: "#4338CA",
+                            color: "#FFFFFF",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "5px 9px",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          + Sisipkan
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(inTextCitation);
+                            setLastSavedTime(`Sitasi ${inTextCitation} disalin!`);
+                            setTimeout(() => setLastSavedTime(null), 2500);
+                            setShowCitationPickerModal(false);
+                          }}
+                          style={{
+                            background: "#E2E8F0",
+                            color: "#334155",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "5px 8px",
+                            fontSize: 11,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Salin
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

@@ -20,6 +20,7 @@ import {
   FileText,
   ChevronRight,
   ShieldCheck,
+  Bookmark,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -66,6 +67,48 @@ export default function JournalReaderPage() {
   const [quoteInput, setQuoteInput] = useState("");
   const [pageNumberInput, setPageNumberInput] = useState("");
   const [savingMapping, setSavingMapping] = useState(false);
+
+  // ── Overhaul v2: Select-Text-To-Evidence Toolbar State ──
+  const [selectedTextToolbar, setSelectedTextToolbar] = useState<{
+    text: string;
+    page: number;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const handleTextSelection = (fallbackPage: number = 1) => {
+    if (typeof window === "undefined") return;
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) {
+      setSelectedTextToolbar(null);
+      return;
+    }
+    const text = sel.toString().trim();
+    if (text.length >= 8) {
+      try {
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        setSelectedTextToolbar({
+          text,
+          page: fallbackPage,
+          x: Math.max(10, rect.left + rect.width / 2 - 110),
+          y: Math.max(10, rect.top - 46 + window.scrollY),
+        });
+      } catch (_) {
+        setSelectedTextToolbar(null);
+      }
+    } else {
+      setSelectedTextToolbar(null);
+    }
+  };
+
+  const handleSaveSelectionAsEvidence = () => {
+    if (!selectedTextToolbar) return;
+    setQuoteInput(selectedTextToolbar.text);
+    setPageNumberInput(String(selectedTextToolbar.page || 1));
+    setSelectedTextToolbar(null);
+    setShowMapModal(true);
+  };
 
   // Load Journal Detail & Framework Nodes
   const loadData = useCallback(async () => {
@@ -215,7 +258,9 @@ export default function JournalReaderPage() {
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-  const pdfUrl = journal.url ? (journal.url.startsWith("http") ? journal.url : `${baseUrl}${journal.url}`) : null;
+  const pdfUrl = (journal.filePath || journal.openAccessPdfUrl || journal.pdfStoragePath || (journal.url && journal.url.toLowerCase().endsWith(".pdf")))
+    ? api.journals.getPdfProxyUrl(projectId, journal.id)
+    : (journal.url ? (journal.url.startsWith("http") ? journal.url : `${baseUrl}${journal.url}`) : null);
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#fefefe" }}>
@@ -391,6 +436,7 @@ export default function JournalReaderPage() {
 
             {/* Abstract Section Card */}
             <div
+              onMouseUp={() => handleTextSelection(1)}
               style={{
                 background: "#f8fafc",
                 border: "1px solid #e2e8f0",
@@ -458,6 +504,7 @@ export default function JournalReaderPage() {
                     return (
                       <details
                         key={idx}
+                        onMouseUp={() => handleTextSelection(sec.page || Math.floor(idx / 2) + 1)}
                         style={{
                           background: isTableSection ? "#f1fbf7" : isBibliography ? "#fafcff" : "#f8fafc",
                           border: isTableSection ? "1.5px solid #a7f3d0" : isBibliography ? "1px solid #bfdbfe" : "1px solid #e2e8f0",
@@ -577,6 +624,7 @@ export default function JournalReaderPage() {
                   Isi Teks Ekstraksi
                 </h3>
                 <div
+                  onMouseUp={() => handleTextSelection(1)}
                   style={{
                     display: "flex",
                     flexDirection: "column",
@@ -893,6 +941,79 @@ export default function JournalReaderPage() {
               />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── FLOATING SELECT-TO-EVIDENCE TOOLBAR (OVERHAUL V2) ── */}
+      {selectedTextToolbar && (
+        <div
+          style={{
+            position: "absolute",
+            left: selectedTextToolbar.x,
+            top: selectedTextToolbar.y,
+            zIndex: 999,
+            background: "#0f172a",
+            color: "#ffffff",
+            padding: "6px 10px",
+            borderRadius: 8,
+            boxShadow: "0 10px 25px -5px rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <button
+            onClick={handleSaveSelectionAsEvidence}
+            style={{
+              background: "#00C988",
+              color: "#ffffff",
+              border: "none",
+              padding: "5px 11px",
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            <Bookmark size={13} />
+            <span>Simpan Bukti (Hal. {selectedTextToolbar.page})</span>
+          </button>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(selectedTextToolbar.text);
+              setAiSuccessMsg("Kutipan berhasil disalin ke clipboard!");
+              setTimeout(() => setAiSuccessMsg(""), 2500);
+              setSelectedTextToolbar(null);
+            }}
+            style={{
+              background: "#334155",
+              color: "#f8fafc",
+              border: "none",
+              padding: "5px 9px",
+              borderRadius: 6,
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            Salin
+          </button>
+          <button
+            onClick={() => setSelectedTextToolbar(null)}
+            style={{
+              background: "transparent",
+              color: "#94a3b8",
+              border: "none",
+              cursor: "pointer",
+              padding: 2,
+              fontSize: 14,
+              lineHeight: 1,
+            }}
+          >
+            ✕
+          </button>
         </div>
       )}
 
