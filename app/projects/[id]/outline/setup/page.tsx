@@ -199,11 +199,19 @@ export default function CustomBabSetupPage() {
 
       const res = await api.projects.customOutline.get(projectId);
       if (res.success && res.data?.customOutline && Array.isArray(res.data.customOutline) && res.data.customOutline.length > 0) {
-        setBabs(res.data.customOutline);
+        const normalized = res.data.customOutline.map((b: any) => ({
+          ...b,
+          subChapters: Array.isArray(b.subChapters) ? b.subChapters : [],
+        }));
+        setBabs(normalized);
         setIsCustomEnabled(true);
       } else {
         const defaultList = getApproachBasedBabs(fetchedProject?.approachType || undefined, fetchedProject?.title || undefined);
-        setBabs(defaultList);
+        const normalized = defaultList.map((b: any) => ({
+          ...b,
+          subChapters: Array.isArray(b.subChapters) ? b.subChapters : [],
+        }));
+        setBabs(normalized);
         setIsCustomEnabled(true);
       }
     } catch (err) {
@@ -225,7 +233,7 @@ export default function CustomBabSetupPage() {
     setBabs((prev) =>
       prev.map((b) => {
         if (b.babNumber !== babNum) return b;
-        const newSubs = [...b.subChapters];
+        const newSubs = [...(b.subChapters || [])];
         newSubs[subIndex] = { ...newSubs[subIndex], title: newTitle };
         return { ...b, subChapters: newSubs };
       })
@@ -236,21 +244,22 @@ export default function CustomBabSetupPage() {
     setBabs((prev) =>
       prev.map((b) => {
         if (b.babNumber !== babNum) return b;
+        const currentSubs = b.subChapters || [];
         // Cari nomor sub-bab utama tertinggi di bab ini (misal 2.1, 2.2, 2.3 -> max = 3)
         let maxIndex = 0;
-        b.subChapters.forEach((sub) => {
+        currentSubs.forEach((sub) => {
           const parts = sub.itemId.split(".");
           if (parts.length === 2 && parseInt(parts[0], 10) === babNum) {
             const num = parseInt(parts[1], 10);
             if (!isNaN(num) && num > maxIndex) maxIndex = num;
           }
         });
-        const nextNum = maxIndex > 0 ? maxIndex + 1 : b.subChapters.length + 1;
+        const nextNum = maxIndex > 0 ? maxIndex + 1 : currentSubs.length + 1;
         const newId = `${babNum}.${nextNum}`;
         return {
           ...b,
           subChapters: [
-            ...b.subChapters,
+            ...currentSubs,
             { id: newId, itemId: newId, title: `Sub-bab Baru ${nextNum}`, depth: 2 },
           ],
         };
@@ -262,7 +271,8 @@ export default function CustomBabSetupPage() {
     setBabs((prev) =>
       prev.map((b) => {
         if (b.babNumber !== babNum) return b;
-        const parent = b.subChapters[parentIndex];
+        const currentSubs = b.subChapters || [];
+        const parent = currentSubs[parentIndex];
         if (!parent) return b;
 
         // Ambil prefix utama, misal "2.2"
@@ -270,7 +280,7 @@ export default function CustomBabSetupPage() {
         let maxChildNum = 0;
         let insertIndex = parentIndex;
 
-        b.subChapters.forEach((sub, sIdx) => {
+        currentSubs.forEach((sub, sIdx) => {
           if (sub.itemId.startsWith(parentPrefix + ".")) {
             const childSuffix = sub.itemId.slice(parentPrefix.length + 1);
             const num = parseInt(childSuffix, 10);
@@ -288,7 +298,7 @@ export default function CustomBabSetupPage() {
           depth: 3,
         };
 
-        const newSubs = [...b.subChapters];
+        const newSubs = [...currentSubs];
         newSubs.splice(insertIndex + 1, 0, newChild);
         return { ...b, subChapters: newSubs };
       })
@@ -299,7 +309,7 @@ export default function CustomBabSetupPage() {
     setBabs((prev) =>
       prev.map((b) => {
         if (b.babNumber !== babNum) return b;
-        const newSubs = b.subChapters.filter((_, idx) => idx !== subIndex);
+        const newSubs = (b.subChapters || []).filter((_, idx) => idx !== subIndex);
         return { ...b, subChapters: newSubs };
       })
     );
