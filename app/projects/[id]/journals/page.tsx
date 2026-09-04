@@ -34,6 +34,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { ProjectSidebar } from "@/components/ui/ProjectSidebar";
 import { Input } from "@/components/ui/Input";
+import { notify } from "@/lib/notification";
 import { useRequireAuth } from "@/lib/auth-context";
 import {
   api,
@@ -136,7 +137,7 @@ export default function JournalsPage() {
   // ── RUN BATCH AI FAST SCREENING WITH REAL-TIME PROGRESS & ESTIMATION ──
   const handleBatchScreening = async () => {
     if (!projectId || journals.length === 0) {
-      alert("Unggah jurnal terlebih dahulu sebelum melakukan telaah AI.");
+      notify.warning("Unggah jurnal terlebih dahulu sebelum melakukan telaah AI.");
       return;
     }
 
@@ -177,8 +178,9 @@ export default function JournalsPage() {
         setAiProcessing(false);
         setStatusMessage("");
       }, 2500);
+      notify.success("Telaah AI batch selesai!");
     } catch (err: any) {
-      alert(err.message || "Gagal menjalankan telaah AI");
+      notify.error(err.message || "Gagal menjalankan telaah AI");
       setAiProcessing(false);
       setStatusMessage("");
     }
@@ -221,8 +223,9 @@ export default function JournalsPage() {
         setCrossCheckingId(null);
         setStatusMessage("");
       }, 3000);
+      notify.success(`Cross-check selesai untuk "${journalTitle.slice(0, 35)}..."`);
     } catch (err: any) {
-      alert(err.message || "Gagal melakukan Cross-Check AI");
+      notify.error(err.message || "Gagal melakukan Cross-Check AI");
       setAiProcessing(false);
       setCrossCheckingId(null);
       setStatusMessage("");
@@ -255,13 +258,13 @@ export default function JournalsPage() {
     );
 
     if (pdfFiles.length === 0) {
-      alert("Hanya file dokumen PDF yang dapat diunggah");
+      notify.warning("Hanya file dokumen PDF yang dapat diunggah");
       return;
     }
 
     const maxFiles = pdfFiles.slice(0, 10);
     if (pdfFiles.length > 10) {
-      alert("Maksimal 10 file PDF sekaligus. Memproses 10 file pertama...");
+      notify.info("Maksimal 10 file PDF sekaligus. Memproses 10 file pertama...");
     }
 
     try {
@@ -293,8 +296,9 @@ export default function JournalsPage() {
           setAutoCheckingId(null);
         }
       }
+      notify.success(`Berhasil mengunggah & memproses ${maxFiles.length} file PDF`);
     } catch (err: any) {
-      alert(err.message || "Gagal mengunggah dan membaca PDF");
+      notify.error(err.message || "Gagal mengunggah dan membaca PDF");
     } finally {
       setUploadingPdf(false);
       setUploadStepInfo(null);
@@ -310,9 +314,9 @@ export default function JournalsPage() {
       setJournals((prev) =>
         prev.map((j) => (j.id === journalId ? res.data : j))
       );
-      alert("✓ Ekstraksi teks PDF lokal berhasil diperbarui.");
+      notify.success("✓ Ekstraksi teks PDF lokal berhasil diperbarui.");
     } catch (err: any) {
-      alert(err.message || "Gagal mengekstrak PDF");
+      notify.error(err.message || "Gagal mengekstrak PDF");
     } finally {
       setAutoCheckingId(null);
     }
@@ -328,8 +332,9 @@ export default function JournalsPage() {
       );
       // Auto-expand freshly screened journal
       setExpandedAiAnalysis((prev) => ({ ...prev, [journalId]: true }));
+      notify.success("Screening AI berhasil!");
     } catch (err: any) {
-      alert(err.message || "Gagal melakukan screening AI");
+      notify.error(err.message || "Gagal melakukan screening AI");
     } finally {
       setAutoCheckingId(null);
     }
@@ -347,8 +352,9 @@ export default function JournalsPage() {
       setJournals((prev) =>
         prev.map((j) => (j.id === journalId ? { ...j, status: newStatus as any, relevanceScore: newStatus === "APPROVED" ? (j.relevanceScore && j.relevanceScore > 60 ? j.relevanceScore : 85) : j.relevanceScore } : j))
       );
+      notify.success(`Status jurnal berhasil diubah ke ${newStatus}`);
     } catch (err: any) {
-      alert(err.message || "Gagal memperbarui status jurnal");
+      notify.error(err.message || "Gagal memperbarui status jurnal");
     }
   };
 
@@ -414,8 +420,9 @@ export default function JournalsPage() {
       setManualPublication("");
       setManualDoi("");
       setManualAbstract("");
+      notify.success("Jurnal berhasil ditambahkan secara manual!");
     } catch (err: any) {
-      alert(err.message || "Gagal menyimpan jurnal");
+      notify.error(err.message || "Gagal menyimpan jurnal");
     } finally {
       setSavingManual(false);
     }
@@ -423,25 +430,41 @@ export default function JournalsPage() {
 
   // Delete Journal
   const handleDeleteJournal = async (journalId: string, title: string) => {
-    if (!confirm(`Hapus jurnal "${title}" dari library project ini?`)) return;
+    const confirmed = await notify.confirm({
+      title: "Hapus Jurnal",
+      description: `Hapus jurnal "${title}" dari library project ini? Tindakan ini tidak dapat dibatalkan.`,
+      confirmLabel: "Hapus",
+      cancelLabel: "Batal",
+      isDestructive: true,
+    });
+    if (!confirmed) return;
 
     try {
       await api.journals.delete(projectId, journalId);
       setJournals((prev) => prev.filter((j) => j.id !== journalId));
+      notify.success("Jurnal berhasil dihapus");
     } catch (err: any) {
-      alert(err.message || "Gagal menghapus jurnal");
+      notify.error(err.message || "Gagal menghapus jurnal");
     }
   };
 
   // Purge all rejected off-topic journals
   const handlePurgeRejected = async () => {
-    if (!confirm(`Hapus semua ${stats.rejected} jurnal yang di luar topik dari project ini?`)) return;
+    const confirmed = await notify.confirm({
+      title: "Bersihkan Jurnal Ditolak",
+      description: `Hapus semua ${stats.rejected} jurnal yang di luar topik dari project ini?`,
+      confirmLabel: "Hapus Semua",
+      cancelLabel: "Batal",
+      isDestructive: true,
+    });
+    if (!confirmed) return;
 
     try {
       await api.journals.purgeRejected(projectId);
       setJournals((prev) => prev.filter((j) => j.status !== "REJECTED"));
+      notify.success("Jurnal yang ditolak berhasil dibersihkan");
     } catch (err: any) {
-      alert(err.message || "Gagal membersihkan jurnal yang ditolak");
+      notify.error(err.message || "Gagal membersihkan jurnal yang ditolak");
     }
   };
 
@@ -452,8 +475,9 @@ export default function JournalsPage() {
       setJournals((prev) =>
         prev.map((j) => (j.id === journalId ? { ...j, status } : j))
       );
+      notify.success(`Status jurnal berhasil diperbarui menjadi ${status}`);
     } catch (err: any) {
-      alert(err.message || "Gagal memperbarui status");
+      notify.error(err.message || "Gagal memperbarui status");
     }
   };
 
@@ -483,8 +507,9 @@ export default function JournalsPage() {
         expandedQuery: res.expandedQuery,
         domainHint: res.domainHint,
       });
+      notify.success(`Ditemukan ${res.candidates?.length || 0} artikel ilmiah terkait`);
     } catch (err: any) {
-      alert(err.message || "Pencarian jurnal gagal. Coba lagi.");
+      notify.error(err.message || "Pencarian jurnal gagal. Coba lagi.");
     } finally {
       setDiscoveryLoading(false);
     }
@@ -498,8 +523,9 @@ export default function JournalsPage() {
 
       setJournals((prev) => [res.journal, ...prev.filter((j) => j.id !== res.journal.id)]);
       setImportedIds((prev) => new Set([...prev, uniqueKey]));
+      notify.success(`Jurnal "${candidate.title.slice(0, 40)}..." berhasil diimpor!`);
     } catch (err: any) {
-      alert(err.message || "Gagal mengimpor jurnal");
+      notify.error(err.message || "Gagal mengimpor jurnal");
     } finally {
       setImportingId(null);
     }

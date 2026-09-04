@@ -1,7 +1,7 @@
 import React from "react";
-import { Building, X } from "lucide-react";
+import { Building, X, Image as ImageIcon } from "lucide-react";
 import { CoverData, ApprovalData } from "../../types";
-import { api } from "@/lib/api-client";
+import { api, ProposalTemplate } from "@/lib/api-client";
 
 interface IdentityModalProps {
   showIdentityModal: boolean;
@@ -11,6 +11,9 @@ interface IdentityModalProps {
   approvalData: ApprovalData;
   setApprovalData: React.Dispatch<React.SetStateAction<ApprovalData>>;
   triggerAutoSave: () => void;
+  activeTemplate?: ProposalTemplate | null;
+  variableValues?: Record<string, any>;
+  onSaveVariableValues?: (newValues: Record<string, any>) => void;
 }
 
 export function IdentityModal({
@@ -21,6 +24,9 @@ export function IdentityModal({
   approvalData,
   setApprovalData,
   triggerAutoSave,
+  activeTemplate,
+  variableValues,
+  onSaveVariableValues,
 }: IdentityModalProps) {
   if (!showIdentityModal) return null;
 
@@ -36,6 +42,7 @@ export function IdentityModal({
           fakultas: coverData.fakultas || "Fakultas",
           programStudi: coverData.prodi || "Program Studi",
           kota: coverData.kota || "Bandung",
+          logoUrl: coverData.logoUrl || variableValues?.LOGO || null,
         })
         .catch(() => {});
     }
@@ -130,6 +137,36 @@ export function IdentityModal({
                 fontSize: 13,
               }}
             />
+          </div>
+
+          <div style={{ gridColumn: "span 2" }}>
+            <label
+              style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}
+            >
+              Logo Kampus / Institusi (URL atau Path Gambar)
+            </label>
+            <input
+              type="text"
+              value={coverData.logoUrl || variableValues?.LOGO || ""}
+              onChange={(e) => {
+                const val = e.target.value;
+                setCoverData({ ...coverData, logoUrl: val });
+                if (onSaveVariableValues) {
+                  onSaveVariableValues({ LOGO: val });
+                }
+              }}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #CBD5E1",
+                fontSize: 13,
+              }}
+              placeholder="https://... atau /uploads/... (Otomatis men-swap logo Tel-U pada ekspor LaTeX & Word)"
+            />
+            <p style={{ margin: "4px 0 0 0", fontSize: 11, color: "#64748B" }}>
+              Jika diisi, logo ini otomatis menggantikan logo Tel-U bawaan template saat ekspor LaTeX (.zip) maupun Word (.docx).
+            </p>
           </div>
 
           <div>

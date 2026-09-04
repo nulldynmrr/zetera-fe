@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, ProposalTemplate } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
+import { notify } from "@/lib/notification";
 import {
   FileText,
   Copy,
@@ -44,21 +45,15 @@ export default function TemplateLibraryPage() {
   const handleClone = async (template: ProposalTemplate) => {
     try {
       setCloningId(template.id);
-      const newName = prompt(
-        "Masukkan nama untuk template salinan:",
-        `${template.name} (Custom)`
-      );
-      if (!newName) {
-        setCloningId(null);
-        return;
-      }
+      const newName = `${template.name} (Salinan ${new Date().toLocaleDateString("id-ID")})`;
 
       const res = await api.templates.clone(template.id, newName);
       if (res.success && res.data) {
+        notify.success("Template Berhasil Diduplikasi!", `Salinan "${newName}" telah dibuat.`);
         router.push(`/library/templates/${res.data.id}`);
       }
     } catch (err: any) {
-      alert("Gagal menyalin template: " + err.message);
+      notify.error("Gagal menyalin template: " + err.message);
       setCloningId(null);
     }
   };

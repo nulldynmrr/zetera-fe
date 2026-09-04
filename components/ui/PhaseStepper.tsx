@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { CheckCircle2, Lock, Sparkles, BookOpen, Network, FileEdit, ArrowRight } from "lucide-react";
+import { notify } from "@/lib/notification";
 
 export interface PhaseStep {
   id: number;
@@ -197,7 +198,7 @@ export function PhaseStepper({
 
           if (isLocked) {
             return (
-              <div key={phase.id} onClick={() => alert(phase.lockReason)}>
+              <div key={phase.id} onClick={() => notify.info("Fase Belum Terbuka", phase.lockReason)}>
                 {cardContent}
               </div>
             );

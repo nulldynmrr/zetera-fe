@@ -1,6 +1,7 @@
 import { useState } from "react";
 import React from "react";
 import { TypoSuggestion, CustomSubChapterItem } from "../types";
+import { notify } from "@/lib/notification";
 
 export const INDONESIAN_TYPO_DICTIONARY: Record<string, { suggestion: string; reason: string }> = {
   menatal: { suggestion: "Mental", reason: "Kata baku untuk kondisi psikologis/kejiwaan adalah 'mental'" },
@@ -84,7 +85,7 @@ export function useTypoChecker(
     );
 
     triggerAutoSave();
-    alert("Pemeriksaan selesai! Seluruh ejaan dan kata tidak baku berhasil diperbaiki otomatis.");
+    notify.success("Pemeriksaan Selesai!", "Seluruh ejaan dan kata tidak baku berhasil diperbaiki otomatis.");
   };
 
   const renderTextWithTypoHighlights = (text: string) => {

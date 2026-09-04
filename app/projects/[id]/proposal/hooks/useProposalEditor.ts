@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import React from "react";
-import { api, UserProfile, getToken, TOKEN_KEY } from "@/lib/api-client";
+import { api, UserProfile, getToken, TOKEN_KEY, ProposalTemplate } from "@/lib/api-client";
+import { notify } from "@/lib/notification";
 import {
   TabKey,
   TemplateType,
@@ -28,6 +29,9 @@ export function useProposalEditor(projectId: string) {
   // Template and Logo
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showIdentityModal, setShowIdentityModal] = useState(false);
+  const [activeTemplate, setActiveTemplate] = useState<ProposalTemplate | null>(null);
+  const [variableValues, setVariableValues] = useState<Record<string, any>>({});
+  const [showSwitchTemplateModal, setShowSwitchTemplateModal] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>("TELKOM_FIF");
   const [logoLoadError, setLogoLoadError] = useState(false);
 
@@ -46,10 +50,10 @@ export function useProposalEditor(projectId: string) {
   // ── Lembar Persetujuan (FIF LaTeX Standard) ──
   const [approvalData, setApprovalData] = useState<ApprovalData>({
     titleEng: "",
-    kota: "Bandung",
-    dateDay: "2",
-    dateMonth: "Oktober",
-    dateYear: "2026",
+    kota: "",
+    dateDay: "",
+    dateMonth: "",
+    dateYear: "",
     pembimbing1: "",
     nipPembimbing1: "",
     pembimbing2: "",
@@ -177,6 +181,18 @@ export function useProposalEditor(projectId: string) {
           setCitationStyle(res.data.project.citationStyle.toUpperCase());
         }
 
+        if (res.data.project?.template) {
+          setActiveTemplate(res.data.project.template);
+          if (res.data.project.template.formatType === "DOCX") {
+            setSelectedTemplate("GENERAL_ID");
+          } else {
+            setSelectedTemplate("TELKOM_FIF");
+          }
+        }
+        if (res.data.project?.variableValues) {
+          setVariableValues(res.data.project.variableValues);
+        }
+
         // RESTORE SAVED DRAFT FROM DATABASE IF AVAILABLE
         if (res.data.savedDraft) {
           const draft = res.data.savedDraft;
@@ -266,6 +282,9 @@ export function useProposalEditor(projectId: string) {
         marginPreset,
         pageNumberPos,
         selectedTemplate,
+        variableValues,
+        templateId: activeTemplate?.id,
+        coverData,
         lastSavedAt: new Date().toISOString(),
       };
 
@@ -297,7 +316,15 @@ export function useProposalEditor(projectId: string) {
     marginPreset,
     pageNumberPos,
     selectedTemplate,
+    variableValues,
+    activeTemplate,
+    coverData,
   ]);
+
+  const handleSaveVariableValues = (newValues: Record<string, any>) => {
+    setVariableValues((prev) => ({ ...prev, ...newValues }));
+    triggerAutoSave();
+  };
 
   // Debounced auto-save
   const triggerAutoSave = useCallback(() => {
@@ -374,8 +401,9 @@ export function useProposalEditor(projectId: string) {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       setShowExportMenu(false);
+      notify.success("Unduhan Word Dimulai", "Dokumen Word proposal Anda sedang diunduh.");
     } catch (err: any) {
-      alert(err.message || "Gagal mengunduh dokumen Word");
+      notify.error("Gagal Mengunduh Word", err.message || "Terjadi kesalahan server");
     }
   };
 
@@ -413,8 +441,9 @@ export function useProposalEditor(projectId: string) {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       setShowExportMenu(false);
+      notify.success("Unduhan LaTeX Dimulai", "Paket ZIP LaTeX Overleaf siap diekstrak.");
     } catch (err: any) {
-      alert(err.message || "Gagal mengunduh paket LaTeX");
+      notify.error("Gagal Mengunduh LaTeX", err.message || "Terjadi kesalahan server");
     }
   };
 
@@ -591,6 +620,13 @@ export function useProposalEditor(projectId: string) {
     setShowConfigModal,
     showIdentityModal,
     setShowIdentityModal,
+    activeTemplate,
+    setActiveTemplate,
+    variableValues,
+    setVariableValues,
+    showSwitchTemplateModal,
+    setShowSwitchTemplateModal,
+    handleSaveVariableValues,
     selectedTemplate,
     setSelectedTemplate,
     logoLoadError,

@@ -26,12 +26,16 @@ import {
   Building,
   Quote,
   Zap,
+  Layers,
 } from "lucide-react";
 import { TemplateType } from "../types";
+import { ProposalTemplate } from "@/lib/api-client";
 
 interface ProposalRibbonProps {
   projectId: string;
   projectTitle?: string;
+  activeTemplate?: ProposalTemplate | null;
+  onOpenSwitchTemplate?: () => void;
   isEditMode: boolean;
   setIsEditMode: (val: boolean) => void;
   saveDraftStatus: "idle" | "saving" | "saved";
@@ -72,6 +76,8 @@ interface ProposalRibbonProps {
 export function ProposalRibbon({
   projectId,
   projectTitle,
+  activeTemplate,
+  onOpenSwitchTemplate,
   isEditMode,
   setIsEditMode,
   saveDraftStatus,
@@ -197,6 +203,48 @@ export function ProposalRibbon({
 
         {/* Action buttons on top right */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Template Switcher Button */}
+          <button
+            type="button"
+            onClick={onOpenSwitchTemplate}
+            style={{
+              background: "#EEF2FF",
+              border: "1px solid #C7D2FE",
+              borderRadius: 8,
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "#4338CA",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+            title="Klik untuk melihat atau mengganti format template proposal"
+          >
+            <Layers size={13} />
+            <span>
+              {activeTemplate?.name
+                ? activeTemplate.name.length > 22
+                  ? activeTemplate.name.slice(0, 22) + "..."
+                  : activeTemplate.name
+                : "Template: Telkom FIF"}
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                padding: "1px 5px",
+                borderRadius: 4,
+                backgroundColor: activeTemplate?.formatType === "DOCX" ? "#DBEAFE" : "#E0E7FF",
+                color: activeTemplate?.formatType === "DOCX" ? "#1E40AF" : "#3730A3",
+              }}
+            >
+              {activeTemplate?.formatType || "LATEX"}
+            </span>
+          </button>
+
+          {/* Toggle Mode Button */}
           <button
             type="button"
             onClick={() => setIsEditMode(!isEditMode)}

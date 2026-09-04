@@ -64,6 +64,7 @@ import { toPng } from "html-to-image";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ProjectSidebar } from "@/components/ui/ProjectSidebar";
+import { notify } from "@/lib/notification";
 import { useRequireAuth } from "@/lib/auth-context";
 import {
   api,
@@ -268,7 +269,14 @@ export default function FrameworkPage() {
 
   const handleDeleteEdgeById = useCallback(
     async (edgeId: string, edgeLabel?: string) => {
-      if (!window.confirm(`Hapus relasi "${edgeLabel || "koneksi"}"?`)) return;
+      const confirmed = await notify.confirm({
+        title: "Hapus Relasi",
+        description: `Hapus relasi "${edgeLabel || "koneksi"}"?`,
+        confirmLabel: "Hapus",
+        cancelLabel: "Batal",
+        isDestructive: true,
+      });
+      if (!confirmed) return;
       try {
         await api.framework.deleteEdge(projectId, edgeId);
         setEdges((eds) => {
@@ -278,9 +286,10 @@ export default function FrameworkPage() {
         });
         setFocusedElement({ type: null, id: null });
         setSaveStatus("saved");
+        notify.success("Relasi berhasil dihapus");
       } catch (err: any) {
         console.error("Gagal menghapus edge:", err);
-        alert("Gagal menghapus relasi: " + (err?.message || "Kesalahan server"));
+        notify.error("Gagal menghapus relasi: " + (err?.message || "Kesalahan server"));
       }
     },
     [projectId]
@@ -453,7 +462,14 @@ export default function FrameworkPage() {
     async (targetNodeId?: string) => {
       const idToDelete = targetNodeId || selectedNode?.id;
       if (!idToDelete) return;
-      if (!window.confirm("Hapus node ini dari kanvas kerangka berpikir?")) return;
+      const confirmed = await notify.confirm({
+        title: "Hapus Node Kerangka",
+        description: "Hapus node ini dari kanvas kerangka berpikir? Semua relasi yang terhubung juga akan dihapus.",
+        confirmLabel: "Hapus",
+        cancelLabel: "Batal",
+        isDestructive: true,
+      });
+      if (!confirmed) return;
       try {
         await api.framework.deleteNode(projectId, idToDelete);
         setNodes((prev) => prev.filter((n) => n.id !== idToDelete));
@@ -461,9 +477,10 @@ export default function FrameworkPage() {
         if (selectedNode?.id === idToDelete) {
           setSelectedNode(null);
         }
+        notify.success("Node berhasil dihapus");
       } catch (err: any) {
         console.error("Gagal menghapus node:", err);
-        alert("Gagal menghapus node: " + (err?.message || "Kesalahan server"));
+        notify.error("Gagal menghapus node: " + (err?.message || "Kesalahan server"));
       }
     },
     [projectId, selectedNode]
@@ -473,7 +490,14 @@ export default function FrameworkPage() {
     async (targetNodeId?: string) => {
       const idToClear = targetNodeId || selectedNode?.id;
       if (!idToClear) return;
-      if (!window.confirm("Hapus seluruh sebaran bukti jurnal pada node ini?")) return;
+      const confirmed = await notify.confirm({
+        title: "Hapus Sebaran Bukti",
+        description: "Hapus seluruh sebaran bukti jurnal pada node ini?",
+        confirmLabel: "Hapus Bukti",
+        cancelLabel: "Batal",
+        isDestructive: true,
+      });
+      if (!confirmed) return;
       try {
         await api.framework.updateNode(projectId, idToClear, { status: "UNSUPPORTED" });
         setNodes((prev) =>
@@ -503,9 +527,10 @@ export default function FrameworkPage() {
               : null
           );
         }
+        notify.success("Sebaran bukti berhasil dibersihkan");
       } catch (err: any) {
         console.error("Gagal menghapus sebaran jurnal:", err);
-        alert("Gagal menghapus sebaran jurnal: " + (err?.message || "Kesalahan server"));
+        notify.error("Gagal menghapus sebaran jurnal: " + (err?.message || "Kesalahan server"));
       }
     },
     [projectId, selectedNode]
@@ -655,9 +680,10 @@ export default function FrameworkPage() {
       const res = await api.framework.generateDraft(projectId);
       if (res.success && res.data) {
         setDraftData(res.data);
+        notify.success("Draf narasi skripsi berhasil disusun!");
       }
     } catch (err: any) {
-      alert(err.message || "Gagal menyusun draf narasi skripsi");
+      notify.error(err.message || "Gagal menyusun draf narasi skripsi");
     } finally {
       setGeneratingDraft(false);
     }
@@ -666,7 +692,7 @@ export default function FrameworkPage() {
   const handleExportPng = async () => {
     const viewportEl = document.querySelector(".react-flow__viewport") as HTMLElement;
     if (!viewportEl) {
-      alert("Kanvas diagram belum siap");
+      notify.warning("Kanvas diagram belum siap");
       return;
     }
     try {
@@ -680,9 +706,10 @@ export default function FrameworkPage() {
       link.download = `Kerangka-Pemikiran-${project?.title?.replace(/[^\w\s]/gi, "").slice(0, 30) || "Skripsi"}.png`;
       link.href = dataUrl;
       link.click();
+      notify.success("Gambar diagram kerangka berhasil diunduh");
     } catch (err) {
       console.error("Gagal ekspor PNG:", err);
-      alert("Gagal mengunduh gambar diagram");
+      notify.error("Gagal mengunduh gambar diagram");
     } finally {
       setExportingPng(false);
     }
@@ -934,9 +961,10 @@ export default function FrameworkPage() {
           setTimeout(() => setAiSummaryMsg(null), 8000);
         }
         animateSpawn(res.data.nodes, res.data.edges);
+        notify.success("Kerangka berpikir AI berhasil dibangun!");
       }
     } catch (err: any) {
-      alert(err.message || "Gagal membangun kerangka AI");
+      notify.error(err.message || "Gagal membangun kerangka AI");
     } finally {
       setGeneratingAi(false);
     }
@@ -1226,8 +1254,9 @@ export default function FrameworkPage() {
 
       setSelectedNode(null);
       setSaveStatus("saved");
+      notify.success("Node berhasil diperbarui");
     } catch (err: any) {
-      alert(err.message || "Gagal update node");
+      notify.error(err.message || "Gagal update node");
     } finally {
       setUpdatingNode(false);
     }
@@ -1276,8 +1305,9 @@ export default function FrameworkPage() {
       setNewNodeDesc("");
       setShowAddModal(false);
       setSaveStatus("saved");
+      notify.success("Node baru berhasil ditambahkan!");
     } catch (err: any) {
-      alert(err.message || "Gagal membuat node");
+      notify.error(err.message || "Gagal membuat node");
     } finally {
       setCreatingNode(false);
     }
@@ -1364,8 +1394,9 @@ export default function FrameworkPage() {
       setShowEdgeModal(false);
       setPendingConnection(null);
       setSaveStatus("saved");
+      notify.success("Relasi berhasil dihubungkan!");
     } catch (err: any) {
-      alert(err.message || "Gagal menghubungkan node");
+      notify.error(err.message || "Gagal menghubungkan node");
     }
   };
 
@@ -1381,7 +1412,14 @@ export default function FrameworkPage() {
 
   // Handle Edge Double Click (Delete relationship)
   const onEdgeDoubleClick = useCallback(async (_: React.MouseEvent, edge: Edge) => {
-    if (!confirm(`Hapus relasi "${edge.label || "koneksi"}"?`)) return;
+    const confirmed = await notify.confirm({
+      title: "Hapus Relasi",
+      description: `Hapus relasi "${edge.label || "koneksi"}"?`,
+      confirmLabel: "Hapus",
+      cancelLabel: "Batal",
+      isDestructive: true,
+    });
+    if (!confirmed) return;
     try {
       await api.framework.deleteEdge(projectId, edge.id);
       setEdges((eds) => {
@@ -1391,8 +1429,9 @@ export default function FrameworkPage() {
       });
       setFocusedElement({ type: null, id: null });
       setSaveStatus("saved");
+      notify.success("Relasi berhasil dihapus");
     } catch (err: any) {
-      alert(err.message || "Gagal menghapus edge");
+      notify.error(err.message || "Gagal menghapus edge");
     }
   }, [projectId, pushHistory]);
 
@@ -1403,7 +1442,15 @@ export default function FrameworkPage() {
 
   // Quick Template Generator (Optimistic, Silent without Blanking)
   const handleApplyTemplate = async () => {
-    if (nodes.length > 0 && !confirm("Terapkan template kerangka awal? Ini akan menambahkan node standar ke kanvas.")) return;
+    if (nodes.length > 0) {
+      const confirmed = await notify.confirm({
+        title: "Terapkan Template Kerangka",
+        description: "Terapkan template kerangka awal? Ini akan menambahkan node standar ke kanvas.",
+        confirmLabel: "Terapkan Template",
+        cancelLabel: "Batal",
+      });
+      if (!confirmed) return;
+    }
 
     try {
       const resX = await api.framework.createNode(projectId, {
@@ -1500,8 +1547,9 @@ export default function FrameworkPage() {
       });
 
       setSaveStatus("saved");
+      notify.success("Template kerangka awal berhasil diterapkan!");
     } catch (err: any) {
-      alert(err.message || "Gagal menerapkan template");
+      notify.error(err.message || "Gagal menerapkan template");
     }
   };
 
@@ -3199,7 +3247,7 @@ export default function FrameworkPage() {
                 type="button"
                 onClick={() => {
                   navigator.clipboard.writeText(splitTargetQuote);
-                  alert("Kutipan disalin! Tekan Ctrl+F di PDF untuk mencari instan.");
+                  notify.success("Kutipan disalin! Tekan Ctrl+F di PDF untuk mencari instan.");
                 }}
                 style={{
                   flexShrink: 0,

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { api, AiSkillPrompt } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
+import { notify } from "@/lib/notification";
 import {
   Sparkles,
   BookOpen,
@@ -186,8 +187,9 @@ export default function PromptsPage() {
       await fetchPrompts();
       setEditingPrompt(null);
       setIsCreating(false);
+      notify.success("Prompt AI berhasil disimpan!");
     } catch (err: any) {
-      alert("Gagal menyimpan prompt: " + (err.message || err));
+      notify.error("Gagal menyimpan prompt: " + (err.message || err));
     } finally {
       setSaving(false);
     }

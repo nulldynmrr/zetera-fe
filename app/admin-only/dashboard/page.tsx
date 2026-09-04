@@ -52,9 +52,14 @@ import {
   Maximize2,
   ListOrdered,
   X,
+  UploadCloud,
+  FileArchive,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, ProposalTemplate, AiSkillPrompt } from "@/lib/api-client";
+import { notify } from "@/lib/notification";
 
 type AdminTab = "AI_ENGINE" | "PROMPTS_SKILLS" | "PRICING" | "TEMPLATES_LIBRARY" | "DASHBOARD" | "SECRETS" | "USERS";
 
@@ -179,11 +184,29 @@ export default function AdminDashboardPage() {
       { id: "sec-8", order: 8, title: "Daftar Pustaka", guidanceText: "Format IEEE atau APA 7th Edition dengan DOI.", latexSnippet: "\\bibliographystyle{IEEEtran}\n\\bibliography{references}\n% Atau entri manual:\n\\begin{thebibliography}{99}\n\\bibitem{ref1} J. Doe and A. Smith, ``Advanced Machine Learning in Healthcare,'' \\textit{IEEE Transactions on Software Engineering}, vol. 50, no. 3, pp. 120-135, 2024.\n\\end{thebibliography}" },
     ],
   });
-  const [templatePreviewMode, setTemplatePreviewMode] = useState<"VISUAL_A4" | "LATEX_CODE" | "SPLIT">("SPLIT");
+  const [templatePreviewMode, setTemplatePreviewMode] = useState<"JOURNAL_FLOW" | "LATEX_CODE">("JOURNAL_FLOW");
+  const [templatePreviewZoom, setTemplatePreviewZoom] = useState<number>(100);
+  const [showAddTemplateModal, setShowAddTemplateModal] = useState<boolean>(false);
+  const [newTemplateData, setNewTemplateData] = useState({
+    name: "",
+    formatType: "LATEX" as "LATEX" | "DOCX",
+    sourceFaculty: "Fakultas Informatika (FIF)",
+    university: "Telkom University",
+    description: "",
+  });
+  const [uploadedPackageFile, setUploadedPackageFile] = useState<{ name: string; size: string; type: string } | null>(null);
+  const [newVariableKey, setNewVariableKey] = useState("");
+  const [newVariableLabel, setNewVariableLabel] = useState("");
+  const [newVariableType, setNewVariableType] = useState<"TEXT" | "IMAGE">("TEXT");
+  const [newVariableDefault, setNewVariableDefault] = useState("");
   const [templatePreviewTab, setTemplatePreviewTab] = useState<string>("cover");
   const [templateSearchQuery, setTemplateSearchQuery] = useState("");
   const [templateCategoryFilter, setTemplateCategoryFilter] = useState<"ALL" | "LATEX" | "TELKOM" | "KUANTITATIF">("ALL");
   const [copiedLatex, setCopiedLatex] = useState(false);
+  const [templateCreationSource, setTemplateCreationSource] = useState<"UPLOAD_LATEX" | "UPLOAD_DOCX" | "WRITE_LATEX">("UPLOAD_LATEX");
+  const [uploadedFilesList, setUploadedFilesList] = useState<{ name: string; size: string; content?: string }[]>([]);
+  const [manualLatexInput, setManualLatexInput] = useState<string>("");
+  const [splitEditorTab, setSplitEditorTab] = useState<"FORM" | "RAW_LATEX" | "VARIABLES">("FORM");
   const [testCompileSuccess, setTestCompileSuccess] = useState<boolean | null>(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
 
@@ -367,16 +390,23 @@ export default function AdminDashboardPage() {
   }
 
   async function handleDeleteModel(id: string, name: string) {
-    if (!window.confirm(`Hapus konfigurasi model "${name}"?`)) return;
-    try {
-      const res = await api.admin.deleteAiModel(id);
-      if (res.success) {
-        setAiModels((prev) => prev.filter((m) => m.id !== id));
-        setFeedbackMsg({ type: "success", text: "Model berhasil dihapus." });
-      }
-    } catch (err: any) {
-      setFeedbackMsg({ type: "error", text: err?.message || "Gagal menghapus model." });
-    }
+    notify.confirm({
+      title: "Hapus Model AI?",
+      message: `Hapus konfigurasi model "${name}" dari sistem routing AI?`,
+      confirmLabel: "Hapus Model",
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          const res = await api.admin.deleteAiModel(id);
+          if (res.success) {
+            setAiModels((prev) => prev.filter((m) => m.id !== id));
+            notify.success("Model berhasil dihapus.");
+          }
+        } catch (err: any) {
+          notify.error("Gagal menghapus model", err?.message);
+        }
+      },
+    });
   }
 
   async function handleSaveExchange(e: React.FormEvent) {
@@ -431,16 +461,23 @@ export default function AdminDashboardPage() {
   }
 
   async function handleDeletePackage(id: string, name: string) {
-    if (!window.confirm(`Hapus paket "${name}"?`)) return;
-    try {
-      const res = await api.admin.deleteCreditPackage(id);
-      if (res.success) {
-        setCreditPackages((prev) => prev.filter((p) => p.id !== id));
-        setFeedbackMsg({ type: "success", text: "Paket berhasil dihapus." });
-      }
-    } catch (err: any) {
-      setFeedbackMsg({ type: "error", text: err?.message || "Gagal menghapus paket." });
-    }
+    notify.confirm({
+      title: "Hapus Paket Kredit?",
+      message: `Hapus paket "${name}" dari katalog pembelian pengguna?`,
+      confirmLabel: "Hapus Paket",
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          const res = await api.admin.deleteCreditPackage(id);
+          if (res.success) {
+            setCreditPackages((prev) => prev.filter((p) => p.id !== id));
+            notify.success("Paket berhasil dihapus.");
+          }
+        } catch (err: any) {
+          notify.error("Gagal menghapus paket", err?.message);
+        }
+      },
+    });
   }
 
   async function handleRunSimulator() {
@@ -478,7 +515,7 @@ export default function AdminDashboardPage() {
   async function handleToggleUserRole(userId: string, currentRole: "ADMIN" | "USER") {
     const targetRole = currentRole === "ADMIN" ? "USER" : "ADMIN";
     if (userId === user?.id && targetRole === "USER") {
-      alert("Anda tidak dapat mencabut hak akses Admin dari akun Anda sendiri.");
+      notify.warning("Anda tidak dapat mencabut hak akses Admin dari akun Anda sendiri.");
       return;
     }
     try {
@@ -492,8 +529,236 @@ export default function AdminDashboardPage() {
     }
   }
 
-  // ── TEMPLATE & LATEX MANAGEMENT HELPERS ──
+  // ── TEMPLATE & LATEX PRESETS & PARSER HELPERS ──
+  const LATEX_PRESETS = {
+    IEEE_CONFERENCE: `\\documentclass[conference]{IEEEtran}
+\\usepackage{cite}
+\\usepackage{amsmath,amssymb,amsfonts}
+\\usepackage{algorithmic}
+\\usepackage{graphicx}
+\\usepackage{textcomp}
+\\usepackage{xcolor}
+
+\\begin{document}
+\\title{Design and Implementation of High-Performance Academic Intelligence Platform}
+\\author{\\IEEEauthorblockN{Nama Penulis Mahasiswa}
+\\IEEEauthorblockA{\\textit{Program Studi S1 Informatika} \\\\
+\\textit{Telkom University}\\\\
+Bandung, Indonesia \\\\
+penulis@telkomuniversity.ac.id}
+\\and
+\\IEEEauthorblockN{Dr. Dosen Pembimbing, M.Kom.}
+\\IEEEauthorblockA{\\textit{Fakultas Informatika} \\\\
+\\textit{Telkom University}\\\\
+Bandung, Indonesia \\\\
+pembimbing@telkomuniversity.ac.id}}
+\\maketitle
+
+\\begin{abstract}
+Abstrak memuat latar belakang masalah, perumusan tantangan akademis, arsitektur solusi sistematis yang diusulkan, metodologi evaluasi empiris, serta hasil pengujian kuantitatif utama (150-250 kata).
+\\end{abstract}
+
+\\begin{IEEEkeywords}
+machine learning, natural language processing, academic intelligence, IEEEtran
+\\end{IEEEkeywords}
+
+\\section{Introduction}
+Latar belakang riset berakar pada urgensi sintesis literatur otomatis...
+
+\\section{Related Work and Research Gap}
+Kajian komparatif terhadap model state-of-the-art terdahulu...
+
+\\section{Proposed Methodology and Architecture}
+Perancangan alur pipeline pemrosesan naskah dan inferensi model...
+
+\\section{Empirical Evaluation and Results}
+Hasil eksperimen kuantitatif, analisis metrik performa, dan validasi...
+
+\\section{Conclusion and Future Work}
+Kesimpulan temuan utama serta arah pengembangan penelitian lanjutan...
+
+\\begin{thebibliography}{00}
+\\bibitem{b1} G. Eason, B. Noble, and I. N. Sneddon, "On certain integrals of Lipschitz-Hankel type," Phil. Trans. Roy. Soc. London, vol. A247, pp. 529-551, 1955.
+\\bibitem{b2} J. Clerk Maxwell, A Treatise on Electricity and Magnetism, 3rd ed., vol. 2. Oxford: Clarendon, 1892, pp. 68-73.
+\\end{thebibliography}
+\\end{document}`,
+
+    TELKOM_FIF: `\\documentclass[a4paper,12pt,oneside]{book}
+\\usepackage[a4paper,top=3cm,bottom=3cm,left=4cm,right=3cm]{geometry}
+\\usepackage{times}
+\\usepackage{setspace}
+\\onehalfspacing
+\\usepackage{graphicx}
+\\usepackage{amsmath,amssymb}
+\\usepackage{cite}
+\\usepackage{hyperref}
+
+\\begin{document}
+\\begin{titlepage}
+\\centering
+{\\fontsize{16pt}{20pt}\\selectfont \\textbf{JUDUL PROPOSAL TUGAS AKHIR}}\\par
+\\vspace{2cm}
+\\includegraphics[width=4cm]{telkom_logo.png}\\par
+\\vspace{2cm}
+{\\fontsize{12pt}{16pt}\\selectfont Disusun Oleh:\\par\\textbf{NAMA MAHASISWA}\\par NIM: 1301220001}\\par
+\\vfill
+{\\textbf{PROGRAM STUDI S1 INFORMATIKA}\\par\\textbf{FAKULTAS INFORMATIKA}\\par\\textbf{TELKOM UNIVERSITY}\\par BANDUNG\\par 2026}
+\\end{titlepage}
+
+\\chapter*{LEMBAR PERSETUJUAN}
+Proposal Tugas Akhir ini telah disetujui untuk diseminarkan.
+
+\\chapter*{ABSTRAK}
+Ringkasan abstrak proposal tugas akhir dalam bahasa Indonesia dan bahasa Inggris.
+
+\\chapter{PENDAHULUAN}
+\\section{Latar Belakang Masalah}
+\\section{Rumusan Masalah}
+\\section{Tujuan Penelitian}
+\\section{Manfaat Penelitian}
+
+\\chapter{TINJAUAN PUSTAKA}
+\\section{Landasan Teori}
+\\section{Penelitian Terkait}
+
+\\chapter{METODOLOGI PENELITIAN}
+\\section{Tahapan Riset}
+\\section{Teknik Pengumpulan Data}
+\\section{Rencana Pengujian}
+
+\\bibliographystyle{IEEEtran}
+\\bibliography{references}
+\\end{document}`,
+
+    SKRIPSI_INDONESIA: `\\documentclass[a4paper,12pt,oneside]{report}
+\\usepackage[a4paper,top=3cm,bottom=3cm,left=4cm,right=3cm]{geometry}
+\\usepackage{times}
+\\usepackage{setspace}
+\\onehalfspacing
+\\usepackage{amsmath}
+
+\\begin{document}
+\\begin{titlepage}
+\\centering
+\\textbf{PROPOSAL SKRIPSI / TUGAS AKHIR}\\par
+\\vspace{2.5cm}
+Disusun Oleh:\\par
+\\textbf{NAMA MAHASISWA}\\par
+NIM: 12345678\\par
+\\vfill
+PROGRAM STUDI SARJANA\\par
+UNIVERSITAS STANDAR INDONESIA\\par
+2026
+\\end{titlepage}
+
+\\chapter*{LEMBAR PENGESAHAN}
+\\chapter*{ABSTRAK}
+\\chapter{PENDAHULUAN}
+\\section{Latar Belakang}
+\\section{Rumusan Masalah}
+\\chapter{LANDASAN TEORI}
+\\chapter{METODOLOGI PENELITIAN}
+\\chapter{HASIL DAN PEMBAHASAN}
+\\chapter{PENUTUP}
+\\end{document}`,
+
+    BLANK_LATEX: `\\documentclass[a4paper,12pt]{article}
+\\usepackage[utf8]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{graphicx}
+
+\\title{Judul Dokumen Akademik}
+\\author{Nama Penulis}
+\\date{\\today}
+
+\\begin{document}
+\\maketitle
+
+\\section{Pendahuluan}
+Tulis teks pendahuluan di sini...
+
+\\end{document}`,
+  };
+
+  const parseLatexContent = (latex: string) => {
+    let name = "";
+    let documentClass = "\\documentclass[a4paper,12pt,oneside]{book}";
+    let preambleLatex = "";
+    const sections: { id: string; order: number; title: string; guidanceText: string; latexSnippet?: string }[] = [];
+
+    // Document Class
+    const fullClass = latex.match(/\\documentclass(?:\[[^\]]*\])?\{[^}]+\}/i);
+    if (fullClass) documentClass = fullClass[0];
+
+    // Title
+    const titleMatch = latex.match(/\\title(?:\[[^\]]*\])?\{([^}]+)\}/i);
+    if (titleMatch) {
+      name = titleMatch[1].replace(/\\\\/g, " ").replace(/[\r\n]+/g, " ").trim();
+    }
+
+    // Preamble
+    const beginDocIdx = latex.indexOf("\\begin{document}");
+    if (beginDocIdx !== -1) {
+      const classEnd = latex.indexOf("}") + 1;
+      preambleLatex = latex.substring(classEnd, beginDocIdx).trim();
+    } else {
+      const pkgMatches = latex.match(/\\usepackage(?:\[[^\]]*\])?\{[^}]+\}/gi);
+      if (pkgMatches) preambleLatex = pkgMatches.join("\n");
+    }
+
+    // Sections
+    const isIEEE = documentClass.toLowerCase().includes("ieeetran") || latex.toLowerCase().includes("ieeetran");
+    const sectionRegex = /\\(chapter|section|subsection)\*?\{([^}]+)\}/gi;
+    let match: RegExpExecArray | null;
+    let order = 1;
+
+    if (isIEEE) {
+      sections.push({ id: `sec-${Date.now()}-${order++}`, order: 1, title: "Title & Author Affiliations", guidanceText: "Identitas paper dan afiliasi penulis format IEEE", latexSnippet: "\\maketitle" });
+      sections.push({ id: `sec-${Date.now()}-${order++}`, order: 2, title: "Abstract & Index Terms", guidanceText: "Ringkasan esensi penelitian 150-250 kata dan kata kunci", latexSnippet: "\\begin{abstract}...\n\\begin{IEEEkeywords}..." });
+    }
+
+    while ((match = sectionRegex.exec(latex)) !== null) {
+      const type = match[1];
+      const secTitle = match[2].trim();
+      if (secTitle && !sections.some((s) => s.title.toLowerCase() === secTitle.toLowerCase())) {
+        sections.push({
+          id: `sec-${Date.now()}-${order}`,
+          order: order++,
+          title: secTitle,
+          guidanceText: `Panduan penulisan ${type} ${secTitle}`,
+          latexSnippet: match[0],
+        });
+      }
+    }
+
+    if (sections.length === 0) {
+      if (isIEEE) {
+        sections.push(
+          { id: `sec-${Date.now()}-1`, order: 1, title: "I. INTRODUCTION", guidanceText: "Latar belakang masalah dan urgensi riset IEEE" },
+          { id: `sec-${Date.now()}-2`, order: 2, title: "II. RELATED WORK", guidanceText: "Tinjauan literatur dan perbandingan penelitian terdahulu" },
+          { id: `sec-${Date.now()}-3`, order: 3, title: "III. METHODOLOGY", guidanceText: "Arsitektur sistem, formulasi model, dan algoritma" },
+          { id: `sec-${Date.now()}-4`, order: 4, title: "IV. EXPERIMENTAL RESULTS", guidanceText: "Hasil pengujian kuantitatif dan benchmark" },
+          { id: `sec-${Date.now()}-5`, order: 5, title: "V. CONCLUSION", guidanceText: "Kesimpulan temuan dan saran penelitian lanjutan" },
+          { id: `sec-${Date.now()}-6`, order: 6, title: "REFERENCES", guidanceText: "Daftar pustaka format IEEE IEEEtran.bst" }
+        );
+      } else {
+        sections.push(
+          { id: `sec-${Date.now()}-1`, order: 1, title: "Cover / Halaman Judul", guidanceText: "Identitas proposal" },
+          { id: `sec-${Date.now()}-2`, order: 2, title: "Lembar Persetujuan", guidanceText: "Persetujuan pembimbing & kaprodi" },
+          { id: `sec-${Date.now()}-3`, order: 3, title: "Abstrak & Abstract", guidanceText: "Ringkasan skripsi 2 bahasa" },
+          { id: `sec-${Date.now()}-4`, order: 4, title: "BAB I PENDAHULUAN", guidanceText: "Latar Belakang, Masalah, Tujuan" },
+          { id: `sec-${Date.now()}-5`, order: 5, title: "BAB II TINJAUAN PUSTAKA", guidanceText: "Landasan Teori & Matriks Telaah Pustaka" },
+          { id: `sec-${Date.now()}-6`, order: 6, title: "BAB III METODOLOGI", guidanceText: "Desain, Sampel, dan Analisis" },
+          { id: `sec-${Date.now()}-7`, order: 7, title: "Daftar Pustaka", guidanceText: "Referensi format IEEE / APA" }
+        );
+      }
+    }
+
+    return { name, documentClass, preambleLatex, sections, isIEEE };
+  };
+
   const generateLatexFromTemplate = (tpl: any) => {
+    if (tpl.rawLatex && tpl.rawLatex.trim()) return tpl.rawLatex;
     const preamble = tpl.preambleLatex || `% Preamble LaTeX\n\\usepackage[a4paper,top=3cm,bottom=3cm,left=4cm,right=3cm]{geometry}\n\\usepackage{times}`;
     const docClass = tpl.documentClass || "\\documentclass[a4paper,12pt,oneside]{book}";
 
@@ -528,8 +793,10 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
 
   const handleSelectTemplate = (tpl: any) => {
     setSelectedTemplateId(tpl.id);
+    const initialRawLatex = tpl.rawLatex || generateLatexFromTemplate(tpl);
     setTemplateEditForm({
       ...tpl,
+      rawLatex: initialRawLatex,
       margins: tpl.margins || { top: "3cm", bottom: "3cm", left: "4cm", right: "3cm" },
       marginPreset: tpl.marginPreset || "4333",
       documentClass: tpl.documentClass || "\\documentclass[a4paper,12pt,oneside]{book}",
@@ -542,52 +809,183 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
   const handleSaveCurrentTemplate = async () => {
     try {
       setSavingTemplate(true);
-      const updatedList = templatesList.map((t) => (t.id === templateEditForm.id ? { ...templateEditForm, updatedAt: new Date().toISOString() } : t));
-      setTemplatesList(updatedList);
+      const isNew = !templateEditForm.id || String(templateEditForm.id).startsWith("tpl-custom-");
+      let savedTpl = { ...templateEditForm, updatedAt: new Date().toISOString() };
 
-      if (templateEditForm.id && !templateEditForm.id.startsWith("telkom-")) {
+      if (isNew) {
+        const createRes = await api.templates.create({
+          name: templateEditForm.name || "Template Baru",
+          description: templateEditForm.description || null,
+          formatType: templateEditForm.formatType || (templateEditForm.isLatex ? "LATEX" : "DOCX"),
+          sourceFaculty: templateEditForm.sourceFaculty || null,
+          sourceCampus: templateEditForm.university || null,
+          preamble: templateEditForm.preambleLatex || null,
+          marginConfig: templateEditForm.margins || null,
+          rawLatex: templateEditForm.rawLatex || null,
+          packageDetails: templateEditForm.packageDetails || (uploadedPackageFile ? [uploadedPackageFile] : null),
+          sections: (templateEditForm.sections || []).map((s: any, idx: number) => ({
+            order: s.order !== undefined ? s.order : idx + 1,
+            title: s.title,
+            isOptional: s.isOptional ?? false,
+            guidanceText: s.guidanceText || null,
+          })),
+          variables: templateEditForm.variables || [],
+        });
+        if (createRes.data) {
+          savedTpl = { ...savedTpl, id: createRes.data.id };
+        }
+      } else {
         await api.templates
           .update(templateEditForm.id, {
             name: templateEditForm.name,
-            sections: templateEditForm.sections,
+            description: templateEditForm.description || null,
+            formatType: templateEditForm.formatType || (templateEditForm.isLatex ? "LATEX" : "DOCX"),
+            sourceFaculty: templateEditForm.sourceFaculty || null,
+            sourceCampus: templateEditForm.university || null,
+            preamble: templateEditForm.preambleLatex || null,
+            marginConfig: templateEditForm.margins || null,
+            rawLatex: templateEditForm.rawLatex || null,
+            packageDetails: templateEditForm.packageDetails || (uploadedPackageFile ? [uploadedPackageFile] : null),
+            sections: (templateEditForm.sections || []).map((s: any, idx: number) => ({
+              order: s.order !== undefined ? s.order : idx + 1,
+              title: s.title,
+              isOptional: s.isOptional ?? false,
+              guidanceText: s.guidanceText || null,
+            })),
+            variables: templateEditForm.variables || [],
           })
           .catch(() => {});
       }
 
-      setFeedbackMsg({ type: "success", text: `Template "${templateEditForm.name}" berhasil disimpan!` });
+      const updatedList = templatesList.map((t) => (t.id === templateEditForm.id ? savedTpl : t));
+      if (isNew && !updatedList.some((t) => t.id === savedTpl.id)) {
+        setTemplatesList([savedTpl, ...templatesList.filter((t) => t.id !== templateEditForm.id)]);
+      } else {
+        setTemplatesList(updatedList);
+      }
+      setTemplateEditForm(savedTpl);
+      setSelectedTemplateId(savedTpl.id);
+
+      notify.success(
+        "Template Berhasil Disimpan!",
+        `Konfigurasi template "${savedTpl.name}" (${savedTpl.formatType || (savedTpl.isLatex ? "LATEX" : "DOCX")}) telah tersimpan di database.`
+      );
     } catch (err: any) {
-      setFeedbackMsg({ type: "error", text: err?.message || "Gagal menyimpan template." });
+      notify.error("Gagal Menyimpan Template", err?.message || "Terjadi kesalahan server");
     } finally {
       setSavingTemplate(false);
     }
   };
 
   const handleCreateNewTemplate = () => {
-    const newId = `tpl-custom-${Date.now()}`;
-    const newTemplate = {
-      id: newId,
-      name: "Template Proposal Kustom Baru",
-      code: "CUSTOM_PROPOSAL",
-      sourceFaculty: "Fakultas Informatika",
-      university: "Universitas Indonesia / Telkom",
-      description: "Template proposal kustom yang dapat disesuaikan struktur bab dan kode LaTeX-nya.",
-      isDefault: false,
-      isLatex: true,
-      documentClass: "\\documentclass[a4paper,12pt,oneside]{book}",
-      preambleLatex: `\\usepackage[a4paper,top=3cm,bottom=3cm,left=4cm,right=3cm]{geometry}\n\\usepackage{times}\n\\usepackage{setspace}\n\\onehalfspacing`,
-      margins: { top: "3cm", bottom: "3cm", left: "4cm", right: "3cm" },
-      marginPreset: "4333",
-      sections: [
-        { id: `sec-${Date.now()}-1`, order: 1, title: "Cover / Judul", guidanceText: "Identitas tugas akhir", latexSnippet: "\\chapter*{JUDUL PROPOSAL}" },
-        { id: `sec-${Date.now()}-2`, order: 2, title: "BAB I PENDAHULUAN", guidanceText: "Latar Belakang, Rumusan Masalah, Tujuan", latexSnippet: "\\chapter{PENDAHULUAN}" },
-        { id: `sec-${Date.now()}-3`, order: 3, title: "BAB II TINJAUAN PUSTAKA", guidanceText: "Landasan Teori dan Hipotesis", latexSnippet: "\\chapter{TINJAUAN PUSTAKA}" },
-        { id: `sec-${Date.now()}-4`, order: 4, title: "BAB III METODOLOGI", guidanceText: "Desain, Populasi, Pengumpulan & Analisis Data", latexSnippet: "\\chapter{METODOLOGI}" },
-      ],
-    };
+    setNewTemplateData({
+      name: "",
+      formatType: "LATEX",
+      sourceFaculty: "Fakultas Informatika (FIF)",
+      university: "Telkom University",
+      description: "",
+    });
+    setUploadedPackageFile(null);
+    setUploadedFilesList([]);
+    setManualLatexInput(LATEX_PRESETS.IEEE_CONFERENCE);
+    setTemplateCreationSource("UPLOAD_LATEX");
+    setShowAddTemplateModal(true);
+  };
 
-    setTemplatesList([newTemplate, ...templatesList]);
-    handleSelectTemplate(newTemplate);
-    setFeedbackMsg({ type: "success", text: "Template baru berhasil dibuat. Silakan lakukan kustomisasi." });
+  const handleConfirmAddTemplate = async () => {
+    if (!newTemplateData.name.trim()) {
+      notify.warning("Nama Wajib Diisi", "Silakan masukkan nama template yang jelas.");
+      return;
+    }
+
+    try {
+      const isLatex = newTemplateData.formatType === "LATEX";
+      let docClass = isLatex ? "\\documentclass[a4paper,12pt,oneside]{book}" : "Normal.dotx";
+      let preamble = isLatex ? `\\usepackage[a4paper,top=3cm,bottom=3cm,left=4cm,right=3cm]{geometry}\n\\usepackage{times}\n\\usepackage{setspace}\n\\onehalfspacing` : "";
+      let rawLatex = "";
+
+      let newSections: { id: string; order: number; title: string; guidanceText: string; latexSnippet?: string }[] = [
+        { id: `sec-${Date.now()}-1`, order: 1, title: "Cover / Halaman Judul", guidanceText: "Identitas proposal", latexSnippet: "\\begin{titlepage}\\centering...\\end{titlepage}" },
+        { id: `sec-${Date.now()}-2`, order: 2, title: "Lembar Persetujuan", guidanceText: "Persetujuan pembimbing & kaprodi", latexSnippet: "\\chapter*{LEMBAR PERSETUJUAN}" },
+        { id: `sec-${Date.now()}-3`, order: 3, title: "Abstrak & Abstract", guidanceText: "Ringkasan skripsi 2 bahasa", latexSnippet: "\\chapter*{ABSTRAK}" },
+        { id: `sec-${Date.now()}-4`, order: 4, title: "BAB I PENDAHULUAN", guidanceText: "Latar Belakang, Masalah, Tujuan", latexSnippet: "\\chapter{PENDAHULUAN}" },
+        { id: `sec-${Date.now()}-5`, order: 5, title: "BAB II TINJAUAN PUSTAKA", guidanceText: "Landasan Teori & Matriks Telaah Pustaka", latexSnippet: "\\chapter{TINJAUAN PUSTAKA}" },
+        { id: `sec-${Date.now()}-6`, order: 6, title: "BAB III METODOLOGI", guidanceText: "Desain, Sampel, dan Analisis", latexSnippet: "\\chapter{METODOLOGI}" },
+        { id: `sec-${Date.now()}-7`, order: 7, title: "Daftar Pustaka", guidanceText: "Referensi format IEEE / APA", latexSnippet: "\\bibliography{references}" },
+      ];
+
+      // If user typed manual LaTeX or uploaded LaTeX file
+      const candidateLatex = templateCreationSource === "WRITE_LATEX" ? manualLatexInput : (uploadedFilesList.find((f) => f.name.endsWith(".tex"))?.content || "");
+      if (candidateLatex && isLatex) {
+        rawLatex = candidateLatex;
+        const parsed = parseLatexContent(candidateLatex);
+        if (parsed.documentClass) docClass = parsed.documentClass;
+        if (parsed.preambleLatex) preamble = parsed.preambleLatex;
+        if (parsed.sections && parsed.sections.length > 0) {
+          newSections = parsed.sections;
+        }
+      }
+
+      const initialVars = [
+        { key: "TITLE", label: "Judul Proposal / Skripsi", varType: "TEXT" as const, required: true, defaultValue: newTemplateData.name },
+        { key: "AUTHOR", label: "Nama Lengkap Mahasiswa", varType: "TEXT" as const, required: true, defaultValue: "Nama Mahasiswa" },
+        { key: "NIM", label: "Nomor Induk Mahasiswa (NIM)", varType: "TEXT" as const, required: true, defaultValue: "1301220001" },
+        { key: "PRODI", label: "Program Studi", varType: "TEXT" as const, required: true, defaultValue: "S1 Informatika" },
+        { key: "FAKULTAS", label: "Fakultas", varType: "TEXT" as const, required: true, defaultValue: newTemplateData.sourceFaculty },
+        { key: "UNIVERSITAS", label: "Universitas", varType: "TEXT" as const, required: true, defaultValue: newTemplateData.university },
+        { key: "LOGO", label: "Logo Institusi", varType: "IMAGE" as const, required: false, defaultValue: null },
+      ];
+
+      let resId = `tpl-custom-${Date.now()}`;
+      try {
+        const res = await api.templates.create({
+          name: newTemplateData.name.trim(),
+          description: newTemplateData.description || null,
+          formatType: newTemplateData.formatType,
+          sourceFaculty: newTemplateData.sourceFaculty,
+          sourceCampus: newTemplateData.university,
+          preamble,
+          rawLatex,
+          marginConfig: { top: "3cm", bottom: "3cm", left: "4cm", right: "3cm" },
+          packageDetails: uploadedFilesList.length > 0 ? uploadedFilesList.map((f) => ({ name: f.name, size: f.size })) : (uploadedPackageFile ? [uploadedPackageFile] : null),
+          sections: newSections.map((s, idx) => ({ order: s.order !== undefined ? s.order : idx + 1, title: s.title, guidanceText: s.guidanceText || null })),
+          variables: initialVars,
+        });
+        if (res?.data?.id) resId = res.data.id;
+      } catch (err: any) {
+        console.warn("Backend create fallback to local template:", err);
+      }
+
+      const createdTpl = {
+        id: resId,
+        name: newTemplateData.name.trim(),
+        code: newTemplateData.formatType === "LATEX" ? "CUSTOM_LATEX" : "CUSTOM_DOCX",
+        formatType: newTemplateData.formatType,
+        sourceFaculty: newTemplateData.sourceFaculty,
+        university: newTemplateData.university,
+        description: newTemplateData.description,
+        isDefault: false,
+        isLatex,
+        documentClass: docClass,
+        preambleLatex: preamble,
+        rawLatex,
+        margins: { top: "3cm", bottom: "3cm", left: "4cm", right: "3cm" },
+        marginPreset: "4333",
+        sections: newSections,
+        variables: initialVars,
+        packageDetails: uploadedFilesList.length > 0 ? uploadedFilesList.map((f) => ({ name: f.name, size: f.size })) : null,
+      };
+
+      setTemplatesList([createdTpl, ...templatesList]);
+      handleSelectTemplate(createdTpl);
+      setShowAddTemplateModal(false);
+      notify.success(
+        "Template Baru Ditambahkan!",
+        `Template "${createdTpl.name}" (${createdTpl.formatType}) siap dikonfigurasi di Split-Screen Editor.`
+      );
+    } catch (err: any) {
+      notify.error("Gagal Membuat Template", err?.message);
+    }
   };
 
   const handleCloneCurrentTemplate = async () => {
@@ -597,35 +995,56 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
       id: newId,
       name: `${templateEditForm.name} (Kustom Admin)`,
       isDefault: false,
-      sections: templateEditForm.sections.map((s: any, idx: number) => ({
+      sections: (templateEditForm.sections || []).map((s: any, idx: number) => ({
         ...s,
         id: `sec-${Date.now()}-${idx}`,
       })),
     };
     setTemplatesList([cloned, ...templatesList]);
     handleSelectTemplate(cloned);
-    setFeedbackMsg({ type: "success", text: `Template berhasil diduplikasi menjadi "${cloned.name}".` });
+    notify.success("Template Diduplikasi", `Berhasil membuat salinan "${cloned.name}".`);
   };
 
   const handleDeleteCurrentTemplate = (id: string) => {
     if (templatesList.length <= 1) {
-      alert("Tidak dapat menghapus template terakhir.");
+      notify.warning("Peringatan", "Tidak dapat menghapus template terakhir.");
       return;
     }
-    if (!window.confirm("Apakah Anda yakin ingin menghapus template ini?")) return;
-    const remaining = templatesList.filter((t) => t.id !== id);
-    setTemplatesList(remaining);
-    if (selectedTemplateId === id && remaining.length > 0) {
-      handleSelectTemplate(remaining[0]);
-    }
-    setFeedbackMsg({ type: "success", text: "Template berhasil dihapus." });
+    notify.confirm({
+      title: "Hapus Template?",
+      message: `Apakah Anda yakin ingin menghapus template "${templateEditForm.name}"? Tindakan ini tidak dapat dibatalkan.`,
+      confirmLabel: "Hapus Template",
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          if (id && !String(id).startsWith("telkom-") && !String(id).startsWith("tpl-custom-")) {
+            await api.templates.delete(id).catch(() => {});
+          }
+          const remaining = templatesList.filter((t) => t.id !== id);
+          setTemplatesList(remaining);
+          if (selectedTemplateId === id && remaining.length > 0) {
+            handleSelectTemplate(remaining[0]);
+          }
+          notify.success("Template Berhasil Dihapus", `Template "${templateEditForm.name}" telah dihapus dari sistem.`);
+        } catch (err: any) {
+          notify.error("Gagal Menghapus Template", err?.message);
+        }
+      },
+    });
   };
 
   const handleResetToDefaultFif = () => {
-    if (!window.confirm("Reset konfigurasi ke Template Standar Telkom FIF LaTeX?")) return;
-    const defaultFif = templatesList.find((t) => t.id === "telkom-fif-latex") || templateEditForm;
-    handleSelectTemplate(defaultFif);
-    setFeedbackMsg({ type: "success", text: "Template berhasil di-reset ke standar resmi Telkom FIF LaTeX." });
+    notify.confirm({
+      title: "Reset ke Standar Telkom FIF?",
+      message: "Konfigurasi editor akan dikembalikan ke Template Standar Resmi Telkom FIF LaTeX. Perubahan yang belum disimpan akan hilang.",
+      confirmLabel: "Reset Template",
+      isDestructive: false,
+      onConfirm: () => {
+        const defaultFif = templatesList.find((t) => t.id === "telkom-fif-latex") || templateEditForm;
+        handleSelectTemplate(defaultFif);
+        notify.success("Reset Berhasil", "Template dikembalikan ke standar resmi Telkom FIF LaTeX.");
+      },
+    });
   };
 
   const handleTestCompileLatex = () => {
@@ -2249,7 +2668,7 @@ const response = await executeAiCompletion({
                         if (fresh.success) setPromptsList(fresh.data);
                         setShowPromptModal(false);
                       } catch (err: any) {
-                        alert("Gagal menyimpan prompt: " + (err.message || err));
+                        notify.error("Gagal menyimpan prompt: " + (err.message || err));
                       } finally {
                         setSavingPrompt(false);
                       }
@@ -3410,9 +3829,9 @@ const response = await executeAiCompletion({
               </div>
             </div>
 
-            {/* Master Customizer & Live Dual-Mode Preview Layout */}
-            <div style={{ display: "grid", gridTemplateColumns: templatePreviewMode === "SPLIT" ? "1fr 1fr" : "1fr", gap: 20, alignItems: "start" }}>
-              {/* ── LEFT COLUMN: TEMPLATE CUSTOMIZER & LATEX CONFIGURATOR ── */}
+            {/* Master Customizer & Live Dual-Mode Split-Screen Layout */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1.1fr", gap: 20, alignItems: "start" }}>
+              {/* ── LEFT COLUMN: TEMPLATE CUSTOMIZER & LATEX/DOCX CONFIGURATOR ── */}
               <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 14, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 18 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #EFEFF3", paddingBottom: 14 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -3429,6 +3848,144 @@ const response = await executeAiCompletion({
                     <Trash2 size={13} />
                     <span>Hapus Template</span>
                   </button>
+                </div>
+
+                {/* Sub-Tab Navigation: Form vs Tulis LaTeX Mentah vs Variabel */}
+                <div style={{ display: "flex", gap: 6, background: "#F1F5F9", padding: 4, borderRadius: 10, border: "1px solid #E2E8F0" }}>
+                  <button
+                    type="button"
+                    onClick={() => setSplitEditorTab("FORM")}
+                    style={{
+                      flex: 1,
+                      padding: "7px 10px",
+                      borderRadius: 7,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      border: "none",
+                      background: splitEditorTab === "FORM" ? "#FFFFFF" : "transparent",
+                      color: splitEditorTab === "FORM" ? "#4338CA" : "#64748B",
+                      boxShadow: splitEditorTab === "FORM" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Sliders size={13} />
+                    <span>Form & Bab</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSplitEditorTab("RAW_LATEX");
+                      if (!templateEditForm.rawLatex) {
+                        setTemplateEditForm({
+                          ...templateEditForm,
+                          rawLatex: generateLatexFromTemplate(templateEditForm),
+                        });
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "7px 10px",
+                      borderRadius: 7,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      border: "none",
+                      background: splitEditorTab === "RAW_LATEX" ? "#FFFFFF" : "transparent",
+                      color: splitEditorTab === "RAW_LATEX" ? "#4338CA" : "#64748B",
+                      boxShadow: splitEditorTab === "RAW_LATEX" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Code size={13} />
+                    <span>Tulis LaTeX Mentah</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSplitEditorTab("VARIABLES")}
+                    style={{
+                      flex: 1,
+                      padding: "7px 10px",
+                      borderRadius: 7,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      border: "none",
+                      background: splitEditorTab === "VARIABLES" ? "#FFFFFF" : "transparent",
+                      color: splitEditorTab === "VARIABLES" ? "#4338CA" : "#64748B",
+                      boxShadow: splitEditorTab === "VARIABLES" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Layers size={13} />
+                    <span>Variabel ({templateEditForm.variables?.length || 0})</span>
+                  </button>
+                </div>
+
+                {/* TAB 1: FORMULIR & STRUKTUR BAB */}
+                {splitEditorTab === "FORM" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    {/* Format Type Selector Switcher */}
+                    <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>Format Dokumen:</div>
+                    <div style={{ fontSize: 11, color: "#64748B" }}>Tentukan mesin render dokumen template ini</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTemplateEditForm({
+                          ...templateEditForm,
+                          formatType: "LATEX",
+                          isLatex: true,
+                        })
+                      }
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: 7,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        border: (templateEditForm.formatType === "LATEX" || templateEditForm.isLatex) ? "1.5px solid #4338CA" : "1px solid #CBD5E1",
+                        background: (templateEditForm.formatType === "LATEX" || templateEditForm.isLatex) ? "#EEEAFE" : "#FFFFFF",
+                        color: (templateEditForm.formatType === "LATEX" || templateEditForm.isLatex) ? "#4338CA" : "#64748B",
+                        cursor: "pointer",
+                      }}
+                    >
+                      LaTeX (.tex / .zip)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTemplateEditForm({
+                          ...templateEditForm,
+                          formatType: "DOCX",
+                          isLatex: false,
+                        })
+                      }
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: 7,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        border: templateEditForm.formatType === "DOCX" ? "1.5px solid #2563EB" : "1px solid #CBD5E1",
+                        background: templateEditForm.formatType === "DOCX" ? "#EFF6FF" : "#FFFFFF",
+                        color: templateEditForm.formatType === "DOCX" ? "#2563EB" : "#64748B",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Word (.docx)
+                    </button>
+                  </div>
                 </div>
 
                 {/* 1. Identitas & Info Kampus */}
@@ -3486,10 +4043,148 @@ const response = await executeAiCompletion({
                   </div>
                 </div>
 
-                {/* 2. Format Margin & Document Class */}
+                {/* 2. Upload Paket Berkas Template (.ZIP / .DOCX) */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
-                    2. Spesifikasi Dokumen & Kaidah Margin
+                    2. Unggah Berkas Paket Template ({templateEditForm.formatType === "DOCX" ? ".DOCX" : ".ZIP LaTeX"})
+                  </div>
+                  <label
+                    style={{
+                      border: "2px dashed #CBD5E1",
+                      borderRadius: 10,
+                      padding: "16px 14px",
+                      textAlign: "center",
+                      cursor: "pointer",
+                      background: uploadedPackageFile ? "#F0FDF4" : "#FAFAFC",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <input
+                      type="file"
+                      accept={templateEditForm.formatType === "DOCX" ? ".docx" : ".zip,.tex"}
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setUploadedPackageFile({
+                            name: file.name,
+                            size: `${(file.size / 1024).toFixed(1)} KB`,
+                            type: file.type || file.name.split(".").pop() || "",
+                          });
+                          notify.success("Paket Berkas Dipilih!", `Berkas ${file.name} siap di-package ke engine template.`);
+                        }
+                      }}
+                    />
+                    <UploadCloud size={24} color={uploadedPackageFile ? "#16A34A" : "#64748B"} />
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "#1E293B" }}>
+                      {uploadedPackageFile ? uploadedPackageFile.name : "Klik atau seret berkas paket template ke sini"}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748B" }}>
+                      {uploadedPackageFile
+                        ? `Ukuran: ${uploadedPackageFile.size} • Terverifikasi & Siap Dipakai`
+                        : templateEditForm.formatType === "DOCX"
+                        ? "Mendukung berkas Microsoft Word .docx template"
+                        : "Mendukung arsip ZIP paket Overleaf/LaTeX lengkap (.tex, .cls, .sty, logo.png)"}
+                    </div>
+                  </label>
+                </div>
+
+                {/* 3. Variabel In-Place Template */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
+                      3. Variabel In-Place Template ({templateEditForm.variables?.length || 0} Variabel)
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {(templateEditForm.variables || [
+                      { key: "TITLE", label: "Judul", varType: "TEXT" },
+                      { key: "AUTHOR", label: "Penulis", varType: "TEXT" },
+                      { key: "NIM", label: "NIM", varType: "TEXT" },
+                      { key: "PRODI", label: "Prodi", varType: "TEXT" },
+                      { key: "FAKULTAS", label: "Fakultas", varType: "TEXT" },
+                      { key: "UNIVERSITAS", label: "Universitas", varType: "TEXT" },
+                      { key: "LOGO", label: "Logo", varType: "IMAGE" },
+                    ]).map((v: any, idx: number) => (
+                      <span
+                        key={idx}
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: "3px 8px",
+                          borderRadius: 6,
+                          background: v.varType === "IMAGE" ? "#FEF3C7" : "#F1F5F9",
+                          color: v.varType === "IMAGE" ? "#B45309" : "#334155",
+                          border: "1px solid #E2E8F0",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        <code>\{v.key}</code>
+                        <span style={{ fontSize: 9.5, opacity: 0.7 }}>({v.label || v.key})</span>
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Add Variable Quick Form */}
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type="text"
+                      placeholder="KEY (e.g. KOTA)"
+                      value={newVariableKey}
+                      onChange={(e) => setNewVariableKey(e.target.value.toUpperCase())}
+                      style={{ width: 110, padding: "5px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11, fontFamily: "monospace" }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Label Variabel..."
+                      value={newVariableLabel}
+                      onChange={(e) => setNewVariableLabel(e.target.value)}
+                      style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11 }}
+                    />
+                    <select
+                      value={newVariableType}
+                      onChange={(e) => setNewVariableType(e.target.value as any)}
+                      style={{ padding: "5px 6px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11 }}
+                    >
+                      <option value="TEXT">TEXT</option>
+                      <option value="IMAGE">IMAGE</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!newVariableKey.trim()) return;
+                        const newV = {
+                          key: newVariableKey.trim(),
+                          label: newVariableLabel.trim() || newVariableKey.trim(),
+                          varType: newVariableType,
+                          required: true,
+                          defaultValue: "",
+                        };
+                        const currentVars = templateEditForm.variables || [];
+                        setTemplateEditForm({
+                          ...templateEditForm,
+                          variables: [...currentVars, newV],
+                        });
+                        setNewVariableKey("");
+                        setNewVariableLabel("");
+                        notify.success("Variabel Ditambahkan", `Variabel \\${newV.key} siap digunakan.`);
+                      }}
+                      style={{ background: "#4338CA", color: "#FFFFFF", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                    >
+                      + Tambah
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4. Format Margin & Document Class */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
+                    4. Spesifikasi Dokumen & Kaidah Margin
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                     <div>
@@ -3514,35 +4209,37 @@ const response = await executeAiCompletion({
 
                     <div>
                       <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
-                        LaTeX Document Class:
+                        {templateEditForm.formatType === "DOCX" ? "Paper Standard:" : "LaTeX Document Class:"}
                       </label>
                       <input
                         type="text"
-                        value={templateEditForm.documentClass || "\\documentclass[a4paper,12pt,oneside]{book}"}
+                        value={templateEditForm.documentClass || (templateEditForm.formatType === "DOCX" ? "A4 210x297mm Standard" : "\\documentclass[a4paper,12pt,oneside]{book}")}
                         onChange={(e) => setTemplateEditForm({ ...templateEditForm, documentClass: e.target.value })}
                         style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12, fontFamily: "monospace" }}
                       />
                     </div>
                   </div>
 
-                  <div>
-                    <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
-                      LaTeX Preamble (Packages & Macro Definition):
-                    </label>
-                    <textarea
-                      rows={5}
-                      value={templateEditForm.preambleLatex || ""}
-                      onChange={(e) => setTemplateEditForm({ ...templateEditForm, preambleLatex: e.target.value })}
-                      style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 11.5, fontFamily: "monospace", color: "#0F172A", background: "#F8FAFC", resize: "vertical" }}
-                    />
-                  </div>
+                  {(templateEditForm.formatType === "LATEX" || templateEditForm.isLatex) && (
+                    <div>
+                      <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
+                        LaTeX Preamble (Packages & Macro Definition):
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={templateEditForm.preambleLatex || ""}
+                        onChange={(e) => setTemplateEditForm({ ...templateEditForm, preambleLatex: e.target.value })}
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 11.5, fontFamily: "monospace", color: "#0F172A", background: "#F8FAFC", resize: "vertical" }}
+                      />
+                    </div>
+                  )}
                 </div>
 
-                {/* 3. Struktur Bab & Section Generator */}
+                {/* 5. Struktur Bab & Section Generator */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
-                      3. Struktur Bab & Panduan Penulisan ({templateEditForm.sections?.length || 0} Bagian)
+                      5. Struktur Bab & Panduan Penulisan ({templateEditForm.sections?.length || 0} Bagian)
                     </div>
                     <button
                       type="button"
@@ -3562,7 +4259,7 @@ const response = await executeAiCompletion({
                     </button>
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 380, overflowY: "auto", paddingRight: 4 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto", paddingRight: 4 }}>
                     {(templateEditForm.sections || []).map((sec: any, idx: number) => (
                       <div
                         key={sec.id || idx}
@@ -3617,340 +4314,1101 @@ const response = await executeAiCompletion({
                             style={{ width: "100%", padding: "4px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11.5, color: "#475569" }}
                           />
                         </div>
-
-                        <div>
-                          <textarea
-                            rows={2}
-                            value={sec.latexSnippet || ""}
-                            onChange={(e) => {
-                              const updated = [...templateEditForm.sections];
-                              updated[idx].latexSnippet = e.target.value;
-                              setTemplateEditForm({ ...templateEditForm, sections: updated });
-                            }}
-                            placeholder="Kode LaTeX snippet (e.g. \chapter{...}, \begin{table}...)"
-                            style={{ width: "100%", padding: "4px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 10.5, fontFamily: "monospace", background: "#FFFFFF", color: "#0F172A" }}
-                          />
-                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
+            )}
 
-              {/* ── RIGHT COLUMN: LIVE REAL-TIME PREVIEW WORKSPACE (VISUAL A4 & LATEX) ── */}
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 14, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* Preview Toolbar Header */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #EFEFF3", paddingBottom: 14, flexWrap: "wrap", gap: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#F1F5F9", padding: 3, borderRadius: 8, border: "1px solid #CBD5E1" }}>
-                    <button
-                      type="button"
-                      onClick={() => setTemplatePreviewMode("VISUAL_A4")}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                        padding: "5px 12px",
-                        borderRadius: 6,
-                        border: "none",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        background: templatePreviewMode === "VISUAL_A4" ? "#FFFFFF" : "transparent",
-                        color: templatePreviewMode === "VISUAL_A4" ? "#4338CA" : "#64748B",
-                        boxShadow: templatePreviewMode === "VISUAL_A4" ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
-                      }}
-                    >
-                      <Eye size={13} />
-                      <span>Simulasi Naskah A4</span>
-                    </button>
+                {/* TAB 2: RAW LATEX CODE IN-BROWSER LIVE EDITOR */}
+                {splitEditorTab === "RAW_LATEX" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 6 }}>
+                        Pilih Boilerplate / Preset Cepat:
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTemplateEditForm((prev: any) => ({
+                              ...prev,
+                              rawLatex: LATEX_PRESETS.IEEE_CONFERENCE,
+                              formatType: "LATEX",
+                              isLatex: true,
+                            }));
+                            const parsed = parseLatexContent(LATEX_PRESETS.IEEE_CONFERENCE);
+                            setTemplateEditForm((prev: any) => ({
+                              ...prev,
+                              documentClass: parsed.documentClass,
+                              preambleLatex: parsed.preambleLatex,
+                              sections: parsed.sections,
+                            }));
+                            notify.success("Preset IEEE Dimuat", "Format IEEE Conference siap diedit dan disinkronkan.");
+                          }}
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #C7D2FE",
+                            background: "#EEF2FF",
+                            color: "#3730A3",
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          ⚡ IEEE Conf (Two-Column)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTemplateEditForm((prev: any) => ({
+                              ...prev,
+                              rawLatex: LATEX_PRESETS.TELKOM_FIF,
+                              formatType: "LATEX",
+                              isLatex: true,
+                            }));
+                            const parsed = parseLatexContent(LATEX_PRESETS.TELKOM_FIF);
+                            setTemplateEditForm((prev: any) => ({
+                              ...prev,
+                              documentClass: parsed.documentClass,
+                              preambleLatex: parsed.preambleLatex,
+                              sections: parsed.sections,
+                            }));
+                            notify.success("Preset Telkom FIF Dimuat", "Format S1 Informatika FIF Telkom University siap diedit.");
+                          }}
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #E2E8F0",
+                            background: "#F8FAFC",
+                            color: "#334155",
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          ⚡ Telkom University FIF
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTemplateEditForm((prev: any) => ({
+                              ...prev,
+                              rawLatex: LATEX_PRESETS.SKRIPSI_INDONESIA,
+                              formatType: "LATEX",
+                              isLatex: true,
+                            }));
+                            const parsed = parseLatexContent(LATEX_PRESETS.SKRIPSI_INDONESIA);
+                            setTemplateEditForm((prev: any) => ({
+                              ...prev,
+                              documentClass: parsed.documentClass,
+                              preambleLatex: parsed.preambleLatex,
+                              sections: parsed.sections,
+                            }));
+                            notify.success("Preset Skripsi Standar Dimuat", "Format standar buku skripsi Indonesia siap diedit.");
+                          }}
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #E2E8F0",
+                            background: "#F8FAFC",
+                            color: "#334155",
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          ⚡ Format Standar Skripsi
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTemplateEditForm((prev: any) => ({
+                              ...prev,
+                              rawLatex: LATEX_PRESETS.BLANK_LATEX,
+                              formatType: "LATEX",
+                              isLatex: true,
+                            }));
+                            notify.success("Preset Kosong Dimuat", "Silakan ketik atau tempel LaTeX kustom Anda.");
+                          }}
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #E2E8F0",
+                            background: "#F8FAFC",
+                            color: "#64748B",
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          ⚡ Template Kosong
+                        </button>
+                      </div>
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setTemplatePreviewMode("LATEX_CODE")}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                        padding: "5px 12px",
-                        borderRadius: 6,
-                        border: "none",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        background: templatePreviewMode === "LATEX_CODE" ? "#FFFFFF" : "transparent",
-                        color: templatePreviewMode === "LATEX_CODE" ? "#4338CA" : "#64748B",
-                        boxShadow: templatePreviewMode === "LATEX_CODE" ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
-                      }}
-                    >
-                      <Code size={13} />
-                      <span>Kode LaTeX (.tex)</span>
-                    </button>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <button
-                      type="button"
-                      onClick={handleTestCompileLatex}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                        padding: "6px 12px",
-                        borderRadius: 7,
-                        background: "#DCFCE7",
-                        border: "1px solid #86EFAC",
-                        color: "#16A34A",
-                        fontSize: 11.5,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                      title="Simulasi kompilasi sintaks LaTeX"
-                    >
-                      <PlayCircle size={13} />
-                      <span>{testCompileSuccess ? "✓ Sintaks Valid" : "Uji Kompilasi"}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleCopyLatex}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                        padding: "6px 11px",
-                        borderRadius: 7,
-                        background: "#F8FAFC",
-                        border: "1px solid #CBD5E1",
-                        color: "#334155",
-                        fontSize: 11.5,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <Copy size={13} />
-                      <span>{copiedLatex ? "Tersalin!" : "Salin .tex"}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleDownloadTex}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                        padding: "6px 11px",
-                        borderRadius: 7,
-                        background: "#F8FAFC",
-                        border: "1px solid #CBD5E1",
-                        color: "#334155",
-                        fontSize: 11.5,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <Download size={13} />
-                      <span>Download</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Visual A4 Section Switcher Pills */}
-                {templatePreviewMode === "VISUAL_A4" && (
-                  <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 4 }}>
-                    {[
-                      { id: "cover", label: "Cover" },
-                      { id: "approval", label: "Persetujuan" },
-                      { id: "abstract", label: "Abstrak" },
-                      { id: "bab1", label: "BAB I" },
-                      { id: "bab2", label: "BAB II" },
-                      { id: "bab3", label: "BAB III" },
-                      { id: "references", label: "Daftar Pustaka" },
-                    ].map((st) => (
-                      <button
-                        key={st.id}
-                        type="button"
-                        onClick={() => setTemplatePreviewTab(st.id)}
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                        <label style={{ fontSize: 11.5, fontWeight: 700, color: "#334155" }}>
+                          Editor Kode LaTeX Mentah:
+                        </label>
+                        <span style={{ fontSize: 10.5, color: "#64748B" }}>
+                          {templateEditForm.rawLatex?.length || 0} Karakter • Live Sync Preview
+                        </span>
+                      </div>
+                      <textarea
+                        rows={16}
+                        value={templateEditForm.rawLatex || ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setTemplateEditForm({
+                            ...templateEditForm,
+                            rawLatex: val,
+                          });
+                        }}
                         style={{
-                          padding: "4px 10px",
-                          borderRadius: 6,
-                          fontSize: 11.5,
-                          fontWeight: templatePreviewTab === st.id ? 700 : 500,
-                          background: templatePreviewTab === st.id ? "#4338CA" : "#F1F5F9",
-                          color: templatePreviewTab === st.id ? "#FFFFFF" : "#475569",
+                          width: "100%",
+                          padding: "10px 12px",
+                          borderRadius: 8,
+                          border: "1px solid #CBD5E1",
+                          fontSize: 12,
+                          fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                          color: "#0F172A",
+                          background: "#F8FAFC",
+                          lineHeight: 1.5,
+                          resize: "vertical",
+                        }}
+                        placeholder="Tulis kode LaTeX Anda di sini (\\documentclass, \\begin{document}, \\section, dll)..."
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const code = templateEditForm.rawLatex || "";
+                          if (!code.trim()) {
+                            notify.warning("Kode Kosong", "Tuliskan kode LaTeX sebelum melakukan sinkronisasi.");
+                            return;
+                          }
+                          const parsed = parseLatexContent(code);
+                          setTemplateEditForm((prev: any) => ({
+                            ...prev,
+                            documentClass: parsed.documentClass || prev.documentClass,
+                            preambleLatex: parsed.preambleLatex || prev.preambleLatex,
+                            sections: parsed.sections.length > 0 ? parsed.sections : prev.sections,
+                            name: parsed.name && !prev.name ? parsed.name : prev.name,
+                          }));
+                          notify.success(
+                            "Struktur LaTeX Disinkronkan!",
+                            `Berhasil mengekstrak ${parsed.sections.length} bagian bab dan preamble ke form.`
+                          );
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: "8px 12px",
+                          borderRadius: 8,
                           border: "none",
+                          background: "#4338CA",
+                          color: "#FFFFFF",
+                          fontSize: 12,
+                          fontWeight: 700,
                           cursor: "pointer",
-                          whiteSpace: "nowrap",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                          boxShadow: "0 1px 4px rgba(67,56,202,0.2)",
                         }}
                       >
-                        {st.label}
+                        <Sparkles size={14} />
+                        <span>⚡ Ekstrak ke Struktur Bab & Margin</span>
                       </button>
-                    ))}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const code = templateEditForm.rawLatex || "";
+                          const begins = (code.match(/\\begin\{/g) || []).length;
+                          const ends = (code.match(/\\end\{/g) || []).length;
+                          if (begins === ends) {
+                            setTestCompileSuccess(true);
+                            notify.success("Uji Kompilasi Lolos", `Struktur lingkungan LaTeX seimbang (${begins} blok begin/end).`);
+                          } else {
+                            setTestCompileSuccess(false);
+                            notify.error("Peringatan Kompilasi", `Ditemukan ketidakseimbangan: ${begins} \\begin{} vs ${ends} \\end{}.`);
+                          }
+                        }}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 8,
+                          border: "1px solid #CBD5E1",
+                          background: "#FFFFFF",
+                          color: "#334155",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                        }}
+                      >
+                        <Check size={14} color="#059669" />
+                        <span>Uji Kompilasi</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(templateEditForm.rawLatex || "");
+                          notify.success("Kode Tersalin!", "Kode LaTeX telah disalin ke clipboard.");
+                        }}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 8,
+                          border: "1px solid #CBD5E1",
+                          background: "#FFFFFF",
+                          color: "#334155",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                        }}
+                      >
+                        <Copy size={13} />
+                        <span>Salin</span>
+                      </button>
+                    </div>
+
+                    {testCompileSuccess !== null && (
+                      <div
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 8,
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                          background: testCompileSuccess ? "#DCFCE7" : "#FEE2E2",
+                          color: testCompileSuccess ? "#16A34A" : "#DC2626",
+                          border: testCompileSuccess ? "1px solid #86EFAC" : "1px solid #FCA5A5",
+                        }}
+                      >
+                        {testCompileSuccess
+                          ? "✓ Kompilasi LaTeX Sintaks Valid: Tidak ditemukan error struktur blok \\begin / \\end."
+                          : "⚠️ Periksa kembali pasangan \\begin{...} dan \\end{...} pada kode naskah."}
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* 1. VISUAL LIVE PREVIEW OF A4 PAPER SHEET */}
-                {templatePreviewMode === "VISUAL_A4" && (
-                  <div style={{ background: "#F1F5F9", borderRadius: 10, padding: 20, display: "flex", justifyContent: "center", overflowX: "auto", minHeight: 460 }}>
-                    <div
-                      style={{
-                        width: "100%",
-                        maxWidth: "185mm",
-                        minHeight: "260mm",
-                        background: "#FFFFFF",
-                        boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
-                        padding: templateEditForm.marginPreset === "4433" ? "3.5cm 2.5cm 2.5cm 3.5cm" : "2.5cm 2.5cm 2.5cm 3.5cm",
-                        fontFamily: '"Times New Roman", Times, serif',
-                        fontSize: "11pt",
-                        lineHeight: 1.6,
-                        color: "#000000",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                        boxSizing: "border-box",
-                      }}
-                    >
-                      {/* Section View Routing */}
-                      {templatePreviewTab === "cover" && (
-                        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", height: "100%" }}>
-                          <div>
-                            <div style={{ fontSize: "14pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 24, lineHeight: 1.3 }}>
-                              {templateEditForm.name}
-                            </div>
-                            <div style={{ fontSize: "11pt", fontWeight: 600, color: "#334155" }}>
-                              PROPOSAL PENELITIAN TUGAS AKHIR
-                            </div>
-                          </div>
+                {/* TAB 3: VARIABEL & PLACEHOLDER EXPLORER */}
+                {splitEditorTab === "VARIABLES" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: 12 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1E293B", marginBottom: 4 }}>
+                        Kamus Variabel In-Place Template
+                      </div>
+                      <div style={{ fontSize: 11.5, color: "#64748B", lineHeight: 1.4 }}>
+                        Variabel berikut secara otomatis disubstitusi oleh engine Zetera saat mahasiswa melakukan generasi atau ekspor. Klik untuk menyalin token kode ke LaTeX atau DOCX.
+                      </div>
+                    </div>
 
-                          <div style={{ width: 80, height: 80, border: "1.5px dashed #CBD5E1", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#94A3B8", fontSize: 10, textAlign: "center", padding: 6 }}>
-                            [Logo Institusi {templateEditForm.university || "Telkom"}]
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      {(templateEditForm.variables || [
+                        { key: "TITLE", label: "Judul Proposal / Skripsi", varType: "TEXT", defaultValue: "Judul Riset" },
+                        { key: "AUTHOR", label: "Nama Lengkap Mahasiswa", varType: "TEXT", defaultValue: "Nama Mahasiswa" },
+                        { key: "NIM", label: "Nomor Induk Mahasiswa", varType: "TEXT", defaultValue: "1301220001" },
+                        { key: "PRODI", label: "Program Studi", varType: "TEXT", defaultValue: "S1 Informatika" },
+                        { key: "FAKULTAS", label: "Fakultas Institusi", varType: "TEXT", defaultValue: "Fakultas Informatika" },
+                        { key: "UNIVERSITAS", label: "Universitas / Institut", varType: "TEXT", defaultValue: "Telkom University" },
+                        { key: "LOGO", label: "Logo Resmi Kampus", varType: "IMAGE", defaultValue: null },
+                      ]).map((v: any, idx: number) => (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            navigator.clipboard.writeText(`\\${v.key}`);
+                            notify.success("Token Disalin!", `Token \\${v.key} tersalin ke clipboard.`);
+                          }}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 8,
+                            border: "1px solid #E2E8F0",
+                            background: v.varType === "IMAGE" ? "#FFFBEB" : "#F8FAFC",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                          title="Klik untuk menyalin token kode"
+                        >
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                            <code style={{ fontSize: 12, fontWeight: 700, color: v.varType === "IMAGE" ? "#B45309" : "#4338CA" }}>
+                              \{v.key}
+                            </code>
+                            <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 4, background: "#FFFFFF", border: "1px solid #CBD5E1", color: "#64748B" }}>
+                              {v.varType}
+                            </span>
                           </div>
-
-                          <div>
-                            <div style={{ fontSize: "11pt", marginBottom: 6 }}>Disusun Oleh:</div>
-                            <div style={{ fontSize: "12pt", fontWeight: 700 }}>NAMA MAHASISWA</div>
-                            <div style={{ fontSize: "11pt" }}>NIM: 1301220001</div>
-                          </div>
-
-                          <div style={{ marginTop: 24 }}>
-                            <div style={{ fontSize: "11pt", fontWeight: 700 }}>{templateEditForm.sourceFaculty?.toUpperCase() || "FAKULTAS INFORMATIKA"}</div>
-                            <div style={{ fontSize: "11pt", fontWeight: 700 }}>{templateEditForm.university?.toUpperCase() || "TELKOM UNIVERSITY"}</div>
-                            <div style={{ fontSize: "11pt" }}>BANDUNG</div>
-                            <div style={{ fontSize: "11pt", fontWeight: 700 }}>{new Date().getFullYear()}</div>
-                          </div>
+                          <div style={{ fontSize: 11, color: "#334155", fontWeight: 600 }}>{v.label || v.key}</div>
+                          {v.defaultValue && (
+                            <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 2 }}>Contoh: {v.defaultValue}</div>
+                          )}
                         </div>
-                      )}
+                      ))}
+                    </div>
 
-                      {templatePreviewTab === "approval" && (
-                        <div>
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
-                            LEMBAR PENGESAHAN PROPOSAL
-                          </div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify" }}>
-                            Proposal Tugas Akhir dengan judul <strong>"{templateEditForm.name}"</strong> telah disetujui dan disahkan oleh Tim Pembimbing untuk dilanjutkan ke tahap pelaksanaan riset.
-                          </p>
-                          <div style={{ marginTop: 40, display: "grid", gridTemplateColumns: "1fr 1fr", textAlign: "center", gap: 20 }}>
-                            <div>
-                              <div>Calon Pembimbing 1,</div>
-                              <div style={{ height: 50 }} />
-                              <div style={{ fontWeight: 700 }}>Dr. Pembimbing Utama, M.Kom.</div>
-                              <div style={{ fontSize: "10pt" }}>NIP. 19850101201501</div>
-                            </div>
-                            <div>
-                              <div>Calon Pembimbing 2,</div>
-                              <div style={{ height: 50 }} />
-                              <div style={{ fontWeight: 700 }}>Co-Advisor, S.T., M.T.</div>
-                              <div style={{ fontSize: "10pt" }}>NIP. 19900202202002</div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {templatePreviewTab === "abstract" && (
-                        <div>
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 12 }}>
-                            ABSTRAK
-                          </div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "11pt", lineHeight: 1.6 }}>
-                            Penelitian ini bertujuan untuk mengkaji dan merancang solusi komprehensif berdasarkan panduan {templateEditForm.name}. Kajian diawali dengan identifikasi fenomena empiris dan penelaahan literatur terindeks untuk merumuskan kerangka pemikiran konseptual yang valid.
-                          </p>
-                          <div style={{ fontSize: "10.5pt", marginTop: 12 }}>
-                            <strong>Kata Kunci:</strong> <em>tugas akhir, metodologi riset, kerangka konseptual, {templateEditForm.sourceFaculty?.toLowerCase() || "informatika"}</em>
-                          </div>
-                        </div>
-                      )}
-
-                      {templatePreviewTab === "bab1" && (
-                        <div>
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 16 }}>
-                            BAB I<br />PENDAHULUAN
-                          </div>
-                          <div style={{ fontWeight: 700, marginBottom: 4 }}>1.1 Latar Belakang Masalah</div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", marginBottom: 12 }}>
-                            Perkembangan keilmuan menuntut pembaruan metodologi dan pengujian empiris. Template ini memfasilitasi penataan latar belakang yang terhubung langsung dengan bukti jurnal ilmiah.
-                          </p>
-                          <div style={{ fontWeight: 700, marginBottom: 4 }}>1.2 Rumusan Masalah</div>
-                          <ol style={{ paddingLeft: "1.27cm", margin: "0 0 12px 0" }}>
-                            <li>Bagaimana relasi kausalitas antar variabel dalam kerangka riset?</li>
-                            <li>Bagaimana performa model yang dirancang terhadap data empiris?</li>
-                          </ol>
-                        </div>
-                      )}
-
-                      {templatePreviewTab === "bab2" && (
-                        <div>
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 16 }}>
-                            BAB II<br />TINJAUAN PUSTAKA & KERANGKA PEMIKIRAN
-                          </div>
-                          <div style={{ fontWeight: 700, marginBottom: 4 }}>2.1 Landasan Teori & Sintesis Variabel</div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", marginBottom: 12 }}>
-                            Tinjauan teori mengintegrasikan konsep-konsep kunci dari literatur bereputasi untuk mendasari hipotesis penelitian.
-                          </p>
-                          <div style={{ border: "1px solid #CBD5E1", background: "#F8FAFC", padding: 10, borderRadius: 6, fontSize: "10pt", textAlign: "center" }}>
-                            <strong>Gambar 2.1:</strong> Diagram Kerangka Konseptual Variabel Riset
-                          </div>
-                        </div>
-                      )}
-
-                      {templatePreviewTab === "bab3" && (
-                        <div>
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 16 }}>
-                            BAB III<br />METODOLOGI PENELITIAN
-                          </div>
-                          <div style={{ fontWeight: 700, marginBottom: 4 }}>3.1 Desain Penelitian</div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", marginBottom: 12 }}>
-                            Metodologi dirancang secara terstruktur mencakup populasi, teknik sampling purposive, instrumen pengukuran, dan tahapan analisis data.
-                          </p>
-                          <div style={{ fontWeight: 700, marginBottom: 4 }}>3.2 Teknik Analisis Data</div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify" }}>
-                            Analisis data meliputi pengujian kualitas instrumen, asumsi klasik, dan analisis inferensial statistik / SEM-PLS.
-                          </p>
-                        </div>
-                      )}
-
-                      {templatePreviewTab === "references" && (
-                        <div>
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 16 }}>
-                            DAFTAR PUSTAKA
-                          </div>
-                          <div style={{ fontSize: "10pt", lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
-                            <div>[1] J. Doe and A. Smith, "Empirical Evaluation in Computing," <em>IEEE Trans. Software Eng.</em>, vol. 48, no. 2, pp. 210–225, 2024.</div>
-                            <div>[2] R. Johnson, "Advanced Modeling and Statistical Inference," <em>Journal of Systems & Software</em>, vol. 190, pp. 111–124, 2023.</div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Bottom Page Number Simulation */}
-                      <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700, marginTop: 24 }}>
-                        {templatePreviewTab === "cover" ? "" : templatePreviewTab === "approval" ? "ii" : templatePreviewTab === "abstract" ? "iii" : "1"}
+                    {/* Quick Variable Adder */}
+                    <div style={{ borderTop: "1px solid #EFEFF3", paddingTop: 12 }}>
+                      <label style={{ fontSize: 11.5, fontWeight: 700, color: "#334155", display: "block", marginBottom: 6 }}>
+                        Tambah Variabel Kustom Baru:
+                      </label>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <input
+                          type="text"
+                          placeholder="KEY (e.g. KOTA)"
+                          value={newVariableKey}
+                          onChange={(e) => setNewVariableKey(e.target.value.toUpperCase().replace(/\s+/g, "_"))}
+                          style={{ width: 110, padding: "6px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11, fontFamily: "monospace" }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Label (e.g. Kota Kampus)..."
+                          value={newVariableLabel}
+                          onChange={(e) => setNewVariableLabel(e.target.value)}
+                          style={{ flex: 1, padding: "6px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11 }}
+                        />
+                        <select
+                          value={newVariableType}
+                          onChange={(e) => setNewVariableType(e.target.value as any)}
+                          style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11 }}
+                        >
+                          <option value="TEXT">TEXT</option>
+                          <option value="IMAGE">IMAGE</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!newVariableKey.trim()) return;
+                            const newV = {
+                              key: newVariableKey.trim(),
+                              label: newVariableLabel.trim() || newVariableKey.trim(),
+                              varType: newVariableType,
+                              required: true,
+                              defaultValue: "",
+                            };
+                            const currentVars = templateEditForm.variables || [];
+                            setTemplateEditForm({
+                              ...templateEditForm,
+                              variables: [...currentVars, newV],
+                            });
+                            setNewVariableKey("");
+                            setNewVariableLabel("");
+                            notify.success("Variabel Ditambahkan", `Variabel \\${newV.key} siap digunakan.`);
+                          }}
+                          style={{ background: "#4338CA", color: "#FFFFFF", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                        >
+                          + Tambah
+                        </button>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* 2. LATEX SOURCE CODE PREVIEW */}
+                {/* Bottom Action Button */}
+                <div style={{ borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
+                  <button
+                    type="button"
+                    onClick={handleSaveCurrentTemplate}
+                    disabled={savingTemplate}
+                    style={{
+                      width: "100%",
+                      background: "#4338CA",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: 9,
+                      padding: "10px 16px",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      boxShadow: "0 2px 10px rgba(67, 56, 202, 0.25)",
+                    }}
+                  >
+                    {savingTemplate ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />}
+                    <span>{savingTemplate ? "Menyimpan ke Database..." : "Simpan Perubahan Template"}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* ── RIGHT COLUMN: SPLIT-SCREEN PREVIEW TAMPILAN JURNAL MENDIRIK KE BAWAH ── */}
+              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 14, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* Preview Toolbar Header */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #EFEFF3", paddingBottom: 12, flexWrap: "wrap", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Eye size={18} color="#4338CA" />
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#0F0F14", lineHeight: 1.2 }}>
+                        Preview Tampilan Jurnal Mengalir
+                      </div>
+                      <div style={{ fontSize: 11, color: "#71717A" }}>
+                        Format: <span style={{ fontWeight: 700, color: "#4338CA" }}>{templateEditForm.formatType || (templateEditForm.isLatex ? "LATEX" : "DOCX")}</span> • Margin: {templateEditForm.marginPreset === "4433" ? "4-4-3-3" : "4-3-3-3"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Mode & Zoom Controls */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {/* View Mode Toggle */}
+                    <div style={{ display: "flex", background: "#F1F5F9", padding: 2, borderRadius: 7, border: "1px solid #E2E8F0" }}>
+                      <button
+                        type="button"
+                        onClick={() => setTemplatePreviewMode("JOURNAL_FLOW")}
+                        style={{
+                          padding: "4px 10px",
+                          borderRadius: 6,
+                          border: "none",
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          background: templatePreviewMode === "JOURNAL_FLOW" ? "#FFFFFF" : "transparent",
+                          color: templatePreviewMode === "JOURNAL_FLOW" ? "#4338CA" : "#64748B",
+                          boxShadow: templatePreviewMode === "JOURNAL_FLOW" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                        }}
+                      >
+                        Naskah Mengalir (A4)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTemplatePreviewMode("LATEX_CODE")}
+                        style={{
+                          padding: "4px 10px",
+                          borderRadius: 6,
+                          border: "none",
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          background: templatePreviewMode === "LATEX_CODE" ? "#FFFFFF" : "transparent",
+                          color: templatePreviewMode === "LATEX_CODE" ? "#4338CA" : "#64748B",
+                          boxShadow: templatePreviewMode === "LATEX_CODE" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                        }}
+                      >
+                        Source .tex
+                      </button>
+                    </div>
+
+                    {/* Zoom Controls */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 2, background: "#F8FAFC", border: "1px solid #CBD5E1", borderRadius: 6, padding: "2px 6px" }}>
+                      <button
+                        type="button"
+                        onClick={() => setTemplatePreviewZoom((z) => Math.max(70, z - 10))}
+                        style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, color: "#475569" }}
+                        title="Perkecil"
+                      >
+                        <ZoomOut size={13} />
+                      </button>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#334155", minWidth: 36, textAlign: "center" }}>
+                        {templatePreviewZoom}%
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setTemplatePreviewZoom((z) => Math.min(130, z + 10))}
+                        style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, color: "#475569" }}
+                        title="Perbesar"
+                      >
+                        <ZoomIn size={13} />
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleDownloadTex}
+                      style={{
+                        padding: "5px 9px",
+                        borderRadius: 6,
+                        border: "1px solid #CBD5E1",
+                        background: "#FFFFFF",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: "#334155",
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                      title="Download source berkas template"
+                    >
+                      <Download size={12} />
+                      <span>Unduh</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── CONTINUOUS VERTICAL JOURNAL FLOW PREVIEW ── */}
+                {templatePreviewMode === "JOURNAL_FLOW" && (
+                  <div
+                    style={{
+                      background: "#525659",
+                      borderRadius: 10,
+                      padding: "24px 16px",
+                      overflowY: "auto",
+                      maxHeight: "calc(100vh - 220px)",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 24,
+                    }}
+                  >
+                    <div
+                      style={{
+                        transform: `scale(${templatePreviewZoom / 100})`,
+                        transformOrigin: "top center",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 24,
+                        width: "100%",
+                        maxWidth: "185mm",
+                      }}
+                    >
+                      {/* ══ IEEE TRANSACTIONS / CONFERENCE TWO-COLUMN PREVIEW ══ */}
+                      {(templateEditForm.documentClass?.toLowerCase().includes("ieeetran") || templateEditForm.name?.toLowerCase().includes("ieee") || templateEditForm.rawLatex?.toLowerCase().includes("ieeetran")) ? (
+                        <div
+                          style={{
+                            width: "100%",
+                            minHeight: "270mm",
+                            background: "#FFFFFF",
+                            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                            padding: "2.5cm 2cm 2.5cm 2cm",
+                            fontFamily: '"Times New Roman", Times, serif',
+                            color: "#000000",
+                            boxSizing: "border-box",
+                            position: "relative",
+                          }}
+                        >
+                          <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#4338CA", fontFamily: "sans-serif", fontWeight: 700, background: "#EEF2FF", padding: "2px 6px", borderRadius: 4 }}>
+                            ⚡ IEEEtran Two-Column Flow
+                          </div>
+
+                          {/* IEEE Header Note */}
+                          <div style={{ fontSize: "8.5pt", color: "#64748B", fontStyle: "italic", borderBottom: "0.5px solid #CBD5E1", paddingBottom: 4, marginBottom: 16 }}>
+                            2026 IEEE International Conference on Academic Intelligence & Computing Systems (ICAICS)
+                          </div>
+
+                          {/* Paper Title */}
+                          <div style={{ textAlign: "center", fontSize: "18pt", fontWeight: 700, lineHeight: 1.25, marginBottom: 14 }}>
+                            {templateEditForm.name || "DESIGN AND IMPLEMENTATION OF ACADEMIC INTELLIGENCE ENGINE"}
+                          </div>
+
+                          {/* Authors Affiliation Grid */}
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", textAlign: "center", gap: 16, marginBottom: 18, fontSize: "9.5pt" }}>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: "10.5pt" }}>Nama Mahasiswa Peneliti</div>
+                              <div style={{ fontStyle: "italic" }}>Program Studi {templateEditForm.sourceFaculty || "Informatika"}</div>
+                              <div>{templateEditForm.university || "Telkom University"}</div>
+                              <div style={{ color: "#475569" }}>penulis@telkomuniversity.ac.id</div>
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: "10.5pt" }}>Dr. Dosen Pembimbing, M.Kom.</div>
+                              <div style={{ fontStyle: "italic" }}>Fakultas {templateEditForm.sourceFaculty || "Informatika"}</div>
+                              <div>{templateEditForm.university || "Telkom University"}</div>
+                              <div style={{ color: "#475569" }}>advisor@telkomuniversity.ac.id</div>
+                            </div>
+                          </div>
+
+                          {/* Abstract Banner */}
+                          <div style={{ fontSize: "9pt", lineHeight: 1.45, textAlign: "justify", marginBottom: 16, padding: "0 10px" }}>
+                            <strong><em>Abstract</em>—{templateEditForm.description || "Makalah ini menyajikan arsitektur dan metodologi rancang bangun engine kecerdasan buatan terapan untuk sintesis akademik terstruktur. Evaluasi eksperimental menunjukkan bahwa sistem berhasil mengoptimalkan akurasi pengenalan naskah dan validasi referensi secara signifikan."}</strong>
+                            <div style={{ marginTop: 6 }}>
+                              <strong><em>Index Terms</em>—</strong><em>machine learning, software engineering, IEEEtran, academic synthesis, empirical evaluation.</em>
+                            </div>
+                          </div>
+
+                          {/* Two-Column Body Content */}
+                          <div
+                            style={{
+                              columnCount: 2,
+                              columnGap: "20px",
+                              columnRule: "0.5px solid #E2E8F0",
+                              textAlign: "justify",
+                              fontSize: "9.5pt",
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {(templateEditForm.sections || []).length > 0 ? (
+                              templateEditForm.sections.map((sec: any, sIdx: number) => {
+                                const romanNumerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+                                const isRef = sec.title.toLowerCase().includes("pustaka") || sec.title.toLowerCase().includes("reference");
+                                return (
+                                  <div key={sec.id || sIdx} style={{ breakInside: "avoid-column", marginBottom: 14 }}>
+                                    <div style={{ textAlign: "center", fontWeight: 700, fontSize: "10pt", textTransform: "uppercase", letterSpacing: "0.05em", margin: "10px 0 6px" }}>
+                                      {isRef ? "REFERENCES" : `${romanNumerals[sIdx] || sIdx + 1}. ${sec.title}`}
+                                    </div>
+                                    {isRef ? (
+                                      <div style={{ fontSize: "8.5pt", display: "flex", flexDirection: "column", gap: 6 }}>
+                                        <div>[1] G. Eason, B. Noble, and I. Sneddon, "On certain integrals of Lipschitz-Hankel type," <em>Phil. Trans. Roy. Soc.</em>, 1955.</div>
+                                        <div>[2] J. Clerk Maxwell, <em>A Treatise on Electricity and Magnetism</em>, 3rd ed., Oxford: Clarendon, 1892.</div>
+                                        <div>[3] K. Elissa, "Title of paper if known," unpublished.</div>
+                                      </div>
+                                    ) : (
+                                      <div>
+                                        <p style={{ textIndent: "0.5cm", margin: "0 0 6px" }}>
+                                          {sec.guidanceText ? `${sec.guidanceText}. Pembahasan ini merumuskan metodologi komprehensif yang diuraikan secara analitik dan terintegrasi.` : "Penelitian ini diformulasikan berdasarkan telaah sistematis pada literatur terkini untuk membuktikan hipotesis empiris."}
+                                        </p>
+                                        {sIdx === 2 && (
+                                          <div style={{ border: "1px solid #CBD5E1", background: "#F8FAFC", padding: 8, margin: "8px 0", textAlign: "center", fontSize: "8.5pt" }}>
+                                            <div style={{ height: 35, display: "flex", alignItems: "center", justifyContent: "center", color: "#64748B", fontWeight: 700 }}>
+                                              [Diagram Pipeline & Arsitektur Model]
+                                            </div>
+                                            <strong>Fig. 1.</strong> Proposed End-to-End System Architecture.
+                                          </div>
+                                        )}
+                                        {sIdx === 3 && (
+                                          <div style={{ border: "1px solid #CBD5E1", margin: "8px 0", fontSize: "8pt" }}>
+                                            <div style={{ textAlign: "center", fontWeight: 700, padding: 3, background: "#F1F5F9" }}>
+                                              TABLE I: BENCHMARK ACCURACY EVALUATION
+                                            </div>
+                                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", textAlign: "center", padding: 4, borderTop: "1px solid #CBD5E1" }}>
+                                              <span><strong>Method</strong></span>
+                                              <span><strong>Precision</strong></span>
+                                              <span><strong>F1-Score</strong></span>
+                                            </div>
+                                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", textAlign: "center", padding: 3, borderTop: "0.5px solid #E2E8F0" }}>
+                                              <span>Baseline</span>
+                                              <span>87.4%</span>
+                                              <span>86.1%</span>
+                                            </div>
+                                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", textAlign: "center", padding: 3, borderTop: "0.5px solid #E2E8F0" }}>
+                                              <span><strong>Proposed</strong></span>
+                                              <span><strong>96.2%</strong></span>
+                                              <span><strong>95.8%</strong></span>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div>Struktur bab IEEE belum dikonfigurasi.</div>
+                            )}
+                          </div>
+
+                          {/* Footer IEEE */}
+                          <div style={{ borderTop: "0.5px solid #CBD5E1", paddingTop: 8, marginTop: 24, display: "flex", justifyContent: "space-between", fontSize: "8pt", color: "#64748B" }}>
+                            <span>979-8-3503-9999-1/26/$31.00 ©2026 IEEE</span>
+                            <span>Authorized licensed use limited to Telkom University.</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {/* ══ LEMBAR 1: COVER / HALAMAN JUDUL ══ */}
+                          <div
+                        style={{
+                          width: "100%",
+                          minHeight: "260mm",
+                          background: "#FFFFFF",
+                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                          fontFamily: '"Times New Roman", Times, serif',
+                          color: "#000000",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          textAlign: "center",
+                          position: "relative",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                          [1 / 7] Cover
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: "14pt", fontWeight: 700, textTransform: "uppercase", lineHeight: 1.35, marginBottom: 20 }}>
+                            {templateEditForm.name || "JUDUL PROPOSAL PENELITIAN TUGAS AKHIR"}
+                          </div>
+                          <div style={{ fontSize: "11.5pt", fontWeight: 700, color: "#334155", letterSpacing: "0.05em" }}>
+                            PROPOSAL PENELITIAN SKRIPSI
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                          <div
+                            style={{
+                              width: 90,
+                              height: 90,
+                              border: "2px dashed #94A3B8",
+                              borderRadius: 10,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              padding: 8,
+                              color: "#64748B",
+                              fontSize: 10.5,
+                              fontWeight: 700,
+                              textAlign: "center",
+                              background: "#F8FAFC",
+                            }}
+                          >
+                            [Logo {templateEditForm.university || "Telkom"}]
+                          </div>
+                          <div style={{ fontSize: "10pt", color: "#64748B", fontStyle: "italic" }}>
+                            \Tel-U-Logo.png / \LOGO
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: "11pt", marginBottom: 6 }}>Disusun Oleh:</div>
+                          <div style={{ fontSize: "12pt", fontWeight: 700 }}>NAMA MAHASISWA</div>
+                          <div style={{ fontSize: "11pt" }}>NIM: 1301220001</div>
+                        </div>
+
+                        <div style={{ marginTop: 24, lineHeight: 1.45 }}>
+                          <div style={{ fontSize: "11pt", fontWeight: 700 }}>PROGRAM STUDI S1 INFORMATIKA</div>
+                          <div style={{ fontSize: "11pt", fontWeight: 700 }}>{templateEditForm.sourceFaculty?.toUpperCase() || "FAKULTAS INFORMATIKA"}</div>
+                          <div style={{ fontSize: "11pt", fontWeight: 700 }}>{templateEditForm.university?.toUpperCase() || "TELKOM UNIVERSITY"}</div>
+                          <div style={{ fontSize: "11pt" }}>BANDUNG</div>
+                          <div style={{ fontSize: "11pt", fontWeight: 700 }}>{new Date().getFullYear()}</div>
+                        </div>
+                      </div>
+
+                      {/* ══ LEMBAR 2: LEMBAR PENGESAHAN ══ */}
+                      <div
+                        style={{
+                          width: "100%",
+                          minHeight: "260mm",
+                          background: "#FFFFFF",
+                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                          fontFamily: '"Times New Roman", Times, serif',
+                          color: "#000000",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          position: "relative",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                          [2 / 7] Lembar Persetujuan
+                        </div>
+
+                        <div>
+                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 24 }}>
+                            LEMBAR PENGESAHAN PROPOSAL TUGAS AKHIR
+                          </div>
+                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "11pt", lineHeight: 1.6 }}>
+                            Proposal Tugas Akhir dengan judul <strong>"{templateEditForm.name}"</strong> telah disetujui dan disahkan oleh Tim Pembimbing untuk dilanjutkan ke tahap pengumpulan data dan analisis empiris.
+                          </p>
+
+                          <div style={{ marginTop: 40, display: "grid", gridTemplateColumns: "1fr 1fr", textAlign: "center", gap: 20 }}>
+                            <div>
+                              <div style={{ fontSize: "10.5pt" }}>Pembimbing Utama,</div>
+                              <div style={{ height: 60 }} />
+                              <div style={{ fontWeight: 700, fontSize: "11pt" }}>Dr. Pembimbing Utama, M.Kom.</div>
+                              <div style={{ fontSize: "10pt" }}>NIP. 19850101201501</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: "10.5pt" }}>Pembimbing Pendamping,</div>
+                              <div style={{ height: 60 }} />
+                              <div style={{ fontWeight: 700, fontSize: "11pt" }}>Co-Advisor, S.T., M.T.</div>
+                              <div style={{ fontSize: "10pt" }}>NIP. 19900202202002</div>
+                            </div>
+                          </div>
+
+                          <div style={{ marginTop: 40, textAlign: "center" }}>
+                            <div style={{ fontSize: "10.5pt" }}>Mengetahui,</div>
+                            <div style={{ fontSize: "10.5pt", fontWeight: 700 }}>Ketua Program Studi S1 Informatika</div>
+                            <div style={{ height: 60 }} />
+                            <div style={{ fontWeight: 700, fontSize: "11pt" }}>Dr. Erwin Budi Setiawan, S.Si., M.T.</div>
+                            <div style={{ fontSize: "10pt" }}>NIP. 00760045</div>
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>ii</div>
+                      </div>
+
+                      {/* ══ LEMBAR 3: ABSTRAK & ABSTRACT ══ */}
+                      <div
+                        style={{
+                          width: "100%",
+                          minHeight: "260mm",
+                          background: "#FFFFFF",
+                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                          fontFamily: '"Times New Roman", Times, serif',
+                          color: "#000000",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          position: "relative",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                          [3 / 7] Abstrak Bilingual
+                        </div>
+
+                        <div>
+                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 12 }}>
+                            ABSTRAK
+                          </div>
+                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.55 }}>
+                            Penelitian ini bertujuan untuk mengkaji dan merancang solusi komprehensif berdasarkan panduan {templateEditForm.name}. Kajian diawali dengan identifikasi fenomena empiris dan penelaahan literatur terindeks untuk merumuskan kerangka pemikiran konseptual yang teruji. Data primer dikumpulkan melalui instrumen pengukuran terstruktur dan divalidasi dengan metode inferensial.
+                          </p>
+                          <div style={{ fontSize: "10pt", marginTop: 8, marginBottom: 24 }}>
+                            <strong>Kata Kunci:</strong> <em>tugas akhir, metodologi riset, analisis data, {templateEditForm.sourceFaculty?.toLowerCase() || "informatika"}</em>
+                          </div>
+
+                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 12 }}>
+                            ABSTRACT
+                          </div>
+                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.55, fontStyle: "italic" }}>
+                            This research aims to investigate and design a comprehensive solution based on {templateEditForm.name} guidelines. The study begins with identifying empirical phenomena and reviewing indexed literature to establish a conceptually validated framework. Primary data is gathered using structured measurement instruments and validated through statistical inferential methods.
+                          </p>
+                          <div style={{ fontSize: "10pt", marginTop: 8 }}>
+                            <strong>Keywords:</strong> <em>thesis, research methodology, empirical analysis, {templateEditForm.university || "telkom university"}</em>
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>iii</div>
+                      </div>
+
+                      {/* ══ LEMBAR 4: BAB I PENDAHULUAN ══ */}
+                      <div
+                        style={{
+                          width: "100%",
+                          minHeight: "260mm",
+                          background: "#FFFFFF",
+                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                          fontFamily: '"Times New Roman", Times, serif',
+                          color: "#000000",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          position: "relative",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                          [4 / 7] BAB I Pendahuluan
+                        </div>
+
+                        <div>
+                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
+                            BAB I<br />PENDAHULUAN
+                          </div>
+
+                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>1.1 Latar Belakang Masalah</div>
+                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6, marginBottom: 12 }}>
+                            Perkembangan teknologi komputasi dan dinamika akademik menuntut telaah riset yang memiliki landasan teoritis kokoh serta metodologi empiris teruji. Berdasarkan pedoman dari {templateEditForm.sourceFaculty || "Fakultas Informatika"}, penelitian ini memfokuskan telaah pada sintesis bukti ilmiah dari literatur primer terindeks.
+                          </p>
+
+                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>1.2 Rumusan Masalah</div>
+                          <ol style={{ paddingLeft: "1.27cm", margin: "0 0 12px 0", fontSize: "10.5pt", lineHeight: 1.5 }}>
+                            <li>Bagaimana pengaruh dan signifikansi relasi antar variabel independen terhadap variabel dependen?</li>
+                            <li>Bagaimana performa model konseptual yang dirancang bila diuji pada dataset empiris?</li>
+                          </ol>
+
+                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>1.3 Tujuan Penelitian</div>
+                          <ol style={{ paddingLeft: "1.27cm", margin: "0 0 12px 0", fontSize: "10.5pt", lineHeight: 1.5 }}>
+                            <li>Menganalisis keterkaitan kausalitas antar variabel riset secara kuantitatif.</li>
+                            <li>Menguji akurasi dan ketahanan model empiris terhadap data riil lapangan.</li>
+                          </ol>
+
+                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>1.4 Manfaat Penelitian</div>
+                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6 }}>
+                            <strong>Manfaat Teoretis:</strong> Memperkaya khazanah keilmuan informatika. <strong>Manfaat Praktis:</strong> Sebagai acuan implementasi sistem terapan bagi praktisi di industri.
+                          </p>
+                        </div>
+
+                        <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>1</div>
+                      </div>
+
+                      {/* ══ LEMBAR 5: BAB II KAJIAN PUSTAKA ══ */}
+                      <div
+                        style={{
+                          width: "100%",
+                          minHeight: "260mm",
+                          background: "#FFFFFF",
+                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                          fontFamily: '"Times New Roman", Times, serif',
+                          color: "#000000",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          position: "relative",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                          [5 / 7] BAB II Kajian Pustaka & Matriks
+                        </div>
+
+                        <div>
+                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
+                            BAB II<br />KAJIAN PUSTAKA DAN KERANGKA PEMIKIRAN
+                          </div>
+
+                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>2.1 Landasan Teori</div>
+                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6, marginBottom: 14 }}>
+                            Landasan teori dibangun berdasarkan telaah literatur primer terindeks internasional (Scopus / IEEE). Teori dasar menghubungkan konsep operasional dengan variabel yang diteliti.
+                          </p>
+
+                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 6 }}>2.2 Matriks Penelitian Terdahulu (State-of-the-Art)</div>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "9pt", marginBottom: 14 }}>
+                            <thead>
+                              <tr style={{ background: "#F1F5F9", borderTop: "1.5px solid #000", borderBottom: "1px solid #000" }}>
+                                <th style={{ padding: "6px 8px", textAlign: "center" }}>No</th>
+                                <th style={{ padding: "6px 8px", textAlign: "left" }}>Penulis & Tahun</th>
+                                <th style={{ padding: "6px 8px", textAlign: "left" }}>Judul & Metode</th>
+                                <th style={{ padding: "6px 8px", textAlign: "left" }}>Temuan Utama</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr style={{ borderBottom: "1px solid #CBD5E1" }}>
+                                <td style={{ padding: "6px 8px", textAlign: "center" }}>1</td>
+                                <td style={{ padding: "6px 8px" }}>Smith et al. (2024)</td>
+                                <td style={{ padding: "6px 8px" }}>Empirical Deep Learning</td>
+                                <td style={{ padding: "6px 8px" }}>Akurasi klasifikasi 94.8%</td>
+                              </tr>
+                              <tr style={{ borderBottom: "1.5px solid #000" }}>
+                                <td style={{ padding: "6px 8px", textAlign: "center" }}>2</td>
+                                <td style={{ padding: "6px 8px" }}>Johnson (2023)</td>
+                                <td style={{ padding: "6px 8px" }}>Statistical SEM-PLS</td>
+                                <td style={{ padding: "6px 8px" }}>Hubungan kausal signifikan</td>
+                              </tr>
+                            </tbody>
+                          </table>
+
+                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>2.3 Kerangka Konseptual & Hipotesis</div>
+                          <div style={{ border: "1px solid #CBD5E1", background: "#F8FAFC", padding: 12, borderRadius: 6, textAlign: "center", fontSize: "10pt", color: "#334155" }}>
+                            <strong>Gambar 2.1:</strong> Diagram Alur Kerangka Konseptual & Model Variabel
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>2</div>
+                      </div>
+
+                      {/* ══ LEMBAR 6: BAB III METODOLOGI PENELITIAN ══ */}
+                      <div
+                        style={{
+                          width: "100%",
+                          minHeight: "260mm",
+                          background: "#FFFFFF",
+                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                          fontFamily: '"Times New Roman", Times, serif',
+                          color: "#000000",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          position: "relative",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                          [6 / 7] BAB III Metodologi
+                        </div>
+
+                        <div>
+                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
+                            BAB III<br />METODOLOGI PENELITIAN
+                          </div>
+
+                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>3.1 Desain Penelitian</div>
+                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6, marginBottom: 12 }}>
+                            Penelitian ini menggunakan pendekatan kuantitatif kausal asosiatif dengan tahapan studi pustaka, formulasi hipotesis, pengembangan instrumen, dan pengujian empiris.
+                          </p>
+
+                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>3.2 Populasi dan Sampel</div>
+                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6, marginBottom: 12 }}>
+                            Populasi sasaran mencakup pengguna sistem di lingkungan akademik dan industri, dengan teknik purposive sampling berbasis kriteria inklusi spesifik.
+                          </p>
+
+                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>3.3 Teknik Analisis Data</div>
+                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6 }}>
+                            Analisis data dilakukan menggunakan Structural Equation Modeling (SEM) dengan evaluasi outer model (validitas konvergen, validitas diskriminan, reliabilitas komposit) dan inner model (koefisien determinasi R2 dan signifikansi uji t).
+                          </p>
+                        </div>
+
+                        <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>3</div>
+                      </div>
+
+                      {/* ══ LEMBAR 7: DAFTAR PUSTAKA ══ */}
+                      <div
+                        style={{
+                          width: "100%",
+                          minHeight: "260mm",
+                          background: "#FFFFFF",
+                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                          fontFamily: '"Times New Roman", Times, serif',
+                          color: "#000000",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          position: "relative",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                          [7 / 7] Daftar Pustaka
+                        </div>
+
+                        <div>
+                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
+                            DAFTAR PUSTAKA
+                          </div>
+                          <div style={{ fontSize: "10pt", lineHeight: 1.65, display: "flex", flexDirection: "column", gap: 10, textAlign: "justify" }}>
+                            <div>[1] J. Doe and A. Smith, "Empirical Evaluation in Computing Systems," <em>IEEE Transactions on Software Engineering</em>, vol. 48, no. 2, pp. 210–225, 2024. https://doi.org/10.1109/TSE.2023.1001</div>
+                            <div>[2] R. Johnson, "Advanced Statistical Inference with PLS-SEM," <em>Journal of Systems and Software</em>, vol. 190, pp. 111–124, 2023.</div>
+                            <div>[3] Telkom University, <em>Buku Pedoman Pengelolaan Tugas Akhir dan Skripsi Fakultas Informatika</em>, Bandung: Telkom University Press, 2024.</div>
+                            <div>[4] M. Hair, G. Hult, C. Ringle, and M. Sarstedt, <em>A Primer on Partial Least Squares Structural Equation Modeling (PLS-SEM)</em>, 3rd ed. Thousand Oaks: SAGE Publications, 2022.</div>
+                          </div>
+                        </div>
+
+                        </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── LATEX SOURCE CODE VIEW ── */}
                 {templatePreviewMode === "LATEX_CODE" && (
-                  <div style={{ background: "#0F172A", borderRadius: 10, padding: 16, overflowX: "auto", maxHeight: 520, border: "1px solid #1E293B" }}>
-                    <pre style={{ margin: 0, color: "#E2E8F0", fontSize: 12, fontFamily: 'Consolas, Monaco, "Courier New", monospace', lineHeight: 1.55 }}>
+                  <div style={{ background: "#0F172A", borderRadius: 10, padding: 16, overflowX: "auto", maxHeight: 540, border: "1px solid #1E293B" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #334155" }}>
+                      <span style={{ fontSize: 11, color: "#94A3B8", fontFamily: "monospace" }}>
+                        main.tex & zetera-vars.tex preview
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleCopyLatex}
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          background: "#1E293B",
+                          color: "#CBD5E1",
+                          border: "1px solid #475569",
+                          fontSize: 11,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {copiedLatex ? "✓ Tersalin!" : "Salin .tex"}
+                      </button>
+                    </div>
+                    <pre style={{ margin: 0, color: "#E2E8F0", fontSize: 11.5, fontFamily: 'Consolas, Monaco, "Courier New", monospace', lineHeight: 1.55 }}>
                       <code>{generateLatexFromTemplate(templateEditForm)}</code>
                     </pre>
                   </div>
@@ -3960,6 +5418,433 @@ const response = await executeAiCompletion({
           </div>
         )}
       </main>
+
+      {/* MODAL TAMBAH TEMPLATE BARU (3 METODE: UPLOAD LATEX MULTI/SINGLE, UPLOAD DOCX, TULIS MANUAL LATEX) */}
+      {showAddTemplateModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.45)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, padding: 20 }}>
+          <div style={{ background: "#FFFFFF", borderRadius: 16, width: "100%", maxWidth: 640, maxHeight: "90vh", overflowY: "auto", padding: "24px 28px", border: "1px solid #E4E4E9", boxShadow: "0 20px 50px rgba(0,0,0,0.18)" }}>
+            {/* Modal Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, borderBottom: "1px solid #F1F5F9", paddingBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: "#EEF2FF", color: "#4338CA", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <FileCode size={18} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
+                    Tambah Master Template Dokumen
+                  </h3>
+                  <div style={{ fontSize: 11.5, color: "#64748B" }}>
+                    Pilih metode input template yang ingin ditambahkan ke sistem
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setShowAddTemplateModal(false)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 18, color: "#64748B" }}>
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* 3-Mode Source Selector */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#334155", display: "block", marginBottom: 8 }}>
+                  Pilih Metode Input Template:
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  {/* Mode 1: Upload LaTeX */}
+                  <div
+                    onClick={() => {
+                      setTemplateCreationSource("UPLOAD_LATEX");
+                      setNewTemplateData((prev) => ({ ...prev, formatType: "LATEX" }));
+                    }}
+                    style={{
+                      border: templateCreationSource === "UPLOAD_LATEX" ? "2px solid #4338CA" : "1px solid #CBD5E1",
+                      background: templateCreationSource === "UPLOAD_LATEX" ? "#EEF2FF" : "#FAFAFC",
+                      borderRadius: 10,
+                      padding: "12px 10px",
+                      cursor: "pointer",
+                      textAlign: "center",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <UploadCloud size={20} color={templateCreationSource === "UPLOAD_LATEX" ? "#4338CA" : "#64748B"} style={{ margin: "0 auto 4px" }} />
+                    <div style={{ fontSize: 12, fontWeight: 700, color: templateCreationSource === "UPLOAD_LATEX" ? "#4338CA" : "#1E293B" }}>
+                      Upload LaTeX
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "#64748B", marginTop: 2 }}>
+                      Multi-file / .tex / .zip
+                    </div>
+                  </div>
+
+                  {/* Mode 2: Upload DOCX */}
+                  <div
+                    onClick={() => {
+                      setTemplateCreationSource("UPLOAD_DOCX");
+                      setNewTemplateData((prev) => ({ ...prev, formatType: "DOCX" }));
+                    }}
+                    style={{
+                      border: templateCreationSource === "UPLOAD_DOCX" ? "2px solid #2563EB" : "1px solid #CBD5E1",
+                      background: templateCreationSource === "UPLOAD_DOCX" ? "#EFF6FF" : "#FAFAFC",
+                      borderRadius: 10,
+                      padding: "12px 10px",
+                      cursor: "pointer",
+                      textAlign: "center",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <FileText size={20} color={templateCreationSource === "UPLOAD_DOCX" ? "#2563EB" : "#64748B"} style={{ margin: "0 auto 4px" }} />
+                    <div style={{ fontSize: 12, fontWeight: 700, color: templateCreationSource === "UPLOAD_DOCX" ? "#2563EB" : "#1E293B" }}>
+                      Upload Word
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "#64748B", marginTop: 2 }}>
+                      Dokumen .docx
+                    </div>
+                  </div>
+
+                  {/* Mode 3: Tulis Manual LaTeX */}
+                  <div
+                    onClick={() => {
+                      setTemplateCreationSource("WRITE_LATEX");
+                      setNewTemplateData((prev) => ({ ...prev, formatType: "LATEX" }));
+                      if (!manualLatexInput) setManualLatexInput(LATEX_PRESETS.IEEE_CONFERENCE);
+                    }}
+                    style={{
+                      border: templateCreationSource === "WRITE_LATEX" ? "2px solid #7C3AED" : "1px solid #CBD5E1",
+                      background: templateCreationSource === "WRITE_LATEX" ? "#F5F3FF" : "#FAFAFC",
+                      borderRadius: 10,
+                      padding: "12px 10px",
+                      cursor: "pointer",
+                      textAlign: "center",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <Code size={20} color={templateCreationSource === "WRITE_LATEX" ? "#7C3AED" : "#64748B"} style={{ margin: "0 auto 4px" }} />
+                    <div style={{ fontSize: 12, fontWeight: 700, color: templateCreationSource === "WRITE_LATEX" ? "#7C3AED" : "#1E293B" }}>
+                      Tulis LaTeX
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "#64748B", marginTop: 2 }}>
+                      Preset & Live Editor
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* DYNAMIC SECTION BASED ON CHOSEN MODE */}
+              {/* ── MODE 1: UPLOAD LATEX (MULTI-FILE / SINGLE .TEX / .ZIP) ── */}
+              {templateCreationSource === "UPLOAD_LATEX" && (
+                <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: 14 }}>
+                  <label
+                    style={{
+                      border: "2px dashed #CBD5E1",
+                      borderRadius: 8,
+                      padding: "16px 14px",
+                      textAlign: "center",
+                      cursor: "pointer",
+                      background: uploadedFilesList.length > 0 ? "#F0FDF4" : "#FFFFFF",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <input
+                      type="file"
+                      multiple
+                      accept=".tex,.zip,.cls,.sty,.bib,.txt"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const files = e.target.files;
+                        if (!files || files.length === 0) return;
+                        const fileArr = Array.from(files);
+                        const newItems: { name: string; size: string; content?: string }[] = [];
+
+                        let mainTexFound = false;
+                        fileArr.forEach((f) => {
+                          const sizeStr = f.size > 1024 * 1024 ? `${(f.size / (1024 * 1024)).toFixed(1)} MB` : `${(f.size / 1024).toFixed(1)} KB`;
+                          const item = { name: f.name, size: sizeStr, content: "" };
+                          if (f.name.endsWith(".tex")) {
+                            const reader = new FileReader();
+                            reader.onload = (re) => {
+                              const txt = re.target?.result as string;
+                              item.content = txt;
+                              if (!mainTexFound) {
+                                mainTexFound = true;
+                                setManualLatexInput(txt);
+                                const parsed = parseLatexContent(txt);
+                                if (parsed.name && !newTemplateData.name) {
+                                  setNewTemplateData((prev) => ({ ...prev, name: parsed.name }));
+                                }
+                                notify.success("File LaTeX Berhasil Dimuat", `Mendeteksi ${parsed.sections.length} bab dan preamble.`);
+                              }
+                            };
+                            reader.readAsText(f);
+                          }
+                          newItems.push(item);
+                        });
+                        setUploadedFilesList(newItems);
+                        setUploadedPackageFile({
+                          name: fileArr.length === 1 ? fileArr[0].name : `${fileArr.length} berkas LaTeX (.tex, .cls, .bib)`,
+                          size: `${(fileArr.reduce((acc, curr) => acc + curr.size, 0) / 1024).toFixed(1)} KB`,
+                          type: fileArr[0].name.split(".").pop() || "tex",
+                        });
+                      }}
+                    />
+                    <UploadCloud size={24} color={uploadedFilesList.length > 0 ? "#16A34A" : "#4338CA"} />
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1E293B" }}>
+                      {uploadedFilesList.length > 0
+                        ? `${uploadedFilesList.length} Berkas LaTeX Terpilih`
+                        : "Klik atau seret satu atau beberapa berkas LaTeX (.tex, .cls, .sty, .bib, .zip)"}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748B" }}>
+                      Mendukung unggah satu berkas .tex, arsip .zip paket Overleaf lengkap, atau memilih banyak berkas sekaligus.
+                    </div>
+                  </label>
+
+                  {uploadedFilesList.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                      {uploadedFilesList.map((f, idx) => (
+                        <span
+                          key={idx}
+                          style={{
+                            fontSize: 11,
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            background: f.name.endsWith(".tex") ? "#EEF2FF" : "#F1F5F9",
+                            color: f.name.endsWith(".tex") ? "#3730A3" : "#475569",
+                            border: "1px solid #CBD5E1",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          📄 <strong>{f.name}</strong> <span style={{ opacity: 0.7 }}>({f.size})</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── MODE 2: UPLOAD WORD (.DOCX) ── */}
+              {templateCreationSource === "UPLOAD_DOCX" && (
+                <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: 14 }}>
+                  <label
+                    style={{
+                      border: "2px dashed #93C5FD",
+                      borderRadius: 8,
+                      padding: "16px 14px",
+                      textAlign: "center",
+                      cursor: "pointer",
+                      background: uploadedPackageFile ? "#EFF6FF" : "#FFFFFF",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <input
+                      type="file"
+                      accept=".docx,.doc"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setUploadedPackageFile({
+                            name: file.name,
+                            size: `${(file.size / 1024).toFixed(1)} KB`,
+                            type: "docx",
+                          });
+                          if (!newTemplateData.name) {
+                            setNewTemplateData((prev) => ({ ...prev, name: file.name.replace(/\.docx?$/i, "") }));
+                          }
+                          notify.success("Dokumen Word Dipilih!", `Berkas ${file.name} siap digunakan.`);
+                        }
+                      }}
+                    />
+                    <FileText size={24} color="#2563EB" />
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1E293B" }}>
+                      {uploadedPackageFile ? uploadedPackageFile.name : "Pilih atau seret berkas Microsoft Word (.docx)"}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748B" }}>
+                      Sistem akan menyusun struktur proposal akademik standar berbasis dokumen Word ini.
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              {/* ── MODE 3: TULIS MANUAL LATEX DENGAN PRESET & EDITOR ── */}
+              {templateCreationSource === "WRITE_LATEX" && (
+                <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "#334155" }}>
+                      Pilih Boilerplate / Format Siap Pakai:
+                    </span>
+                    <span style={{ fontSize: 10.5, color: "#64748B" }}>
+                      Klik untuk mengisi editor di bawah
+                    </span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualLatexInput(LATEX_PRESETS.IEEE_CONFERENCE);
+                        const p = parseLatexContent(LATEX_PRESETS.IEEE_CONFERENCE);
+                        setNewTemplateData((prev) => ({
+                          ...prev,
+                          name: prev.name || "Makalah Konferensi IEEE",
+                          formatType: "LATEX",
+                        }));
+                        notify.success("Template IEEE Dimuat!", "Format IEEE Conference siap dimodifikasi.");
+                      }}
+                      style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #C7D2FE", background: "#EEF2FF", color: "#3730A3", fontSize: 11, fontWeight: 700, cursor: "pointer", textAlign: "left" }}
+                    >
+                      ⚡ IEEE Conference (Two-Column)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualLatexInput(LATEX_PRESETS.TELKOM_FIF);
+                        setNewTemplateData((prev) => ({
+                          ...prev,
+                          name: prev.name || "Proposal Tugas Akhir Informatika Telkom FIF",
+                          formatType: "LATEX",
+                        }));
+                        notify.success("Template Telkom FIF Dimuat!", "Format resmi Telkom University FIF siap dimodifikasi.");
+                      }}
+                      style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#334155", fontSize: 11, fontWeight: 700, cursor: "pointer", textAlign: "left" }}
+                    >
+                      ⚡ Telkom University FIF (4-3-3-3)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualLatexInput(LATEX_PRESETS.SKRIPSI_INDONESIA);
+                        setNewTemplateData((prev) => ({
+                          ...prev,
+                          name: prev.name || "Format Standar Skripsi Indonesia",
+                          formatType: "LATEX",
+                        }));
+                        notify.success("Template Skripsi Dimuat!", "Format standar skripsi nasional siap dimodifikasi.");
+                      }}
+                      style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#334155", fontSize: 11, fontWeight: 700, cursor: "pointer", textAlign: "left" }}
+                    >
+                      ⚡ Format Standar Skripsi
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualLatexInput(LATEX_PRESETS.BLANK_LATEX);
+                        notify.success("Template Kosong Dimuat!", "Silakan ketik atau tempel LaTeX kustom.");
+                      }}
+                      style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#64748B", fontSize: 11, fontWeight: 700, cursor: "pointer", textAlign: "left" }}
+                    >
+                      ⚡ Template Kosong
+                    </button>
+                  </div>
+
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>
+                        Ketik / Tempel Kode LaTeX Anda:
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!manualLatexInput.trim()) return;
+                          const parsed = parseLatexContent(manualLatexInput);
+                          if (parsed.name && !newTemplateData.name) {
+                            setNewTemplateData((prev) => ({ ...prev, name: parsed.name }));
+                          }
+                          notify.success("Ekstraksi Berhasil!", `Terdeteksi ${parsed.sections.length} bagian bab & preamble.`);
+                        }}
+                        style={{ background: "transparent", border: "none", color: "#4338CA", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        ⚡ Ekstrak Struktur Bab
+                      </button>
+                    </div>
+                    <textarea
+                      rows={8}
+                      value={manualLatexInput}
+                      onChange={(e) => setManualLatexInput(e.target.value)}
+                      placeholder="\\documentclass[...]{...}\n\\begin{document}\n\\title{...}\n\\section{Introduction}..."
+                      style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11.5, fontFamily: 'Consolas, Monaco, "Courier New", monospace', color: "#0F172A", background: "#FFFFFF", resize: "vertical", lineHeight: 1.45 }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* IDENTITAS TEMPLATE INPUTS */}
+              <div>
+                <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 4 }}>
+                  Nama Template *:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Proposal Tugas Akhir S1 Teknik Industri atau IEEE Conference"
+                  value={newTemplateData.name}
+                  onChange={(e) => setNewTemplateData({ ...newTemplateData, name: e.target.value })}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 13 }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 4 }}>
+                    Fakultas:
+                  </label>
+                  <input
+                    type="text"
+                    value={newTemplateData.sourceFaculty}
+                    onChange={(e) => setNewTemplateData({ ...newTemplateData, sourceFaculty: e.target.value })}
+                    style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12.5 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 4 }}>
+                    Universitas / Lembaga:
+                  </label>
+                  <input
+                    type="text"
+                    value={newTemplateData.university}
+                    onChange={(e) => setNewTemplateData({ ...newTemplateData, university: e.target.value })}
+                    style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12.5 }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 4 }}>
+                  Deskripsi / Panduan Singkat:
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Deskripsi singkat struktur atau pedoman institusi..."
+                  value={newTemplateData.description}
+                  onChange={(e) => setNewTemplateData({ ...newTemplateData, description: e.target.value })}
+                  style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12 }}
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 6, paddingTop: 14, borderTop: "1px solid #F1F5F9" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddTemplateModal(false)}
+                  style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #CBD5E1", background: "#FFFFFF", fontSize: 12.5, fontWeight: 600, color: "#64748B", cursor: "pointer" }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmAddTemplate}
+                  style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "#4338CA", color: "#FFFFFF", fontSize: 12.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px rgba(67, 56, 202, 0.25)" }}
+                >
+                  Buat & Buka di Split-Screen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL 1: Tambah / Edit Model AI */}
       {showModelModal && (

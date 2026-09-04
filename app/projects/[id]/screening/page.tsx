@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { notify } from "@/lib/notification";
 import {
   ArrowLeft,
   BookOpen,
@@ -119,7 +120,7 @@ export default function UnifiedScreeningPage() {
 
     const remainingSlots = 10 - journals.length;
     if (remainingSlots <= 0) {
-      alert("Maksimal 10 jurnal per project.");
+      notify.warning("Batas Maksimal Jurnal", "Maksimal 10 jurnal per project riset.");
       return;
     }
 
@@ -162,7 +163,7 @@ export default function UnifiedScreeningPage() {
           .map((j) => j.id)
       );
     } catch (err: any) {
-      alert(err.message || "Gagal memproses file PDF");
+      notify.error("Gagal Memproses PDF", err.message || "Terjadi kesalahan saat memproses berkas PDF");
     } finally {
       setIsProcessing(false);
       setStatusMessage("");
@@ -176,7 +177,7 @@ export default function UnifiedScreeningPage() {
     if (!doiInput.trim()) return;
 
     if (journals.length >= 10) {
-      alert("Maksimal 10 jurnal per project.");
+      notify.warning("Batas Maksimal Jurnal", "Maksimal 10 jurnal per project riset.");
       return;
     }
 
@@ -221,14 +222,23 @@ export default function UnifiedScreeningPage() {
   };
 
   // Delete journal
-  const handleDelete = async (id: string) => {
-    try {
-      await api.journals.delete(projectId, id);
-      setJournals((prev) => prev.filter((j) => j.id !== id));
-      setSelectedIds((prev) => prev.filter((item) => item !== id));
-    } catch (err: any) {
-      alert(err.message || "Gagal menghapus jurnal");
-    }
+  const handleDelete = (id: string, title?: string) => {
+    notify.confirm({
+      title: "Hapus Jurnal Riset?",
+      message: `Hapus jurnal "${title || "ini"}" dari project ini? Data telaah AI terkait akan dibersihkan.`,
+      confirmLabel: "Hapus Jurnal",
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          await api.journals.delete(projectId, id);
+          setJournals((prev) => prev.filter((j) => j.id !== id));
+          setSelectedIds((prev) => prev.filter((item) => item !== id));
+          notify.success("Jurnal Dihapus", "Jurnal telah dikeluarkan dari project.");
+        } catch (err: any) {
+          notify.error("Gagal Menghapus Jurnal", err.message || "Terjadi kesalahan server");
+        }
+      },
+    });
   };
 
   // ── 1-CLICK: GENERATE RESEARCH FRAMEWORK NODES & TRANSITION TO CANVAS ──
@@ -238,7 +248,7 @@ export default function UnifiedScreeningPage() {
       await api.framework.generateFromJournals(projectId, { mode: "SYNTHESIS" });
       router.push(`/projects/${projectId}/framework`);
     } catch (err: any) {
-      alert(err.message || "Gagal membangun kerangka riset otomatis");
+      notify.error("Gagal Membangun Kerangka", err.message || "Gagal membangun kerangka riset otomatis");
       setPopulating(false);
     }
   };
@@ -259,7 +269,7 @@ export default function UnifiedScreeningPage() {
       });
       setExpandedAiAnalysis(freshExpanded);
     } catch (err: any) {
-      alert(err.message || "Gagal menelaah abstrak");
+      notify.error("Gagal Menelaah Abstrak", err.message || "Gagal menelaah abstrak");
     } finally {
       setIsProcessing(false);
       setStatusMessage("");
@@ -719,7 +729,7 @@ export default function UnifiedScreeningPage() {
                                   );
                                 }
                               } catch (err: any) {
-                                alert(err.message || "Gagal mengubah tier");
+                                notify.error("Gagal Mengubah Tier", err.message || "Gagal mengubah tier");
                               }
                             }}
                             style={{
@@ -759,10 +769,10 @@ export default function UnifiedScreeningPage() {
                                     setJournals((prev) =>
                                       prev.map((j) => (j.id === journal.id ? { ...j, verifiedAt: new Date().toISOString() } : j))
                                     );
-                                    alert("DOI berhasil diverifikasi!");
+                                    notify.success("DOI Terverifikasi!", "Metadata DOI berhasil dicocokkan dengan Crossref/OpenAlex.");
                                   }
                                 } catch (err: any) {
-                                  alert(err.message || "Verifikasi DOI gagal");
+                                  notify.error("Verifikasi DOI Gagal", err.message || "Tidak dapat memverifikasi DOI");
                                 }
                               }}
                               style={{

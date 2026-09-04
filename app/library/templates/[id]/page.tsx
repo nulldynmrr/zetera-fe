@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { api, ProposalTemplate, ProposalTemplateSection } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { notify } from "@/lib/notification";
 import {
   FileText,
   ChevronRight,
@@ -123,18 +124,15 @@ export default function TemplateDetailPage() {
   const handleClone = async () => {
     if (!template) return;
     try {
-      const newName = prompt(
-        "Masukkan nama untuk template salinan:",
-        `${template.name} (Kustom)`
-      );
-      if (!newName) return;
+      const newName = `${template.name} (Salinan ${new Date().toLocaleDateString("id-ID")})`;
 
       const res = await api.templates.clone(template.id, newName);
       if (res.success && res.data) {
+        notify.success("Template Berhasil Diduplikasi!", `Salinan "${newName}" telah dibuat.`);
         router.push(`/library/templates/${res.data.id}`);
       }
     } catch (err: any) {
-      alert("Gagal menyalin template: " + err.message);
+      notify.error("Gagal menyalin template: " + err.message);
     }
   };
 

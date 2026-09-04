@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { notify } from "@/lib/notification";
 import {
   LayoutDashboard,
   Network,
@@ -133,16 +134,23 @@ export default function DashboardPage() {
     }
   };
 
-  const handleDeleteProject = async (id: string, e: React.MouseEvent) => {
+  const handleDeleteProject = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Hapus project riset ini secara permanen dari database?")) return;
-
-    try {
-      await api.projects.delete(id);
-      setProjects((prev) => prev.filter((p) => p.id !== id));
-    } catch (err: any) {
-      alert(err.message || "Gagal menghapus project");
-    }
+    notify.confirm({
+      title: "Hapus Project Riset?",
+      message: "Hapus project riset ini beserta seluruh jurnal, kerangka berpikir, dan draf naskah secara permanen?",
+      confirmLabel: "Hapus Permanen",
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          await api.projects.delete(id);
+          setProjects((prev) => prev.filter((p) => p.id !== id));
+          notify.success("Project Berhasil Dihapus", "Project riset telah dihapus dari workspace.");
+        } catch (err: any) {
+          notify.error("Gagal Menghapus Project", err.message || "Terjadi kesalahan");
+        }
+      },
+    });
   };
 
   if (isLoading || !user) {

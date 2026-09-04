@@ -26,6 +26,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { CitationBadge } from "@/components/CitationBadge";
+import { notify } from "@/lib/notification";
 import { useRequireAuth } from "@/lib/auth-context";
 import {
   sanitizeAcademicText,
@@ -177,7 +178,7 @@ export default function JournalReaderPage() {
       );
       setTimeout(() => setAiSuccessMsg(""), 6000);
     } catch (err: any) {
-      alert(err.message || "Gagal menjalankan AI Cross-Check");
+      notify.error(err.message || "Gagal menjalankan AI Cross-Check");
     } finally {
       setAiRunning(false);
       setAiProgress(0);
@@ -211,8 +212,9 @@ export default function JournalReaderPage() {
       setShowMapModal(false);
       setQuoteInput("");
       setPageNumberInput("");
+      notify.success("Berhasil memetakan bukti ke node framework!");
     } catch (err: any) {
-      alert(err.message || "Gagal memetakan bukti ke node framework");
+      notify.error(err.message || "Gagal memetakan bukti ke node framework");
     } finally {
       setSavingMapping(false);
     }
@@ -220,7 +222,14 @@ export default function JournalReaderPage() {
 
   // Remove Evidence Mapping
   const handleRemoveMapping = async (mappingId: string) => {
-    if (!confirm("Hapus bukti variabel ini?")) return;
+    const confirmed = await notify.confirm({
+      title: "Hapus Bukti",
+      description: "Hapus bukti variabel ini dari pemetaan framework?",
+      confirmLabel: "Hapus",
+      cancelLabel: "Batal",
+      isDestructive: true,
+    });
+    if (!confirmed) return;
 
     try {
       await api.journals.removeEvidence(projectId, journalId, mappingId);
@@ -231,8 +240,9 @@ export default function JournalReaderPage() {
           nodeMappings: (prev.nodeMappings || []).filter((m) => m.id !== mappingId),
         };
       });
+      notify.success("Bukti berhasil dihapus");
     } catch (err: any) {
-      alert(err.message || "Gagal menghapus pemetaan");
+      notify.error(err.message || "Gagal menghapus pemetaan");
     }
   };
 

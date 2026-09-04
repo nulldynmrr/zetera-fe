@@ -10,7 +10,9 @@ export type TabKey =
   | "appendix"
   | "latex";
 
-export type TemplateType = "TELKOM_FIF" | "GENERAL_ID";
+export type TemplateType = "TELKOM_FIF" | "GENERAL_ID" | string;
+
+export type { ProposalTemplate, ProposalTemplateSection, TemplateVariable } from "@/lib/api-client";
 
 export interface ReferenceItem {
   id: string;
@@ -184,6 +186,7 @@ export interface CoverData {
   universitas: string;
   kota: string;
   year: string;
+  logoUrl?: string | null;
 }
 
 export interface ApprovalData {

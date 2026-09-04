@@ -34,6 +34,7 @@ import { AddSubChapterModal } from "./components/modals/AddSubChapterModal";
 import { CitationPickerModal } from "./components/modals/CitationPickerModal";
 import { PdfExportModal } from "./components/modals/PdfExportModal";
 import { TypoTooltip } from "./components/modals/TypoTooltip";
+import { SwitchTemplateModal } from "./components/modals/SwitchTemplateModal";
 
 export default function ProposalPage() {
   const params = useParams();
@@ -161,6 +162,8 @@ export default function ProposalPage() {
       <ProposalRibbon
         projectId={projectId}
         projectTitle={editor.project?.title || editor.coverData.title}
+        activeTemplate={editor.activeTemplate}
+        onOpenSwitchTemplate={() => editor.setShowSwitchTemplateModal(true)}
         isEditMode={editor.isEditMode}
         setIsEditMode={editor.setIsEditMode}
         saveDraftStatus={editor.saveDraftStatus}
@@ -685,6 +688,25 @@ export default function ProposalPage() {
         approvalData={editor.approvalData}
         setApprovalData={editor.setApprovalData}
         triggerAutoSave={editor.triggerAutoSave}
+        activeTemplate={editor.activeTemplate}
+        variableValues={editor.variableValues}
+        onSaveVariableValues={editor.handleSaveVariableValues}
+      />
+
+      <SwitchTemplateModal
+        isOpen={editor.showSwitchTemplateModal}
+        onClose={() => editor.setShowSwitchTemplateModal(false)}
+        projectId={projectId}
+        activeTemplate={editor.activeTemplate}
+        onTemplateSwitched={(newTpl) => {
+          editor.setActiveTemplate(newTpl);
+          if (newTpl.formatType === "DOCX") {
+            editor.setSelectedTemplate("GENERAL_ID");
+          } else {
+            editor.setSelectedTemplate("TELKOM_FIF");
+          }
+          editor.triggerAutoSave();
+        }}
       />
 
       <PageSetupModal

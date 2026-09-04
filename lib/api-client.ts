@@ -171,10 +171,27 @@ export interface ProposalTemplateSection {
   latexSnippet?: string | null;
 }
 
+export interface TemplateVariable {
+  id?: string;
+  templateId?: string;
+  key: string;
+  label?: string;
+  varType: "TEXT" | "IMAGE";
+  required?: boolean;
+  defaultValue?: string | null;
+  defaultAssetId?: string | null;
+  bindingKey?: string;
+  order?: number;
+}
+
 export interface ProposalTemplate {
   id: string;
   name: string;
   sourceFaculty?: string | null;
+  sourceCampus?: string | null;
+  formatType?: "LATEX" | "DOCX";
+  status?: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+  version?: number;
   code?: string;
   university?: string;
   description?: string;
@@ -185,6 +202,7 @@ export interface ProposalTemplate {
   latexBody?: string;
   margins?: { top: string; bottom: string; left: string; right: string };
   sections?: ProposalTemplateSection[];
+  variables?: TemplateVariable[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -204,6 +222,10 @@ export interface ResearchProject {
   commonNarrative?: any | null;
   customOutline?: any | null;
   citationStyle?: string | null;
+  templateId?: string | null;
+  templateVersion?: number | null;
+  variableValues?: Record<string, any> | null;
+  template?: ProposalTemplate | null;
   status: "ACTIVE" | "ARCHIVED" | "COMPLETED";
   createdAt: string;
   updatedAt: string;
@@ -382,6 +404,9 @@ export interface OutlineEvidence {
   sourceType: "MANUAL" | "OPENALEX" | "SEMANTIC_SCHOLAR" | "AI_SYNTHESIS" | "CROSSREF" | "BUKU" | "LAPORAN_RESMI" | "JURNAL_MANUAL" | "WEBSITE" | "LAINNYA" | string;
   publication?: string;
   venue?: string;
+  pageNumber?: number | null;
+  quote?: string | null;
+  journalId?: string | null;
 }
 
 
@@ -434,13 +459,56 @@ export const api = {
   // Proposal Templates Library
   templates: {
     list: () => http.get<{ success: boolean; data: ProposalTemplate[] }>("/api/templates"),
+    create: (body: {
+      name: string;
+      description?: string | null;
+      formatType?: "LATEX" | "DOCX";
+      status?: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+      version?: string | number;
+      sourceFaculty?: string | null;
+      sourceCampus?: string | null;
+      institution?: string | null;
+      university?: string | null;
+      faculty?: string | null;
+      preamble?: string | null;
+      marginConfig?: any;
+      rawLatex?: string | null;
+      latexSource?: string | null;
+      packageDetails?: any;
+      numberingConfig?: any;
+      sections?: { order?: number; title: string; isOptional?: boolean; guidanceText?: string | null }[];
+      variables?: TemplateVariable[];
+    }) => http.post<{ success: boolean; data: ProposalTemplate }>("/api/templates", body),
     get: (templateId: string) => http.get<{ success: boolean; data: ProposalTemplate }>(`/api/templates/${templateId}`),
     clone: (templateId: string, name?: string) =>
       http.post<{ success: boolean; data: ProposalTemplate }>(`/api/templates/${templateId}/clone`, { name }),
-    update: (templateId: string, body: { name?: string; sections?: { order?: number; title: string; isOptional?: boolean; guidanceText?: string | null }[] }) =>
-      http.patch<{ success: boolean; data: ProposalTemplate }>(`/api/templates/${templateId}`, body),
+    update: (
+      templateId: string,
+      body: {
+        name?: string;
+        description?: string | null;
+        formatType?: "LATEX" | "DOCX";
+        sourceFaculty?: string | null;
+        sourceCampus?: string | null;
+        institution?: string | null;
+        university?: string | null;
+        faculty?: string | null;
+        preamble?: string | null;
+        marginConfig?: any;
+        rawLatex?: string | null;
+        latexSource?: string | null;
+        packageDetails?: any;
+        numberingConfig?: any;
+        sections?: { order?: number; title: string; isOptional?: boolean; guidanceText?: string | null }[];
+        variables?: TemplateVariable[];
+      }
+    ) => http.patch<{ success: boolean; data: ProposalTemplate }>(`/api/templates/${templateId}`, body),
     delete: (templateId: string) => http.delete<{ success: boolean; message: string }>(`/api/templates/${templateId}`),
     seed: () => http.post<{ success: boolean; seeded: boolean; message: string }>("/api/templates/seed"),
+    getVariables: (templateId: string) =>
+      http.get<{ success: boolean; data: TemplateVariable[] }>(`/api/templates/${templateId}/variables`),
+    updateVariables: (templateId: string, variables: TemplateVariable[]) =>
+      http.put<{ success: boolean; data: ProposalTemplate }>(`/api/templates/${templateId}/variables`, { variables }),
   },
 
   // Research Projects CRUD & Proposal Workflow
@@ -458,6 +526,30 @@ export const api = {
       http.post<{ success: boolean; data: any }>("/api/projects/recommend-outline", body),
     syncProposalToFramework: (projectId: string, proposalText?: string) =>
       http.post<{ success: boolean; data: any }>(`/api/projects/${projectId}/sync-framework`, { proposalText }),
+    previewSwitchTemplate: (projectId: string, targetTemplateId: string) =>
+      http.post<{
+        success: boolean;
+        data: {
+          projectId: string;
+          currentTemplate?: { id: string; name: string } | null;
+          targetTemplate: { id: string; name: string; formatType?: string };
+          matchedSections: Array<{
+            sourceSectionId: string;
+            sourceTitle: string;
+            targetSectionId: string | null;
+            targetTitle: string | null;
+            confidence: number;
+            status?: string;
+          }>;
+          newEmptySections: Array<{ targetSectionId: string; targetTitle: string; order: number }>;
+          targetVariables: TemplateVariable[];
+        };
+      }>(`/api/projects/${projectId}/template/preview-switch`, { targetTemplateId }),
+    switchTemplate: (projectId: string, targetTemplateId: string, customMapping?: Record<string, string>) =>
+      http.post<{ success: boolean; message: string; data: any }>(`/api/projects/${projectId}/template/switch`, {
+        targetTemplateId,
+        customMapping,
+      }),
 
     // Custom BAB / Daftar Isi
     customOutline: {
