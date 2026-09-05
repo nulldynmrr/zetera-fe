@@ -172,7 +172,7 @@ export default function OutlinePage() {
       if (projectId) {
         try {
           localStorage.setItem(`zetera_bullet_drafts_${projectId}`, JSON.stringify(next));
-        } catch (e) {}
+        } catch (e) { }
       }
       return next;
     });
@@ -466,7 +466,7 @@ export default function OutlinePage() {
 
     const currentSubMap = bulletDrafts[selectedItemId] || {};
     const currentText = currentSubMap[activeBulletIndex] || "";
-    
+
     let insertion = citationTag;
     if (quoteText && quoteText.trim()) {
       insertion = `"${quoteText.trim()}" ${citationTag}`;
@@ -2033,7 +2033,7 @@ export default function OutlinePage() {
                                           }}
                                         >
                                           <ArrowLeft size={14} />
-                                          <span>← Kembali ke Daftar Jurnal</span>
+                                          <span>Kembali ke Daftar Jurnal</span>
                                         </button>
 
                                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -2197,9 +2197,9 @@ export default function OutlinePage() {
 
                                       {/* PDF Embed / Physical Document Iframe */}
                                       {activeReaderJournal.filePath ||
-                                      activeReaderJournal.openAccessPdfUrl ||
-                                      activeReaderJournal.pdfStoragePath ||
-                                      (activeReaderJournal.url && activeReaderJournal.url.toLowerCase().endsWith(".pdf")) ? (
+                                        activeReaderJournal.openAccessPdfUrl ||
+                                        activeReaderJournal.pdfStoragePath ||
+                                        (activeReaderJournal.url && activeReaderJournal.url.toLowerCase().endsWith(".pdf")) ? (
                                         <iframe
                                           key={`${activeReaderJournal.id}-${readerCurrentPage}`}
                                           src={`${api.journals.getPdfProxyUrl(projectId, activeReaderJournal.id)}#page=${readerCurrentPage}&toolbar=1&navpanes=0`}
@@ -3007,53 +3007,53 @@ export default function OutlinePage() {
                                 </span>
                               </div>
 
-                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setRightTab("task");
-                                      handleJumpToCitation({
-                                        journalId: ev.journalId || ev.id,
-                                        title: ev.title,
-                                        pageNumber: ev.pageNumber || 1,
-                                        quote: ev.quote || ev.abstract || undefined,
-                                      });
-                                    }}
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: 4,
-                                      fontSize: 11.5,
-                                      fontWeight: 700,
-                                      color: "#059669",
-                                      background: "#ecfdf5",
-                                      border: "1px solid #a7f3d0",
-                                      padding: "5px 10px",
-                                      borderRadius: 6,
-                                      cursor: "pointer",
-                                    }}
-                                    title="Buka PDF di Reader Samping & Sorot Kutipan"
-                                  >
-                                    <Eye size={12} /> Lacak di PDF {ev.pageNumber ? `(Hal. ${ev.pageNumber})` : ""}
-                                  </button>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRightTab("task");
+                                    handleJumpToCitation({
+                                      journalId: ev.journalId || ev.id,
+                                      title: ev.title,
+                                      pageNumber: ev.pageNumber || 1,
+                                      quote: ev.quote || ev.abstract || undefined,
+                                    });
+                                  }}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    fontSize: 11.5,
+                                    fontWeight: 700,
+                                    color: "#059669",
+                                    background: "#ecfdf5",
+                                    border: "1px solid #a7f3d0",
+                                    padding: "5px 10px",
+                                    borderRadius: 6,
+                                    cursor: "pointer",
+                                  }}
+                                  title="Buka PDF di Reader Samping & Sorot Kutipan"
+                                >
+                                  <Eye size={12} /> Lacak di PDF {ev.pageNumber ? `(Hal. ${ev.pageNumber})` : ""}
+                                </button>
 
-                                  <button
-                                    onClick={() => handleRemoveEvidence(ev.id)}
-                                    title="Hapus bukti dari sub-bab ini"
-                                    style={{
-                                      background: "none",
-                                      border: "none",
-                                      color: "#94a3b8",
-                                      cursor: "pointer",
-                                      padding: 6,
-                                      borderRadius: 6,
-                                    }}
-                                    onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
-                                    onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </div>
+                                <button
+                                  onClick={() => handleRemoveEvidence(ev.id)}
+                                  title="Hapus bukti dari sub-bab ini"
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: "#94a3b8",
+                                    cursor: "pointer",
+                                    padding: 6,
+                                    borderRadius: 6,
+                                  }}
+                                  onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+                                  onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
                             </div>
                           ))
                         )}
@@ -3536,8 +3536,8 @@ export default function OutlinePage() {
         pdfUrl={
           previewJournal
             ? (previewJournal.filePath || previewJournal.openAccessPdfUrl || previewJournal.pdfStoragePath
-                ? api.journals.getPdfProxyUrl(projectId, previewJournal.id)
-                : null)
+              ? api.journals.getPdfProxyUrl(projectId, previewJournal.id)
+              : null)
             : null
         }
         doi={previewJournal?.doi}

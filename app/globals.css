@@ -151,3 +151,13 @@ body {
 .figma-canvas-viewport .react-flow__viewport {
   transition: transform 0.08s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* Glassmorphism Capsule Bar (Fluento Clean Siri Style - Borderless) */
+.capsule-glass-bar {
+  background: #f8fafc;
+  border-radius: 9999px;
+  border: none !important;
+  box-shadow: none !important;
+  transition: all 0.2s ease;
+}
+

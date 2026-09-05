@@ -33,6 +33,7 @@ import {
   Quote,
   Copy,
   Check,
+  MoreHorizontal,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -102,6 +103,7 @@ export default function JournalsPage() {
   const [hasAutoSearched, setHasAutoSearched] = useState(false);
   const [showDiscovery, setShowDiscovery] = useState(false);
   const [discoveryQuery, setDiscoveryQuery] = useState("");
+  const [showSearchRecommendations, setShowSearchRecommendations] = useState(true);
   const [discoveryDomain, setDiscoveryDomain] = useState<"GENERAL" | "HEALTH" | "AI_CS">("GENERAL");
   const [discoveryLoading, setDiscoveryLoading] = useState(false);
   const [discoveryResults, setDiscoveryResults] = useState<NormalizedPaper[]>([]);
@@ -219,18 +221,22 @@ export default function JournalsPage() {
 
   // ── Verified Citation Evidences State & Handlers (Strict Provenance) ──
   const [journalCitations, setJournalCitations] = useState<Record<string, JournalCitationEvidence[]>>({});
+  const [citationDepths, setCitationDepths] = useState<Record<string, "NORMAL" | "HEAVY">>({});
   const [extractingCitationsId, setExtractingCitationsId] = useState<string | null>(null);
   const [expandedCitations, setExpandedCitations] = useState<Record<string, boolean>>({});
   const [copiedCitationId, setCopiedCitationId] = useState<string | null>(null);
+  const [showSplitMenu, setShowSplitMenu] = useState(false);
 
-  const handleExtractCitations = async (journalId: string) => {
+  const handleExtractCitations = async (journalId: string, customDepth?: "NORMAL" | "HEAVY") => {
     if (!projectId) return;
+    const depth = customDepth || citationDepths[journalId] || "NORMAL";
     try {
       setExtractingCitationsId(journalId);
-      const res = await api.journals.extractCitations(projectId, journalId);
+      const res = await api.journals.extractCitations(projectId, journalId, depth);
       setJournalCitations((prev) => ({ ...prev, [journalId]: res.data }));
+      notify.success(`Berhasil mengekstrak ${res.data.length} kutipan bukti (${depth === "HEAVY" ? "Mendalam" : "Standar"}).`);
     } catch (err: any) {
-      console.warn("Gagal mengekstrak kutipan dari jurnal:", err.message);
+      console.warn("Gagal mengekstrak kutipan dari jurnal:", err?.message);
     } finally {
       setExtractingCitationsId(null);
     }
@@ -298,6 +304,21 @@ export default function JournalsPage() {
       }
     });
   }, [projectId, journals, journalCitations]);
+
+  // Otomatis sembunyikan bar rekomendasi AI & filter ketika halaman di-scroll ke bawah
+  useEffect(() => {
+    let lastScrollY = typeof window !== "undefined" ? window.scrollY : 0;
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (currentScrollY > 50 && currentScrollY > lastScrollY) {
+        setShowSearchRecommendations(false);
+      }
+      lastScrollY = currentScrollY;
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const renderCitationBank = (journal: Journal) => {
     const citations = journalCitations[journal.id];
@@ -403,6 +424,81 @@ export default function JournalsPage() {
         {/* Content Body */}
         {isOpen && (
           <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: 8 }}>
+            {/* Toolbar Bobot Ekstraksi & Ekstrak Ulang */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 8,
+                padding: "6px 10px",
+                background: "#ffffff",
+                borderRadius: 6,
+                border: "1px solid #f1f5f9",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 11, color: "#64748b", fontWeight: 500 }}>Bobot Ekstraksi:</span>
+                <div style={{ display: "inline-flex", background: "#f8fafc", padding: 2, borderRadius: 6, border: "1px solid #f1f5f9" }}>
+                  <button
+                    type="button"
+                    onClick={() => setCitationDepths((prev) => ({ ...prev, [journal.id]: "NORMAL" }))}
+                    style={{
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                      fontSize: 10.5,
+                      fontWeight: (citationDepths[journal.id] || "NORMAL") === "NORMAL" ? 600 : 500,
+                      color: (citationDepths[journal.id] || "NORMAL") === "NORMAL" ? "#0f172a" : "#64748b",
+                      background: (citationDepths[journal.id] || "NORMAL") === "NORMAL" ? "#ffffff" : "transparent",
+                      border: (citationDepths[journal.id] || "NORMAL") === "NORMAL" ? "1px solid #e2e8f0" : "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Standar (5–8)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCitationDepths((prev) => ({ ...prev, [journal.id]: "HEAVY" }))}
+                    style={{
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                      fontSize: 10.5,
+                      fontWeight: citationDepths[journal.id] === "HEAVY" ? 600 : 500,
+                      color: citationDepths[journal.id] === "HEAVY" ? "#4f46e5" : "#64748b",
+                      background: citationDepths[journal.id] === "HEAVY" ? "#ffffff" : "transparent",
+                      border: citationDepths[journal.id] === "HEAVY" ? "1px solid #e0e7ff" : "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Mendalam (10–15+)
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={isExtracting}
+                onClick={() => handleExtractCitations(journal.id, citationDepths[journal.id] || "NORMAL")}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "3px 8px",
+                  borderRadius: 5,
+                  background: isExtracting ? "#f1f5f9" : "#f0fdf4",
+                  border: "1px solid #bbf7d0",
+                  color: isExtracting ? "#94a3b8" : "#166534",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: isExtracting ? "not-allowed" : "pointer",
+                }}
+                title="Ekstrak ulang naskah jurnal dengan bobot yang dipilih"
+              >
+                <Sparkles size={11} />
+                <span>{isExtracting ? "Mengekstrak..." : "Ekstrak Ulang AI"}</span>
+              </button>
+            </div>
             {isExtracting ? (
               <div
                 style={{
@@ -1291,16 +1387,6 @@ export default function JournalsPage() {
                 Kembali ke Pencarian Acuan
               </Button>
             )}
-
-            <Link href={`/projects/${projectId}/outline`} style={{ textDecoration: "none" }}>
-              <Button
-                variant="emerald"
-                size="sm"
-                icon={<ArrowRight size={14} />}
-              >
-                Lanjut ke Blueprint (F4) →
-              </Button>
-            </Link>
           </div>
         </header>
 
@@ -1441,118 +1527,9 @@ export default function JournalsPage() {
                   </div>
 
                   {/* Tab 1: Cari Online */}
+                  {/* Tab 1: Cari Online */}
                   {discoveryTab === "SEARCH" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      {/* Rekomendasi AI berdasarkan Topik & Masalah Penelitian */}
-                      <div
-                        style={{
-                          background: "#fafafa",
-                          border: "1px solid #f1f5f9",
-                          borderRadius: 10,
-                          padding: "10px 14px",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 600, color: "#475569", marginBottom: 7 }}>
-                          <Sparkles size={12} color="#059669" />
-                          <span>Rekomendasi Pencarian Cerdas (Berdasarkan Topik & Masalah):</span>
-                        </div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 68, overflowY: "auto" }}>
-                          {project?.title && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDiscoveryQuery(project.title);
-                                handleDiscoverySearch(undefined, project.title);
-                              }}
-                              style={{
-                                padding: "4px 12px",
-                                borderRadius: 999,
-                                background: discoveryQuery === project.title ? "#f1f5f9" : "#ffffff",
-                                border: `1px solid ${discoveryQuery === project.title ? "#cbd5e1" : "#e2e8f0"}`,
-                                color: discoveryQuery === project.title ? "#0f172a" : "#475569",
-                                fontSize: 11,
-                                fontWeight: discoveryQuery === project.title ? 600 : 500,
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                              }}
-                            >
-                              <span>💡 Topik:</span>
-                              <span style={{ fontWeight: 600 }}>{project.title.slice(0, 45)}{project.title.length > 45 ? "..." : ""}</span>
-                            </button>
-                          )}
-                          {masalah && masalah !== project?.title && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDiscoveryQuery(masalah);
-                                handleDiscoverySearch(undefined, masalah);
-                              }}
-                              style={{
-                                padding: "4px 12px",
-                                borderRadius: 999,
-                                background: discoveryQuery === masalah ? "#f1f5f9" : "#ffffff",
-                                border: `1px solid ${discoveryQuery === masalah ? "#cbd5e1" : "#e2e8f0"}`,
-                                color: discoveryQuery === masalah ? "#0f172a" : "#475569",
-                                fontSize: 11,
-                                fontWeight: discoveryQuery === masalah ? 600 : 500,
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                              }}
-                            >
-                              <span>⚡ Masalah:</span>
-                              <span style={{ fontWeight: 600 }}>{masalah.slice(0, 40)}{masalah.length > 40 ? "..." : ""}</span>
-                            </button>
-                          )}
-                          {varX && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const q = `${varX} ${varY || ""}`.trim();
-                                setDiscoveryQuery(q);
-                                handleDiscoverySearch(undefined, q);
-                              }}
-                              style={{
-                                padding: "4px 12px",
-                                borderRadius: 999,
-                                background: "#ffffff",
-                                border: "1px solid #e2e8f0",
-                                color: "#475569",
-                                fontSize: 11,
-                                fontWeight: 500,
-                                cursor: "pointer",
-                              }}
-                            >
-                              🎯 Variabel: {varX} {varY ? `& ${varY}` : ""}
-                            </button>
-                          )}
-                          {focusIssue && focusIssue !== masalah && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDiscoveryQuery(focusIssue);
-                                handleDiscoverySearch(undefined, focusIssue);
-                              }}
-                              style={{
-                                padding: "4px 12px",
-                                borderRadius: 999,
-                                background: "#ffffff",
-                                border: "1px solid #e2e8f0",
-                                color: "#475569",
-                                fontSize: 11,
-                                fontWeight: 500,
-                                cursor: "pointer",
-                              }}
-                            >
-                              🔬 Fokus: {focusIssue.slice(0, 35)}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                       {/* Search Input Bar */}
                       <form onSubmit={(e) => handleDiscoverySearch(e)} style={{ display: "flex", gap: 10 }}>
                         <div style={{ position: "relative", flex: 1 }}>
@@ -1560,6 +1537,7 @@ export default function JournalsPage() {
                             type="text"
                             value={discoveryQuery}
                             onChange={(e) => setDiscoveryQuery(e.target.value)}
+                            onClick={() => setShowSearchRecommendations(true)}
                             placeholder="Ketik kata kunci topik, masalah, atau metode riset..."
                             style={{
                               width: "100%",
@@ -1574,6 +1552,7 @@ export default function JournalsPage() {
                               transition: "all 0.15s ease",
                             }}
                             onFocus={(e) => {
+                              setShowSearchRecommendations(true);
                               e.currentTarget.style.borderColor = "#00C988";
                               e.currentTarget.style.background = "#ffffff";
                             }}
@@ -1631,28 +1610,205 @@ export default function JournalsPage() {
                         </button>
                       </form>
 
-                      {/* Domain Pills */}
-                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>Filter Disiplin:</span>
-                        {(["GENERAL", "HEALTH", "AI_CS"] as const).map((d) => (
-                          <button
-                            key={d}
-                            type="button"
-                            onClick={() => setDiscoveryDomain(d)}
-                            style={{
-                              padding: "3px 10px",
-                              borderRadius: 999,
-                              border: discoveryDomain === d ? "1px solid #0f172a" : "1px solid #f1f5f9",
-                              background: discoveryDomain === d ? "#0f172a" : "#f8fafc",
-                              color: discoveryDomain === d ? "#ffffff" : "#64748b",
-                              fontWeight: discoveryDomain === d ? 600 : 500,
-                              fontSize: 11,
-                              cursor: "pointer",
-                            }}
-                          >
-                            {d === "GENERAL" ? "Semua Disiplin" : d === "HEALTH" ? "Kesehatan" : "Komputer & AI"}
-                          </button>
-                        ))}
+                      {/* Penyelarasan Rekomendasi AI & Filter Disiplin: SATU BARIS (Capsule Glass Bar) */}
+                      {/* Otomatis tersembunyi saat scroll ke bawah, muncul kembali saat user klik/fokus ke kolom input */}
+                      <div
+                        style={{
+                          maxHeight: showSearchRecommendations ? "60px" : "0px",
+                          opacity: showSearchRecommendations ? 1 : 0,
+                          transform: showSearchRecommendations ? "translateY(0)" : "translateY(-6px)",
+                          overflow: "hidden",
+                          transition: "all 0.28s cubic-bezier(0.16, 1, 0.3, 1)",
+                          pointerEvents: showSearchRecommendations ? "auto" : "none",
+                          marginTop: showSearchRecommendations ? 4 : 0,
+                          marginBottom: showSearchRecommendations ? 2 : 0,
+                        }}
+                      >
+                        <div
+                          className="capsule-glass-bar"
+                          style={{
+                            padding: "6px 12px 6px 8px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            overflowX: "auto",
+                            scrollbarWidth: "none",
+                          }}
+                        >
+                          {/* 1. Glowing AI Orb & Label */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+                            <div
+                              style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: "50%",
+                                background: "radial-gradient(circle at 35% 30%, #ffffff 0%, #a5b4fc 25%, #6366f1 55%, #06b6d4 80%, #10b981 100%)",
+                                boxShadow: "0 0 10px rgba(99, 102, 241, 0.4), inset -2px -2px 4px rgba(0,0,0,0.15), inset 2px 2px 4px rgba(255,255,255,0.8)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Sparkles size={11} color="#ffffff" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />
+                            </div>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>
+                              Rekomendasi AI:
+                            </span>
+                          </div>
+
+                          {/* 2. Chips Rekomendasi Topik / Masalah / Variabel */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                            {project?.title && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDiscoveryQuery(project.title);
+                                  handleDiscoverySearch(undefined, project.title);
+                                }}
+                                title={`Topik: ${project.title}`}
+                                style={{
+                                  padding: "4px 10px",
+                                  borderRadius: 9999,
+                                  background: discoveryQuery === project.title ? "#0f172a" : "#f1f5f9",
+                                  border: `1px solid ${discoveryQuery === project.title ? "#0f172a" : "#e2e8f0"}`,
+                                  color: discoveryQuery === project.title ? "#ffffff" : "#334155",
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  whiteSpace: "nowrap",
+                                  transition: "all 0.15s ease",
+                                }}
+                              >
+                                <span style={{ color: discoveryQuery === project.title ? "#94a3b8" : "#64748b", fontWeight: 700 }}>Topik:</span>
+                                <span>{project.title.slice(0, 24)}{project.title.length > 24 ? "..." : ""}</span>
+                              </button>
+                            )}
+                            {masalah && masalah !== project?.title && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDiscoveryQuery(masalah);
+                                  handleDiscoverySearch(undefined, masalah);
+                                }}
+                                title={`Masalah: ${masalah}`}
+                                style={{
+                                  padding: "4px 10px",
+                                  borderRadius: 9999,
+                                  background: discoveryQuery === masalah ? "#0f172a" : "#f1f5f9",
+                                  border: `1px solid ${discoveryQuery === masalah ? "#0f172a" : "#e2e8f0"}`,
+                                  color: discoveryQuery === masalah ? "#ffffff" : "#334155",
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  whiteSpace: "nowrap",
+                                  transition: "all 0.15s ease",
+                                }}
+                              >
+                                <span style={{ color: discoveryQuery === masalah ? "#94a3b8" : "#64748b", fontWeight: 700 }}>Masalah:</span>
+                                <span>{masalah.slice(0, 22)}{masalah.length > 22 ? "..." : ""}</span>
+                              </button>
+                            )}
+                            {varX && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const q = `${varX} ${varY || ""}`.trim();
+                                  setDiscoveryQuery(q);
+                                  handleDiscoverySearch(undefined, q);
+                                }}
+                                title={`Variabel: ${varX}`}
+                                style={{
+                                  padding: "4px 10px",
+                                  borderRadius: 9999,
+                                  background: "#f1f5f9",
+                                  border: "1px solid #e2e8f0",
+                                  color: "#334155",
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  whiteSpace: "nowrap",
+                                  transition: "all 0.15s ease",
+                                }}
+                              >
+                                <span style={{ color: "#64748b", fontWeight: 700 }}>Variabel:</span>
+                                <span>{varX.slice(0, 18)}{varX.length > 18 ? "..." : ""}</span>
+                              </button>
+                            )}
+                            {focusIssue && focusIssue !== masalah && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDiscoveryQuery(focusIssue);
+                                  handleDiscoverySearch(undefined, focusIssue);
+                                }}
+                                title={`Fokus: ${focusIssue}`}
+                                style={{
+                                  padding: "4px 10px",
+                                  borderRadius: 9999,
+                                  background: "#f1f5f9",
+                                  border: "1px solid #e2e8f0",
+                                  color: "#334155",
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  whiteSpace: "nowrap",
+                                  transition: "all 0.15s ease",
+                                }}
+                              >
+                                <span style={{ color: "#64748b", fontWeight: 700 }}>Fokus:</span>
+                                <span>{focusIssue.slice(0, 18)}{focusIssue.length > 18 ? "..." : ""}</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* 3. Divider Vertikal Halus */}
+                          <div style={{ width: 1, height: 18, background: "#cbd5e1", flexShrink: 0, margin: "0 2px" }} />
+
+                          {/* 4. Filter Rumpun Disiplin */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, marginLeft: "auto" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 4, marginRight: 2 }}>
+                              <Filter size={11} color="#64748b" />
+                              <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600, whiteSpace: "nowrap" }}>Disiplin:</span>
+                            </div>
+                            {(["GENERAL", "HEALTH", "AI_CS"] as const).map((d) => {
+                              const isSelected = discoveryDomain === d;
+                              return (
+                                <button
+                                  key={d}
+                                  type="button"
+                                  onClick={() => setDiscoveryDomain(d)}
+                                  style={{
+                                    padding: "3px 10px",
+                                    borderRadius: 9999,
+                                    border: isSelected ? "1px solid #059669" : "1px solid #e2e8f0",
+                                    background: isSelected ? "#ecfdf5" : "#ffffff",
+                                    color: isSelected ? "#065f46" : "#475569",
+                                    fontWeight: isSelected ? 700 : 500,
+                                    fontSize: 11,
+                                    cursor: "pointer",
+                                    whiteSpace: "nowrap",
+                                    transition: "all 0.15s ease",
+                                  }}
+                                >
+                                  {d === "GENERAL" ? "Semua" : d === "HEALTH" ? "Kesehatan" : "Komputer & AI"}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -2152,7 +2308,7 @@ export default function JournalsPage() {
                               gap: 8,
                             }}
                           >
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontSize: 13.5, fontWeight: 600, color: "#0f172a", marginBottom: 2 }}>
                                   {j.title}
@@ -2168,7 +2324,7 @@ export default function JournalsPage() {
                                 </div>
                               </div>
 
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginTop: 2 }}>
                                 {(() => {
                                   const jPdf = getDirectPdfUrl(j);
                                   const jKey = j.id || j.doi || j.title;
@@ -2201,18 +2357,22 @@ export default function JournalsPage() {
                                         style={{
                                           display: "inline-flex",
                                           alignItems: "center",
-                                          gap: 4,
-                                          padding: "4px 10px",
+                                          gap: 5,
+                                          height: 30,
+                                          padding: "0 12px",
                                           borderRadius: 6,
                                           background: isJActive ? "#059669" : "#f1f5f9",
                                           color: isJActive ? "#ffffff" : "#059669",
-                                          border: "none",
+                                          border: "1px solid",
+                                          borderColor: isJActive ? "#059669" : "#e2e8f0",
                                           fontSize: 11.5,
                                           fontWeight: 600,
                                           cursor: "pointer",
+                                          boxSizing: "border-box",
+                                          transition: "all 0.15s ease",
                                         }}
                                       >
-                                        <Eye size={12} />
+                                        <Eye size={13} />
                                         <span>{isJActive ? "Tutup PDF" : "Lihat PDF"}</span>
                                       </button>
                                     );
@@ -2244,18 +2404,22 @@ export default function JournalsPage() {
                                       style={{
                                         display: "inline-flex",
                                         alignItems: "center",
-                                        gap: 4,
-                                        padding: "4px 10px",
+                                        gap: 5,
+                                        height: 30,
+                                        padding: "0 12px",
                                         borderRadius: 6,
-                                        background: isJActive ? "#6366f1" : "#f1f5f9",
+                                        background: isJActive ? "#4f46e5" : "#f1f5f9",
                                         color: isJActive ? "#ffffff" : "#4f46e5",
-                                        border: "none",
+                                        border: "1px solid",
+                                        borderColor: isJActive ? "#4f46e5" : "#e2e8f0",
                                         fontSize: 11.5,
                                         fontWeight: 600,
                                         cursor: "pointer",
+                                        boxSizing: "border-box",
+                                        transition: "all 0.15s ease",
                                       }}
                                     >
-                                      <BookOpen size={12} />
+                                      <BookOpen size={13} />
                                       <span>{isJActive ? "Tutup Info" : "Baca Abstrak"}</span>
                                     </button>
                                   );
@@ -2264,17 +2428,30 @@ export default function JournalsPage() {
                                   onClick={() => handleDeleteJournal(j.id, j.title)}
                                   title="Hapus Jurnal"
                                   style={{
-                                    background: "transparent",
-                                    border: "none",
-                                    padding: 6,
+                                    background: "#ffffff",
+                                    border: "1px solid #f1f5f9",
+                                    height: 30,
+                                    width: 30,
                                     borderRadius: 6,
                                     cursor: "pointer",
                                     color: "#94a3b8",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    transition: "all 0.15s ease",
                                   }}
-                                  onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
-                                  onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = "#ef4444";
+                                    e.currentTarget.style.borderColor = "#fecaca";
+                                    e.currentTarget.style.background = "#fff1f2";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = "#94a3b8";
+                                    e.currentTarget.style.borderColor = "#f1f5f9";
+                                    e.currentTarget.style.background = "#ffffff";
+                                  }}
                                 >
-                                  <Trash2 size={14} />
+                                  <Trash2 size={13} />
                                 </button>
                               </div>
                             </div>
@@ -2436,109 +2613,159 @@ export default function JournalsPage() {
                         </div>
                       )}
 
-                      {/* Action: Open source / publisher URL */}
-                      {(activePreview.pdfUrl || activePreview.url || activePreview.doi) && (
-                        <a
-                          href={
-                            activePreview.viewMode === "PDF" && activePreview.pdfUrl
-                              ? activePreview.pdfUrl
-                              : (activePreview.url || (activePreview.doi ? `https://doi.org/${activePreview.doi.replace(/^(https?:\/\/)?(dx\.)?doi\.org\//i, "").replace(/^doi:\s*/i, "")}` : "#"))
-                          }
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{
-                            padding: "4px 9px",
-                            borderRadius: 6,
-                            background: "#f8fafc",
-                            border: "1px solid #e2e8f0",
-                            color: "#334155",
-                            fontSize: 11,
-                            fontWeight: 500,
-                            textDecoration: "none",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 4,
-                          }}
-                          title="Buka berkas naskah / artikel asli di tab baru browser"
-                        >
-                          <ExternalLink size={12} />
-                          <span>Tab Baru</span>
-                        </a>
-                      )}
+                      {/* Status Terpilih jika candidate */}
+                      {activePreview.isCandidate && activePreview.rawCandidate && (() => {
+                        const paper = activePreview.rawCandidate;
+                        const paperKey = paper.doi || paper.externalId;
+                        const isImported =
+                          importedIds.has(paperKey) ||
+                          journals.some(
+                            (j) =>
+                              (paper.doi && j.doi && j.doi.toLowerCase() === paper.doi.toLowerCase()) ||
+                              j.title.toLowerCase().trim() === paper.title.toLowerCase().trim()
+                          );
+                        const isQueued = pendingImports.has(paperKey);
 
-                      {/* Action: Select candidate directly from split panel */}
-                      {activePreview.isCandidate && activePreview.rawCandidate && (
-                        (() => {
-                          const paper = activePreview.rawCandidate;
-                          const paperKey = paper.doi || paper.externalId;
-                          const isImported =
-                            importedIds.has(paperKey) ||
-                            journals.some(
-                              (j) =>
-                                (paper.doi && j.doi && j.doi.toLowerCase() === paper.doi.toLowerCase()) ||
-                                j.title.toLowerCase().trim() === paper.title.toLowerCase().trim()
-                            );
-                          const isQueued = pendingImports.has(paperKey);
-
-                          if (isImported) {
-                            return (
-                              <span
-                                style={{
-                                  padding: "3px 8px",
-                                  borderRadius: 6,
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  color: "#059669",
-                                  background: "#ecfdf5",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 3,
-                                }}
-                              >
-                                <Check size={12} /> Terpilih
-                              </span>
-                            );
-                          }
-                          if (isQueued) {
-                            return (
-                              <span
-                                style={{
-                                  padding: "3px 8px",
-                                  borderRadius: 6,
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  color: "#d97706",
-                                  background: "#fffbeb",
-                                }}
-                              >
-                                Menyimpan...
-                              </span>
-                            );
-                          }
+                        if (isImported) {
                           return (
-                            <button
-                              type="button"
-                              onClick={() => handleImportCandidate(paper)}
+                            <span
                               style={{
-                                padding: "4px 10px",
+                                padding: "3px 8px",
                                 borderRadius: 6,
                                 fontSize: 11,
                                 fontWeight: 700,
-                                background: "#4f46e5",
-                                color: "#ffffff",
-                                border: "none",
-                                cursor: "pointer",
+                                color: "#059669",
+                                background: "#ecfdf5",
                                 display: "inline-flex",
                                 alignItems: "center",
-                                gap: 4,
+                                gap: 3,
                               }}
                             >
-                              <Plus size={12} />
-                              <span>Pilih Acuan</span>
-                            </button>
+                              <Check size={12} /> Terpilih
+                            </span>
                           );
-                        })()
-                      )}
+                        }
+                        if (isQueued) {
+                          return (
+                            <span
+                              style={{
+                                padding: "3px 8px",
+                                borderRadius: 6,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                color: "#d97706",
+                                background: "#fffbeb",
+                              }}
+                            >
+                              Menyimpan...
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+
+                      {/* Menu Titik Tiga (...) untuk Aksi Sekunder */}
+                      <div style={{ position: "relative" }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowSplitMenu(!showSplitMenu)}
+                          style={{
+                            background: showSplitMenu ? "#e2e8f0" : "#f8fafc",
+                            border: "1px solid #e2e8f0",
+                            cursor: "pointer",
+                            padding: "5px 7px",
+                            borderRadius: 6,
+                            color: "#475569",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            transition: "all 0.15s ease",
+                          }}
+                          title="Menu Opsi Naskah"
+                        >
+                          <MoreHorizontal size={14} />
+                        </button>
+
+                        {showSplitMenu && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              right: 0,
+                              top: "100%",
+                              marginTop: 4,
+                              background: "#ffffff",
+                              borderRadius: 8,
+                              border: "1px solid #e2e8f0",
+                              boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+                              padding: 4,
+                              zIndex: 60,
+                              minWidth: 175,
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 2,
+                            }}
+                          >
+                            {(activePreview.pdfUrl || activePreview.url || activePreview.doi) && (
+                              <a
+                                href={
+                                  activePreview.viewMode === "PDF" && activePreview.pdfUrl
+                                    ? activePreview.pdfUrl
+                                    : (activePreview.url || (activePreview.doi ? `https://doi.org/${activePreview.doi.replace(/^(https?:\/\/)?(dx\.)?doi\.org\//i, "").replace(/^doi:\s*/i, "")}` : "#"))
+                                }
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={() => setShowSplitMenu(false)}
+                                style={{
+                                  padding: "6px 10px",
+                                  borderRadius: 5,
+                                  fontSize: 12,
+                                  color: "#334155",
+                                  textDecoration: "none",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  fontWeight: 500,
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
+                                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                              >
+                                <ExternalLink size={13} color="#059669" />
+                                <span>Buka di Tab Baru</span>
+                              </a>
+                            )}
+                            {activePreview.doi && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(activePreview.doi!);
+                                  notify.success("DOI berhasil disalin.");
+                                  setShowSplitMenu(false);
+                                }}
+                                style={{
+                                  padding: "6px 10px",
+                                  borderRadius: 5,
+                                  fontSize: 12,
+                                  color: "#334155",
+                                  background: "transparent",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  width: "100%",
+                                  textAlign: "left",
+                                  fontWeight: 500,
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
+                                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                              >
+                                <Copy size={13} color="#6366f1" />
+                                <span>Salin DOI</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
 
                       {/* Close Button */}
                       <button
@@ -4073,6 +4300,66 @@ export default function JournalsPage() {
             </div>
           </div>
         )}
+
+        {/* ── FLOATING BOTTOM-RIGHT ACTION BAR (NAVIGASI FASE) ── */}
+        <div
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 28,
+            zIndex: 45,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "8px 12px",
+            borderRadius: 999,
+            background: "rgba(255, 255, 255, 0.94)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
+            border: "1px solid rgba(226, 232, 240, 0.9)",
+            boxShadow: "0 10px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.06)",
+          }}
+        >
+          <Link href={`/projects/${projectId}/framework`} style={{ textDecoration: "none" }}>
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<ArrowLeft size={13} />}
+              style={{
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#475569",
+                border: "1px solid #e2e8f0",
+                background: "#ffffff",
+                padding: "6px 14px",
+              }}
+            >
+              Fase 2: Kerangka
+            </Button>
+          </Link>
+
+          <div style={{ width: 1, height: 20, background: "#e2e8f0" }} />
+
+          <Link href={`/projects/${projectId}/outline`} style={{ textDecoration: "none" }}>
+            <Button
+              variant="emerald"
+              size="sm"
+              icon={<ArrowRight size={13} />}
+              style={{
+                borderRadius: 999,
+                fontSize: 12.5,
+                fontWeight: 600,
+                padding: "6px 18px",
+                background: "linear-gradient(135deg, #059669 0%, #10b981 100%)",
+                boxShadow: "0 2px 8px rgba(16, 185, 129, 0.25)",
+              }}
+            >
+              Lanjut ke Blueprint (F4) →
+            </Button>
+          </Link>
+        </div>
+
       </div>{/* end right main content */}
     </div>
   );

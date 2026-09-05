@@ -23,12 +23,14 @@ export function removeToken(): void {
 export class ApiError extends Error {
   statusCode: number;
   data: any;
+  isPaymentRequired: boolean;
 
   constructor(message: string, statusCode: number = 500, data: any = null) {
     super(message);
     this.name = "ApiError";
     this.statusCode = statusCode;
     this.data = data;
+    this.isPaymentRequired = statusCode === 402;
   }
 }
 
@@ -75,7 +77,9 @@ async function request<T>(
       let errorMsg =
         json?.message ||
         json?.error ||
-        `Permintaan gagal dengan status ${res.status}`;
+        (res.status === 402
+          ? "Saldo kredit riset Anda tidak mencukupi untuk menjalankan aksi AI ini. Silakan top up kredit Anda."
+          : `Permintaan gagal dengan status ${res.status}`);
       if (Array.isArray(json?.errors) && json.errors.length > 0) {
         errorMsg += `: ${json.errors.join(", ")}`;
       }
@@ -768,8 +772,8 @@ export const api = {
     getAllCitations: (projectId: string) =>
       http.get<{ success: boolean; data: JournalCitationEvidence[] }>(`/api/projects/${projectId}/journals/citations`),
 
-    extractCitations: (projectId: string, journalId: string) =>
-      http.post<{ success: boolean; data: JournalCitationEvidence[]; message: string }>(`/api/projects/${projectId}/journals/${journalId}/extract-citations`, {}),
+    extractCitations: (projectId: string, journalId: string, depth: "NORMAL" | "HEAVY" = "NORMAL") =>
+      http.post<{ success: boolean; data: JournalCitationEvidence[]; message: string }>(`/api/projects/${projectId}/journals/${journalId}/extract-citations`, { depth }),
 
     deleteCitation: (projectId: string, citationId: string) =>
       http.delete<{ success: boolean; message: string }>(`/api/projects/${projectId}/journals/citations/${citationId}`),
@@ -1181,6 +1185,66 @@ export const api = {
 
     testGroq: (keyName?: string) =>
       http.post<{ success: boolean; message: string; response?: string }>("/api/admin/configs/test-groq", { keyName }),
+
+    // Research System & Citation Explorer
+    getProjects: (params?: { search?: string; status?: string; page?: number; limit?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.search) q.set("search", params.search);
+      if (params?.status) q.set("status", params.status);
+      if (params?.page) q.set("page", String(params.page));
+      if (params?.limit) q.set("limit", String(params.limit));
+      const qs = q.toString();
+      return http.get<{
+        success: boolean;
+        data: Array<{
+          id: string;
+          title: string;
+          field: string | null;
+          nama: string | null;
+          prodi: string | null;
+          status: string;
+          createdAt: string;
+          updatedAt: string;
+          user: {
+            id: string;
+            name: string | null;
+            email: string;
+          };
+          _count: {
+            journals: number;
+            citationEvidences: number;
+          };
+        }>;
+        meta?: {
+          total: number;
+          page: number;
+          limit: number;
+          totalPages: number;
+        };
+      }>(`/api/admin/projects${qs ? `?${qs}` : ""}`);
+    },
+
+    getProjectJournals: (projectId: string) =>
+      http.get<{
+        success: boolean;
+        data: {
+          project: any;
+          journals: Journal[];
+          citations: JournalCitationEvidence[];
+        };
+      }>(`/api/admin/projects/${projectId}/journals`),
+
+    updateJournal: (journalId: string, data: any) =>
+      http.patch<{ success: boolean; message: string; data: any }>(`/api/admin/journals/${journalId}`, data),
+
+    deleteJournal: (journalId: string) =>
+      http.delete<{ success: boolean; message: string }>(`/api/admin/journals/${journalId}`),
+
+    updateCitation: (citationId: string, data: any) =>
+      http.patch<{ success: boolean; message: string; data: any }>(`/api/admin/citations/${citationId}`, data),
+
+    deleteCitation: (citationId: string) =>
+      http.delete<{ success: boolean; message: string }>(`/api/admin/citations/${citationId}`),
   },
 
   // ── AI Prompt & Skill Library ────────────────────────

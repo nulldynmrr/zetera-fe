@@ -56,18 +56,59 @@ import {
   FileArchive,
   ZoomIn,
   ZoomOut,
+  Quote,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, ProposalTemplate, AiSkillPrompt } from "@/lib/api-client";
 import { notify } from "@/lib/notification";
 
-type AdminTab = "AI_ENGINE" | "PROMPTS_SKILLS" | "PRICING" | "TEMPLATES_LIBRARY" | "DASHBOARD" | "SECRETS" | "USERS";
+type AdminTab = "AI_ENGINE" | "PROMPTS_SKILLS" | "PRICING" | "TEMPLATES_LIBRARY" | "RESEARCH_SYSTEM" | "DASHBOARD" | "SECRETS" | "USERS";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
   const { user, logout, isLoading } = useAuth();
 
   const [activeTab, setActiveTab] = useState<AdminTab>("AI_ENGINE");
+
+  // ── Research System & Citation Explorer Admin State ──
+  const [adminProjects, setAdminProjects] = useState<any[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [projectSearchQuery, setProjectSearchQuery] = useState("");
+  const [projectStatusFilter, setProjectStatusFilter] = useState("ALL");
+  const [selectedAdminProject, setSelectedAdminProject] = useState<any | null>(null);
+  const [selectedProjectJournals, setSelectedProjectJournals] = useState<any[]>([]);
+  const [selectedProjectCitations, setSelectedProjectCitations] = useState<any[]>([]);
+  const [loadingProjectDetails, setLoadingProjectDetails] = useState(false);
+  const [projectExplorerTab, setProjectExplorerTab] = useState<"JOURNALS" | "CITATIONS">("JOURNALS");
+
+  // Edit Journal Modal
+  const [showEditJournalModal, setShowEditJournalModal] = useState(false);
+  const [editingJournal, setEditingJournal] = useState<any | null>(null);
+  const [journalFormData, setJournalFormData] = useState({
+    title: "",
+    authors: "",
+    year: "",
+    publication: "",
+    doi: "",
+    url: "",
+    tier: "SUPPORTING",
+    status: "APPROVED",
+  });
+  const [savingJournal, setSavingJournal] = useState(false);
+
+  // Edit Citation Modal
+  const [showEditCitationModal, setShowEditCitationModal] = useState(false);
+  const [editingCitation, setEditingCitation] = useState<any | null>(null);
+  const [citationFormData, setCitationFormData] = useState({
+    pageNumber: 1,
+    sectionHeading: "",
+    verbatimQuote: "",
+    paraphrasedQuote: "",
+    topicRelevance: "",
+    citationCategory: "LANDASAN_TEORI",
+    isApproved: true,
+  });
+  const [savingCitation, setSavingCitation] = useState(false);
 
   const [stats, setStats] = useState<any>(null);
   const [billingConfig, setBillingConfig] = useState<any>(null);
@@ -526,6 +567,114 @@ export default function AdminDashboardPage() {
       }
     } catch (err: any) {
       setFeedbackMsg({ type: "error", text: err?.message || "Gagal mengubah role." });
+    }
+  }
+
+  // ── Research System & Citation Explorer Handlers ──
+  async function fetchAdminProjects() {
+    setLoadingProjects(true);
+    try {
+      const res = await api.admin.getProjects({
+        search: projectSearchQuery,
+        status: projectStatusFilter !== "ALL" ? projectStatusFilter : undefined,
+      });
+      if (res?.success && Array.isArray(res.data)) {
+        setAdminProjects(res.data);
+      }
+    } catch (err: any) {
+      console.error("Gagal memuat daftar proyek admin:", err);
+      notify.error(err?.message || "Gagal memuat proyek penelitian.");
+    } finally {
+      setLoadingProjects(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === "RESEARCH_SYSTEM") {
+      fetchAdminProjects();
+    }
+  }, [activeTab, projectStatusFilter]);
+
+  async function handleOpenProjectDetails(proj: any) {
+    setSelectedAdminProject(proj);
+    setLoadingProjectDetails(true);
+    try {
+      const res = await api.admin.getProjectJournals(proj.id);
+      if (res?.success && res.data) {
+        setSelectedProjectJournals(res.data.journals || []);
+        setSelectedProjectCitations(res.data.citations || []);
+      }
+    } catch (err: any) {
+      notify.error(err?.message || "Gagal memuat detail jurnal & kutipan proyek.");
+    } finally {
+      setLoadingProjectDetails(false);
+    }
+  }
+
+  async function handleSaveJournal() {
+    if (!editingJournal) return;
+    setSavingJournal(true);
+    try {
+      const res = await api.admin.updateJournal(editingJournal.id, journalFormData);
+      if (res?.success) {
+        setSelectedProjectJournals((prev) =>
+          prev.map((j) => (j.id === editingJournal.id ? res.data : j))
+        );
+        notify.success("Metadata jurnal berhasil diperbarui.");
+        setShowEditJournalModal(false);
+        setEditingJournal(null);
+      }
+    } catch (err: any) {
+      notify.error(err?.message || "Gagal memperbarui jurnal.");
+    } finally {
+      setSavingJournal(false);
+    }
+  }
+
+  async function handleDeleteJournal(journalId: string, journalTitle: string) {
+    if (!window.confirm(`Hapus jurnal acuan "${journalTitle}" dan seluruh bukti kutipannya?`)) return;
+    try {
+      const res = await api.admin.deleteJournal(journalId);
+      if (res?.success) {
+        setSelectedProjectJournals((prev) => prev.filter((j) => j.id !== journalId));
+        setSelectedProjectCitations((prev) => prev.filter((c) => c.journalId !== journalId));
+        notify.success("Jurnal acuan berhasil dihapus.");
+      }
+    } catch (err: any) {
+      notify.error(err?.message || "Gagal menghapus jurnal.");
+    }
+  }
+
+  async function handleSaveCitation() {
+    if (!editingCitation) return;
+    setSavingCitation(true);
+    try {
+      const res = await api.admin.updateCitation(editingCitation.id, citationFormData);
+      if (res?.success) {
+        setSelectedProjectCitations((prev) =>
+          prev.map((c) => (c.id === editingCitation.id ? res.data : c))
+        );
+        notify.success("Kutipan bukti berhasil diperbarui.");
+        setShowEditCitationModal(false);
+        setEditingCitation(null);
+      }
+    } catch (err: any) {
+      notify.error(err?.message || "Gagal memperbarui kutipan.");
+    } finally {
+      setSavingCitation(false);
+    }
+  }
+
+  async function handleDeleteCitation(citationId: string) {
+    if (!window.confirm("Hapus kutipan bukti ini dari bank sitasi?")) return;
+    try {
+      const res = await api.admin.deleteCitation(citationId);
+      if (res?.success) {
+        setSelectedProjectCitations((prev) => prev.filter((c) => c.id !== citationId));
+        notify.success("Kutipan bukti berhasil dihapus.");
+      }
+    } catch (err: any) {
+      notify.error(err?.message || "Gagal menghapus kutipan.");
     }
   }
 
@@ -1092,6 +1241,8 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
         return "Harga & Langganan";
       case "TEMPLATES_LIBRARY":
         return "Library Template & LaTeX Manager";
+      case "RESEARCH_SYSTEM":
+        return "Sistem & Jurnal Riset (Project & Citation Explorer)";
       case "DASHBOARD":
         return "Executive Dashboard";
       case "SECRETS":
@@ -1134,6 +1285,7 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
               { id: "PROMPTS_SKILLS", label: "Skills & Prompts", icon: Sparkles },
               { id: "PRICING", label: "Harga & Paket", icon: Coins },
               { id: "TEMPLATES_LIBRARY", label: "Library & LaTeX", icon: FileCode },
+              { id: "RESEARCH_SYSTEM", label: "Sistem & Jurnal Riset", icon: BookOpen },
               { id: "DASHBOARD", label: "Dashboard", icon: BarChart3 },
               { id: "USERS", label: "Users", icon: Users },
             ].map((tab) => {
@@ -5417,6 +5569,527 @@ const response = await executeAiCompletion({
             </div>
           </div>
         )}
+
+        {/* ════════════════════════════════════════════════════════════════════════
+            TAB 7: RESEARCH SYSTEM & CITATION EXPLORER (PROJECT & EVIDENCE BANK)
+           ════════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "RESEARCH_SYSTEM" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {/* Header & Filter Bar */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <BookOpen size={20} color="#4338CA" />
+                  <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
+                    Sistem & Jurnal Riset (Project & Citation Explorer)
+                  </h2>
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 9999, background: "#EEEAFE", color: "#4338CA" }}>
+                    {adminProjects.length} Proyek Terpantau
+                  </span>
+                </div>
+                <p style={{ fontSize: 13, color: "#71717A", margin: "3px 0 0" }}>
+                  Eksplorasi seluruh naskah jurnal acuan skripsi, telusuri bank bukti kutipan berpresisi halaman, dan kelola integritas sitasi mahasiswa.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {/* Search Bar */}
+                <div style={{ position: "relative", minWidth: 260 }}>
+                  <input
+                    type="text"
+                    value={projectSearchQuery}
+                    onChange={(e) => setProjectSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && fetchAdminProjects()}
+                    placeholder="Cari judul, topik, atau mahasiswa..."
+                    style={{
+                      width: "100%",
+                      padding: "7px 32px 7px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #CBD5E1",
+                      fontSize: 12.5,
+                      outline: "none",
+                      background: "#F8FAFC",
+                    }}
+                  />
+                  <Search
+                    size={14}
+                    color="#94A3B8"
+                    style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }}
+                  />
+                </div>
+
+                {/* Status Filter */}
+                <select
+                  value={projectStatusFilter}
+                  onChange={(e) => {
+                    setProjectStatusFilter(e.target.value);
+                  }}
+                  style={{
+                    padding: "7px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #CBD5E1",
+                    fontSize: 12.5,
+                    background: "#FFFFFF",
+                    color: "#334155",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="ALL">Semua Status</option>
+                  <option value="ACTIVE">Aktif</option>
+                  <option value="COMPLETED">Selesai</option>
+                  <option value="ARCHIVED">Diarsipkan</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={fetchAdminProjects}
+                  disabled={loadingProjects}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "7px 14px",
+                    borderRadius: 8,
+                    background: "#4338CA",
+                    color: "#FFFFFF",
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    border: "none",
+                    cursor: loadingProjects ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <RefreshCw size={13} className={loadingProjects ? "animate-spin" : ""} />
+                  <span>{loadingProjects ? "Memuat..." : "Refresh"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* If a project is selected, show detail inspector */}
+            {selectedAdminProject ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {/* Back to list & Project Info Bar */}
+                <div
+                  style={{
+                    background: "#F8FAFC",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: 12,
+                    padding: "16px 20px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAdminProject(null);
+                        setSelectedProjectJournals([]);
+                        setSelectedProjectCitations([]);
+                      }}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        padding: "5px 12px",
+                        borderRadius: 6,
+                        border: "1px solid #CBD5E1",
+                        background: "#FFFFFF",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "#475569",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span>← Kembali ke Daftar Proyek</span>
+                    </button>
+
+                    <div style={{ display: "flex", gap: 3, background: "#FFFFFF", padding: 3, borderRadius: 8, border: "1px solid #E2E8F0" }}>
+                      <button
+                        type="button"
+                        onClick={() => setProjectExplorerTab("JOURNALS")}
+                        style={{
+                          padding: "5px 12px",
+                          borderRadius: 6,
+                          border: "none",
+                          fontSize: 12,
+                          fontWeight: projectExplorerTab === "JOURNALS" ? 700 : 500,
+                          background: projectExplorerTab === "JOURNALS" ? "#EEF2FF" : "transparent",
+                          color: projectExplorerTab === "JOURNALS" ? "#4338CA" : "#64748B",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <BookOpen size={13} />
+                        <span>Jurnal Acuan ({selectedProjectJournals.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProjectExplorerTab("CITATIONS")}
+                        style={{
+                          padding: "5px 12px",
+                          borderRadius: 6,
+                          border: "none",
+                          fontSize: 12,
+                          fontWeight: projectExplorerTab === "CITATIONS" ? 700 : 500,
+                          background: projectExplorerTab === "CITATIONS" ? "#EEF2FF" : "transparent",
+                          color: projectExplorerTab === "CITATIONS" ? "#4338CA" : "#64748B",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <Quote size={13} />
+                        <span>Bank Kutipan Bukti ({selectedProjectCitations.length})</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 4px", color: "#0F172A" }}>
+                      {selectedAdminProject.title}
+                    </h3>
+                    <div style={{ fontSize: 12, color: "#64748B", display: "flex", flexWrap: "wrap", gap: 14 }}>
+                      <span>Peneliti: <strong style={{ color: "#334155" }}>{selectedAdminProject.user?.name || selectedAdminProject.nama || "Mahasiswa"}</strong> ({selectedAdminProject.user?.email})</span>
+                      {selectedAdminProject.field && <span>Bidang: <strong style={{ color: "#334155" }}>{selectedAdminProject.field}</strong></span>}
+                      {selectedAdminProject.prodi && <span>Prodi: <strong style={{ color: "#334155" }}>{selectedAdminProject.prodi}</strong></span>}
+                      <span>Status: <strong style={{ color: "#059669" }}>{selectedAdminProject.status}</strong></span>
+                    </div>
+                  </div>
+                </div>
+
+                {loadingProjectDetails ? (
+                  <div style={{ padding: 40, textAlign: "center", color: "#64748B" }}>
+                    <RefreshCw size={20} className="animate-spin" style={{ margin: "0 auto 8px" }} />
+                    <span>Memuat naskah dan bukti kutipan proyek...</span>
+                  </div>
+                ) : projectExplorerTab === "JOURNALS" ? (
+                  /* Sub-Tab 1: Jurnal Bahan Acuan */
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {selectedProjectJournals.length === 0 ? (
+                      <div style={{ padding: 40, textAlign: "center", color: "#94A3B8", background: "#F8FAFC", borderRadius: 10, border: "1px dashed #CBD5E1" }}>
+                        Belum ada jurnal acuan yang disimpan pada proyek penelitian ini.
+                      </div>
+                    ) : (
+                      selectedProjectJournals.map((j) => {
+                        const citCount = selectedProjectCitations.filter((c) => c.journalId === j.id).length;
+                        return (
+                          <div
+                            key={j.id}
+                            style={{
+                              background: "#FFFFFF",
+                              border: "1px solid #E2E8F0",
+                              borderRadius: 10,
+                              padding: "14px 18px",
+                              display: "flex",
+                              alignItems: "flex-start",
+                              justifyContent: "space-between",
+                              gap: 16,
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                <span style={{ fontSize: 10.5, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: j.tier === "CORE_BENCHMARK" ? "#FEF3C7" : "#F1F5F9", color: j.tier === "CORE_BENCHMARK" ? "#B45309" : "#475569" }}>
+                                  {j.tier || "SUPPORTING"}
+                                </span>
+                                <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: j.status === "APPROVED" ? "#DCFCE7" : "#F1F5F9", color: j.status === "APPROVED" ? "#166534" : "#475569" }}>
+                                  {j.status || "CANDIDATE"}
+                                </span>
+                                {citCount > 0 && (
+                                  <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: "#EEF2FF", color: "#4338CA" }}>
+                                    ✓ {citCount} Kutipan Terverifikasi
+                                  </span>
+                                )}
+                              </div>
+                              <h4 style={{ fontSize: 14, fontWeight: 600, color: "#0F172A", margin: "0 0 3px" }}>
+                                {j.title}
+                              </h4>
+                              <p style={{ fontSize: 12, color: "#64748B", margin: 0 }}>
+                                {j.authors && <span>{j.authors}</span>}
+                                {j.year && <span> ({j.year})</span>}
+                                {j.publication && <span> • {j.publication}</span>}
+                                {j.doi && <span> • DOI: {j.doi}</span>}
+                              </p>
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingJournal(j);
+                                  setJournalFormData({
+                                    title: j.title || "",
+                                    authors: j.authors || "",
+                                    year: j.year ? String(j.year) : "",
+                                    publication: j.publication || "",
+                                    doi: j.doi || "",
+                                    url: j.url || "",
+                                    tier: j.tier || "SUPPORTING",
+                                    status: j.status || "APPROVED",
+                                  });
+                                  setShowEditJournalModal(true);
+                                }}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  padding: "5px 10px",
+                                  borderRadius: 6,
+                                  border: "1px solid #CBD5E1",
+                                  background: "#FFFFFF",
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  color: "#334155",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <Pencil size={12} />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteJournal(j.id, j.title)}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  padding: "5px 10px",
+                                  borderRadius: 6,
+                                  border: "1px solid #FECDD3",
+                                  background: "#FFF1F2",
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  color: "#BE123C",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <Trash2 size={12} />
+                                <span>Hapus</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                ) : (
+                  /* Sub-Tab 2: Bank Kutipan Bukti */
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {selectedProjectCitations.length === 0 ? (
+                      <div style={{ padding: 40, textAlign: "center", color: "#94A3B8", background: "#F8FAFC", borderRadius: 10, border: "1px dashed #CBD5E1" }}>
+                        Belum ada kutipan bukti yang diekstrak untuk proyek ini.
+                      </div>
+                    ) : (
+                      selectedProjectCitations.map((cit) => (
+                        <div
+                          key={cit.id}
+                          style={{
+                            background: "#FFFFFF",
+                            border: "1px solid #E2E8F0",
+                            borderRadius: 10,
+                            padding: "14px 18px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 8,
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#ECFDF5", color: "#065F46" }}>
+                                📍 Hal. {cit.pageNumber}
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: "#F1F5F9", color: "#334155" }}>
+                                {cit.citationCategory}
+                              </span>
+                              {cit.sectionHeading && (
+                                <span style={{ fontSize: 11, color: "#64748B", fontStyle: "italic" }}>
+                                  ({cit.sectionHeading})
+                                </span>
+                              )}
+                              <span style={{ fontSize: 11, color: "#94A3B8" }}>
+                                • Sumber: {cit.paperTitle?.slice(0, 50)}...
+                              </span>
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingCitation(cit);
+                                  setCitationFormData({
+                                    pageNumber: cit.pageNumber || 1,
+                                    sectionHeading: cit.sectionHeading || "",
+                                    verbatimQuote: cit.verbatimQuote || "",
+                                    paraphrasedQuote: cit.paraphrasedQuote || "",
+                                    topicRelevance: cit.topicRelevance || "",
+                                    citationCategory: cit.citationCategory || "LANDASAN_TEORI",
+                                    isApproved: cit.isApproved !== false,
+                                  });
+                                  setShowEditCitationModal(true);
+                                }}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  padding: "3px 8px",
+                                  borderRadius: 5,
+                                  border: "1px solid #CBD5E1",
+                                  background: "#FFFFFF",
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  color: "#334155",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <Pencil size={11} />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCitation(cit.id)}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  padding: "3px 8px",
+                                  borderRadius: 5,
+                                  border: "1px solid #FECDD3",
+                                  background: "#FFF1F2",
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  color: "#BE123C",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <Trash2 size={11} />
+                                <span>Hapus</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Verbatim Quote Box */}
+                          <div style={{ background: "#F8FAFC", borderLeft: "3px solid #059669", padding: "6px 10px", borderRadius: "0 6px 6px 0", fontSize: 12, color: "#0F172A", fontStyle: "italic", lineHeight: 1.5 }}>
+                            "{cit.verbatimQuote}"
+                          </div>
+
+                          {/* Paraphrased Quote */}
+                          <div style={{ fontSize: 12, color: "#1E293B", lineHeight: 1.5 }}>
+                            <strong style={{ color: "#4F46E5" }}>Parafrase: </strong>
+                            {cit.paraphrasedQuote}
+                          </div>
+
+                          {/* Topic Relevance */}
+                          {cit.topicRelevance && (
+                            <div style={{ fontSize: 11.5, color: "#64748B" }}>
+                              <strong>Relevansi: </strong> {cit.topicRelevance}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Projects Table List */
+              <div style={{ background: "#FFFFFF", borderRadius: 12, border: "1px solid #E2E8F0", overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 12.5 }}>
+                  <thead>
+                    <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0", color: "#475569", fontWeight: 600 }}>
+                      <th style={{ padding: "12px 16px" }}>Judul Proyek & Topik</th>
+                      <th style={{ padding: "12px 16px" }}>Peneliti / User</th>
+                      <th style={{ padding: "12px 16px" }}>Jurnal Acuan</th>
+                      <th style={{ padding: "12px 16px" }}>Bank Kutipan</th>
+                      <th style={{ padding: "12px 16px" }}>Status</th>
+                      <th style={{ padding: "12px 16px" }}>Terakhir Update</th>
+                      <th style={{ padding: "12px 16px", textAlign: "right" }}>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminProjects.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ padding: "40px 16px", textAlign: "center", color: "#94A3B8" }}>
+                          {loadingProjects ? "Memuat data proyek penelitian..." : "Tidak ada proyek riset yang ditemukan."}
+                        </td>
+                      </tr>
+                    ) : (
+                      adminProjects.map((proj) => (
+                        <tr
+                          key={proj.id}
+                          style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.1s ease" }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "#FBFDFF")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                        >
+                          <td style={{ padding: "14px 16px", maxWidth: 280 }}>
+                            <div style={{ fontWeight: 600, color: "#0F172A", marginBottom: 2 }}>
+                              {proj.title}
+                            </div>
+                            <div style={{ fontSize: 11.5, color: "#64748B" }}>
+                              {proj.field || "Umum"} {proj.prodi ? `• ${proj.prodi}` : ""}
+                            </div>
+                          </td>
+                          <td style={{ padding: "14px 16px" }}>
+                            <div style={{ fontWeight: 500, color: "#1E293B" }}>
+                              {proj.user?.name || proj.nama || "Mahasiswa"}
+                            </div>
+                            <div style={{ fontSize: 11.5, color: "#64748B" }}>
+                              {proj.user?.email || "-"}
+                            </div>
+                          </td>
+                          <td style={{ padding: "14px 16px" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 999, background: "#F1F5F9", color: "#334155", fontWeight: 600, fontSize: 11.5 }}>
+                              <BookOpen size={12} color="#059669" />
+                              <span>{proj._count?.journals || 0} Jurnal</span>
+                            </span>
+                          </td>
+                          <td style={{ padding: "14px 16px" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 999, background: "#EEF2FF", color: "#4338CA", fontWeight: 600, fontSize: 11.5 }}>
+                              <Quote size={12} color="#4F46E5" />
+                              <span>{proj._count?.citationEvidences || 0} Kutipan</span>
+                            </span>
+                          </td>
+                          <td style={{ padding: "14px 16px" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 7px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: proj.status === "ACTIVE" ? "#DCFCE7" : "#F1F5F9", color: proj.status === "ACTIVE" ? "#166534" : "#475569" }}>
+                              {proj.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: "14px 16px", color: "#64748B", fontSize: 12 }}>
+                            {new Date(proj.updatedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                          </td>
+                          <td style={{ padding: "14px 16px", textAlign: "right" }}>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenProjectDetails(proj)}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 5,
+                                padding: "6px 12px",
+                                borderRadius: 6,
+                                background: "#4338CA",
+                                color: "#FFFFFF",
+                                border: "none",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                              }}
+                            >
+                              <Eye size={12} />
+                              <span>Buka Naskah & Sitasi</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* MODAL TAMBAH TEMPLATE BARU (3 METODE: UPLOAD LATEX MULTI/SINGLE, UPLOAD DOCX, TULIS MANUAL LATEX) */}
@@ -6227,6 +6900,269 @@ const response = await executeAiCompletion({
                   style={{ background: "#4338CA", border: "none", borderRadius: 8, padding: "7px 18px", fontSize: 12.5, fontWeight: 500, color: "#FFFFFF", cursor: "pointer" }}
                 >
                   {importingCurl ? "Memproses..." : "Ekstrak & Simpan"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: Edit Journal (Admin Research System) */}
+      {showEditJournalModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
+          <div style={{ background: "#FFFFFF", borderRadius: 14, width: "100%", maxWidth: 600, maxHeight: "90vh", overflowY: "auto", padding: "24px 28px", border: "1px solid #E4E4E9", boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, borderBottom: "1px solid #F1F1F5", paddingBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <BookOpen size={18} color="#4338CA" />
+                <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
+                  Edit Metadata Jurnal Acuan
+                </h3>
+              </div>
+              <button onClick={() => setShowEditJournalModal(false)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 18, color: "#64748B" }}>
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveJournal();
+              }}
+              style={{ display: "flex", flexDirection: "column", gap: 14 }}
+            >
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>Judul Jurnal / Paper</label>
+                <input
+                  type="text"
+                  required
+                  value={journalFormData.title}
+                  onChange={(e) => setJournalFormData((p) => ({ ...p, title: e.target.value }))}
+                  style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A" }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>Penulis (Authors)</label>
+                  <input
+                    type="text"
+                    value={journalFormData.authors}
+                    onChange={(e) => setJournalFormData((p) => ({ ...p, authors: e.target.value }))}
+                    style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>Tahun Terbit</label>
+                  <input
+                    type="text"
+                    value={journalFormData.year}
+                    onChange={(e) => setJournalFormData((p) => ({ ...p, year: e.target.value }))}
+                    style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>Publikasi / Venue / Jurnal</label>
+                <input
+                  type="text"
+                  value={journalFormData.publication}
+                  onChange={(e) => setJournalFormData((p) => ({ ...p, publication: e.target.value }))}
+                  style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A" }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>DOI</label>
+                  <input
+                    type="text"
+                    value={journalFormData.doi}
+                    onChange={(e) => setJournalFormData((p) => ({ ...p, doi: e.target.value }))}
+                    placeholder="10.1016/..."
+                    style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>URL Paper / PDF</label>
+                  <input
+                    type="text"
+                    value={journalFormData.url}
+                    onChange={(e) => setJournalFormData((p) => ({ ...p, url: e.target.value }))}
+                    placeholder="https://..."
+                    style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>Tier Prioritas</label>
+                  <select
+                    value={journalFormData.tier}
+                    onChange={(e) => setJournalFormData((p) => ({ ...p, tier: e.target.value }))}
+                    style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A" }}
+                  >
+                    <option value="PRIMARY">PRIMARY (Jurnal Utama)</option>
+                    <option value="SUPPORTING">SUPPORTING (Jurnal Pendukung)</option>
+                    <option value="BACKGROUND">BACKGROUND (Latar Belakang)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>Status Verifikasi</label>
+                  <select
+                    value={journalFormData.status}
+                    onChange={(e) => setJournalFormData((p) => ({ ...p, status: e.target.value }))}
+                    style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A" }}
+                  >
+                    <option value="APPROVED">APPROVED (Disetujui)</option>
+                    <option value="PENDING">PENDING (Menunggu)</option>
+                    <option value="REJECTED">REJECTED (Ditolak)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowEditJournalModal(false)}
+                  style={{ background: "#F1F5F9", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 500, color: "#64748B", cursor: "pointer" }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingJournal}
+                  style={{ background: "#4338CA", border: "none", borderRadius: 8, padding: "8px 20px", fontSize: 13, fontWeight: 600, color: "#FFFFFF", cursor: "pointer" }}
+                >
+                  {savingJournal ? "Menyimpan..." : "Simpan Perubahan"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: Edit Citation (Admin Research System) */}
+      {showEditCitationModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
+          <div style={{ background: "#FFFFFF", borderRadius: 14, width: "100%", maxWidth: 640, maxHeight: "90vh", overflowY: "auto", padding: "24px 28px", border: "1px solid #E4E4E9", boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, borderBottom: "1px solid #F1F1F5", paddingBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Quote size={18} color="#0D9488" />
+                <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
+                  Edit Bukti Kutipan Ilmiah
+                </h3>
+              </div>
+              <button onClick={() => setShowEditCitationModal(false)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 18, color: "#64748B" }}>
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveCitation();
+              }}
+              style={{ display: "flex", flexDirection: "column", gap: 14 }}
+            >
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>Bagian / Section Heading</label>
+                  <input
+                    type="text"
+                    value={citationFormData.sectionHeading}
+                    onChange={(e) => setCitationFormData((p) => ({ ...p, sectionHeading: e.target.value }))}
+                    placeholder="Contoh: 3.2 Metodologi Penelitian"
+                    style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>Halaman (Page)</label>
+                  <input
+                    type="number"
+                    value={citationFormData.pageNumber}
+                    onChange={(e) => setCitationFormData((p) => ({ ...p, pageNumber: parseInt(e.target.value) || 1 }))}
+                    style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>Kategori Kutipan Bab</label>
+                  <select
+                    value={citationFormData.citationCategory}
+                    onChange={(e) => setCitationFormData((p) => ({ ...p, citationCategory: e.target.value }))}
+                    style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A" }}
+                  >
+                    <option value="LATAR_BELAKANG">Bab 1 - Latar Belakang</option>
+                    <option value="LANDASAN_TEORI">Bab 2 - Landasan Teori</option>
+                    <option value="METODOLOGI">Bab 3 - Metodologi</option>
+                    <option value="HASIL_PEMBAHASAN">Bab 4 - Hasil & Pembahasan</option>
+                    <option value="GAP_STATE_OF_THE_ART">Gap / State of the Art</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>Fokus Topik / Relevansi</label>
+                  <input
+                    type="text"
+                    value={citationFormData.topicRelevance}
+                    onChange={(e) => setCitationFormData((p) => ({ ...p, topicRelevance: e.target.value }))}
+                    placeholder="Contoh: Akurasi Model LSTM"
+                    style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>Kutipan Langsung (Verbatim Quote)</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={citationFormData.verbatimQuote}
+                  onChange={(e) => setCitationFormData((p) => ({ ...p, verbatimQuote: e.target.value }))}
+                  style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A", lineHeight: 1.5 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 5 }}>Hasil Parafrase Rekomendasi (Paraphrased Quote)</label>
+                <textarea
+                  rows={3}
+                  value={citationFormData.paraphrasedQuote}
+                  onChange={(e) => setCitationFormData((p) => ({ ...p, paraphrasedQuote: e.target.value }))}
+                  style={{ width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#0F172A", lineHeight: 1.5 }}
+                />
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                <input
+                  type="checkbox"
+                  id="citationApprovedCheck"
+                  checked={citationFormData.isApproved}
+                  onChange={(e) => setCitationFormData((p) => ({ ...p, isApproved: e.target.checked }))}
+                  style={{ width: 16, height: 16, cursor: "pointer" }}
+                />
+                <label htmlFor="citationApprovedCheck" style={{ fontSize: 13, color: "#334155", cursor: "pointer", fontWeight: 500 }}>
+                  Disetujui sebagai Bukti Valid untuk Generator Draf Bab
+                </label>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowEditCitationModal(false)}
+                  style={{ background: "#F1F5F9", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 500, color: "#64748B", cursor: "pointer" }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCitation}
+                  style={{ background: "#0D9488", border: "none", borderRadius: 8, padding: "8px 20px", fontSize: 13, fontWeight: 600, color: "#FFFFFF", cursor: "pointer" }}
+                >
+                  {savingCitation ? "Menyimpan..." : "Simpan Perubahan"}
                 </button>
               </div>
             </form>
