@@ -1707,7 +1707,7 @@ export default function FrameworkPage() {
                 )}
               </div>
               <span style={{ fontSize: 11.5, color: "#64748b" }}>
-                Fase 1: Pemetaan Kerangka Berpikir & Node Variabel
+                Fase 7: Pemetaan Kerangka Berpikir & Node Variabel
               </span>
             </div>
           </div>
@@ -1897,14 +1897,14 @@ export default function FrameworkPage() {
                 <Lock size={28} />
               </div>
               <h3 style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", margin: "0 0 6px" }}>
-                Fase 3 Terkunci: Wajib Selesaikan Telaah Jurnal (Fase 2)
+                Kanvas Terkunci: Wajib Selesaikan Telaah Jurnal (Fase 3)
               </h3>
               <p style={{ fontSize: 13, color: "#64748b", maxWidth: 460, margin: "0 0 20px", lineHeight: 1.5 }}>
-                Agar skripsi memiliki landasan teoretis yang kuat dan anti-ngacak, kanvas kerangka berpikir wajib dibangun dari artikel ilmiah yang telah Disetujui (Approved) pada Fase 2.
+                Agar skripsi memiliki landasan teoretis yang kuat, kanvas kerangka berpikir wajib dibangun dari artikel ilmiah yang telah Disetujui (Approved) pada Fase 3.
               </p>
               <Link href={`/projects/${projectId}/journals`} style={{ textDecoration: "none" }}>
                 <Button variant="emerald" size="md">
-                  Ke Fase 2: Telaah Jurnal & AI Cross-Check
+                  Ke Fase 3: Telaah Jurnal & Literatur
                 </Button>
               </Link>
             </div>

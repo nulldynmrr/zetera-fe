@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { api } from "@/lib/api-client";
 import {
   BookOpen,
   Network,
@@ -22,18 +23,35 @@ interface ProjectSidebarProps {
   approvedJournalsCount?: number;
   totalNodesCount?: number;
   activeTab?: string;
+  citationStyleSelected?: boolean;
 }
 
 export function ProjectSidebar({
   projectId,
   approvedJournalsCount = 0,
   totalNodesCount = 0,
+  citationStyleSelected,
 }: ProjectSidebarProps) {
   const pathname = usePathname();
   const [hoveredPhase, setHoveredPhase] = useState<number | null>(null);
+  const [hasCitationStyle, setHasCitationStyle] = useState<boolean>(Boolean(citationStyleSelected));
 
-  const isPhase3Unlocked = approvedJournalsCount > 0;
-  const isPhase4Unlocked = isPhase3Unlocked && totalNodesCount > 0;
+  useEffect(() => {
+    if (citationStyleSelected !== undefined) {
+      setHasCitationStyle(Boolean(citationStyleSelected));
+      return;
+    }
+    if (projectId) {
+      api.projects
+        .get(projectId)
+        .then((res) => {
+          if (res.data?.citationStyle) {
+            setHasCitationStyle(true);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [projectId, citationStyleSelected]);
 
   const phases = [
     {
@@ -59,9 +77,9 @@ export function ProjectSidebar({
       icon: FileText,
       href: `/projects/${projectId}/template`,
       unlocked: true,
-      done: false,
+      done: hasCitationStyle,
       active: pathname?.includes("/template"),
-      badgeText: "Pilih Gaya",
+      badgeText: hasCitationStyle ? "Terpilih" : "Pilih Gaya",
       color: "#b45309",
       bgLight: "#fffbeb",
       borderColor: "#fde68a",
@@ -69,17 +87,19 @@ export function ProjectSidebar({
     {
       id: 3,
       phaseNum: "F3",
-      label: "Daftar Isi (Custom BAB)",
-      subtitle: "Susun dan finalisasi kerangka bab skripsi",
-      icon: ListTree,
-      href: `/projects/${projectId}/outline/setup`,
+      label: "Telaah Jurnal",
+      subtitle: "Cari jurnal acuan, upload PDF & rekomendasi AI",
+      icon: BookOpen,
+      href: `/projects/${projectId}/journals`,
       unlocked: true,
-      done: false,
-      active: pathname?.includes("/outline/setup"),
-      badgeText: "Struktur Bab",
+      done: approvedJournalsCount > 0,
+      active:
+        (pathname?.includes("/journals") && !pathname?.includes("/journals/")) ||
+        pathname?.includes("/screening"),
+      badgeText: approvedJournalsCount > 0 ? `${approvedJournalsCount} Jurnal` : "Pilih Jurnal",
       color: "#059669",
       bgLight: "#ecfdf5",
-      borderColor: "#a7f3d0",
+      borderColor: "#00C988",
     },
     {
       id: 4,
@@ -99,38 +119,21 @@ export function ProjectSidebar({
     {
       id: 5,
       phaseNum: "F5",
-      label: "Telaah Jurnal",
-      subtitle: "Upload & AI Cross-Check verifikasi disiplin ilmu",
-      icon: BookOpen,
-      href: `/projects/${projectId}/journals`,
+      label: "Daftar Isi (Custom BAB)",
+      subtitle: "Susun dan finalisasi kerangka bab skripsi",
+      icon: ListTree,
+      href: `/projects/${projectId}/outline/setup`,
       unlocked: true,
-      done: approvedJournalsCount > 0,
-      active:
-        (pathname?.includes("/journals") && !pathname?.includes("/journals/")) ||
-        pathname?.includes("/screening"),
-      badgeText: approvedJournalsCount > 0 ? `${approvedJournalsCount} Disetujui` : "Pool Jurnal",
-      color: "#059669",
-      bgLight: "#ecfdf5",
-      borderColor: "#00C988",
-    },
-    {
-      id: 6,
-      phaseNum: "F6",
-      label: "Kanvas Kerangka",
-      subtitle: "Pemetaan variabel X-Y & metodologi riset",
-      icon: Network,
-      href: `/projects/${projectId}/framework`,
-      unlocked: true,
-      done: totalNodesCount > 0,
-      active: pathname?.includes("/framework"),
-      badgeText: totalNodesCount > 0 ? `${totalNodesCount} Node` : "Siap",
-      color: "#0369a1",
+      done: false,
+      active: pathname?.includes("/outline/setup"),
+      badgeText: "Struktur Bab",
+      color: "#0284c7",
       bgLight: "#f0f9ff",
       borderColor: "#bae6fd",
     },
     {
-      id: 7,
-      phaseNum: "F7",
+      id: 6,
+      phaseNum: "F6",
       label: "Draft Proposal",
       subtitle: "Research Gap otomatis & ekspor dokumen DOCX",
       icon: FileEdit,
@@ -140,6 +143,21 @@ export function ProjectSidebar({
       active: pathname?.includes("/proposal"),
       badgeText: "Tulis Proposal",
       color: "#0284c7",
+      bgLight: "#f0f9ff",
+      borderColor: "#bae6fd",
+    },
+    {
+      id: 7,
+      phaseNum: "F7",
+      label: "Kanvas Kerangka",
+      subtitle: "Pemetaan variabel X-Y & metodologi riset",
+      icon: Network,
+      href: `/projects/${projectId}/framework`,
+      unlocked: true,
+      done: totalNodesCount > 0,
+      active: pathname?.includes("/framework"),
+      badgeText: totalNodesCount > 0 ? `${totalNodesCount} Node` : "Siap",
+      color: "#0369a1",
       bgLight: "#f0f9ff",
       borderColor: "#bae6fd",
     },

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
 import { Button, AcademicMark } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { EyebrowPill } from "@/components/ui/EyebrowPill";
@@ -68,6 +69,8 @@ function AcademicBadge({
 export default function SignupPage() {
   const { register } = useAuth();
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
@@ -252,23 +255,69 @@ export default function SignupPage() {
           />
           <Input
             id="signup-password"
-            type="password"
+            type={showPassword ? "text" : "password"}
             label="Password"
             placeholder="Min. 8 karakter"
             value={form.password}
             onChange={(e) => set("password", e.target.value)}
             error={errors.password}
             autoComplete="new-password"
+            rightElement={
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: 4,
+                  cursor: "pointer",
+                  color: "#64748b",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  outline: "none",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#0f172a")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "#64748b")}
+                title={showPassword ? "Sembunyikan password" : "Lihat password"}
+                aria-label={showPassword ? "Sembunyikan password" : "Lihat password"}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            }
           />
           <Input
             id="signup-confirm"
-            type="password"
+            type={showConfirm ? "text" : "password"}
             label="Konfirmasi Password"
             placeholder="Ulangi password"
             value={form.confirm}
             onChange={(e) => set("confirm", e.target.value)}
             error={errors.confirm}
             autoComplete="new-password"
+            rightElement={
+              <button
+                type="button"
+                onClick={() => setShowConfirm(!showConfirm)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: 4,
+                  cursor: "pointer",
+                  color: "#64748b",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  outline: "none",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#0f172a")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "#64748b")}
+                title={showConfirm ? "Sembunyikan konfirmasi password" : "Lihat konfirmasi password"}
+                aria-label={showConfirm ? "Sembunyikan konfirmasi password" : "Lihat konfirmasi password"}
+              >
+                {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            }
           />
 
           <div style={{ marginTop: 6 }}>

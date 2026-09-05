@@ -847,31 +847,59 @@ export default function DashboardPage() {
                 }}
               >
                 {filteredProjects.map((proj: any) => {
+                  // ── Dynamic Phase Routing & Progression (F1 -> F2 -> F3 -> F4 -> F5 -> F7 -> F6) ──
                   const totalJournals = proj._count?.journals || 0;
                   const totalNodes = proj._count?.frameworkNodes || 0;
+                  const hasCitation = Boolean(proj.citationStyle);
+                  const hasCustomOutline = Boolean(proj.customOutline);
 
-                  // ── Dynamic Phase Routing & Unlock Logic ──
-                  let targetHref = `/projects/${proj.id}/journals`;
-                  let actionLabel = "Telaah Jurnal";
-                  let actionColor = "#0284c7";
-                  let actionBg = "#f0f9ff";
-                  let actionBorder = "#bae6fd";
-                  let ActionIcon = BookOpen;
+                  let targetHref = `/projects/${proj.id}/template`;
+                  let actionLabel = "Template & Sitasi";
+                  let actionColor = "#059669";
+                  let actionBg = "#ecfdf5";
+                  let actionBorder = "#a7f3d0";
+                  let ActionIcon = FileText;
 
                   if (totalNodes > 0) {
+                    // Kerangka (F7) sudah ada node -> Lanjut F6: Draft Proposal
                     targetHref = `/projects/${proj.id}/proposal`;
                     actionLabel = "Draft Proposal";
-                    actionColor = "#059669";
-                    actionBg = "#f0fdf4";
-                    actionBorder = "#86efac";
+                    actionColor = "#0284c7";
+                    actionBg = "#f0f9ff";
+                    actionBorder = "#bae6fd";
                     ActionIcon = FileText;
-                  } else if (totalJournals > 0) {
+                  } else if (hasCustomOutline) {
+                    // Daftar Isi (F5) sudah di-setup -> Lanjut F7: Kanvas Kerangka
                     targetHref = `/projects/${proj.id}/framework`;
-                    actionLabel = "Framework";
+                    actionLabel = "Kanvas Kerangka";
                     actionColor = "#7c3aed";
                     actionBg = "#faf5ff";
                     actionBorder = "#d8b4fe";
                     ActionIcon = Network;
+                  } else if (totalJournals > 0) {
+                    // Jurnal acuan (F3) sudah dipilih -> Lanjut F4: Research Blueprint
+                    targetHref = `/projects/${proj.id}/outline`;
+                    actionLabel = "Research Blueprint";
+                    actionColor = "#7c3aed";
+                    actionBg = "#faf5ff";
+                    actionBorder = "#ddd6fe";
+                    ActionIcon = Layers;
+                  } else if (hasCitation) {
+                    // Sitasi (F2) sudah dipilih -> Lanjut F3: Telaah Jurnal
+                    targetHref = `/projects/${proj.id}/journals`;
+                    actionLabel = "Telaah Jurnal";
+                    actionColor = "#059669";
+                    actionBg = "#ecfdf5";
+                    actionBorder = "#00C988";
+                    ActionIcon = BookOpen;
+                  } else {
+                    // Baru F1 (Topik) selesai -> Menuju F2: Template & Sitasi
+                    targetHref = `/projects/${proj.id}/template`;
+                    actionLabel = "Template & Sitasi";
+                    actionColor = "#059669";
+                    actionBg = "#ecfdf5";
+                    actionBorder = "#a7f3d0";
+                    ActionIcon = FileText;
                   }
 
                   return (

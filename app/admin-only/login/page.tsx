@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ShieldCheck, Lock, Mail, ArrowRight, AlertCircle, RefreshCw } from "lucide-react";
+import { ShieldCheck, Lock, Mail, ArrowRight, AlertCircle, RefreshCw, Eye, EyeOff } from "lucide-react";
 import { api, setToken } from "@/lib/api-client";
 
 export default function AdminLoginPage() {
@@ -11,6 +11,7 @@ export default function AdminLoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -201,14 +202,14 @@ export default function AdminLoginPage() {
                   }}
                 />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
                   required
                   style={{
                     width: "100%",
-                    padding: "10px 14px 10px 40px",
+                    padding: "10px 42px 10px 40px",
                     borderRadius: 10,
                     border: "1px solid #cbd5e1",
                     fontSize: 13.5,
@@ -218,6 +219,31 @@ export default function AdminLoginPage() {
                     transition: "border-color 0.15s ease",
                   }}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: "absolute",
+                    right: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "transparent",
+                    border: "none",
+                    padding: 4,
+                    cursor: "pointer",
+                    color: "#94a3b8",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    outline: "none",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#0f172a")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+                  title={showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"}
+                  aria-label={showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
             </div>
 

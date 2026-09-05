@@ -244,6 +244,26 @@ export type EvidenceType = "SUPPORTS" | "CONTRADICTS" | "MENTIONS";
 export type ExtractionMethod = "MINERU_PIPELINE" | "MINERU_VLM" | "GROBID" | "PDFPARSE" | "OCR" | "MANUAL";
 export type ExtractionStatus = "PENDING" | "PROCESSING" | "DONE" | "FAILED";
 
+export interface JournalCitationEvidence {
+  id: string;
+  journalId: string;
+  projectId: string;
+  pageNumber: number;
+  sectionHeading?: string | null;
+  verbatimQuote: string;
+  paraphrasedQuote: string;
+  topicRelevance: string;
+  citationCategory: string;
+  journalName?: string | null;
+  doi?: string | null;
+  authors?: string | null;
+  year?: number | null;
+  paperTitle: string;
+  isApproved: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface FrameworkNode {
   id: string;
   projectId: string;
@@ -520,10 +540,29 @@ export const api = {
     update: (id: string, body: Partial<ResearchProject>) =>
       http.patch<{ success: boolean; data: ResearchProject }>(`/api/projects/${id}`, body),
     delete: (id: string) => http.delete<{ success: boolean; message: string }>(`/api/projects/${id}`),
-    brainstormTopics: (body: { minat: string; kataKunci?: string; constraints?: string; field?: string }) =>
+    brainstormTopics: (body: {
+      minat: string;
+      kataKunci?: string;
+      masalahDitemukan?: string;
+      constraints?: string;
+      field?: string;
+    }) =>
       http.post<{ success: boolean; data: any[] }>("/api/projects/brainstorm-topics", body),
     recommendOutline: (body: { title: string; field?: string; approachType?: string; approachConfig?: any }) =>
       http.post<{ success: boolean; data: any }>("/api/projects/recommend-outline", body),
+    refineNarrative: (body: {
+      title: string;
+      field?: string;
+      approachType?: string;
+      approachConfig?: any;
+      currentBackground?: string;
+      currentPurpose?: string;
+      currentScope?: string;
+    }) =>
+      http.post<{
+        success: boolean;
+        data: { background: string; purpose: string; scope: string };
+      }>("/api/projects/refine-narrative", body),
     syncProposalToFramework: (projectId: string, proposalText?: string) =>
       http.post<{ success: boolean; data: any }>(`/api/projects/${projectId}/sync-framework`, { proposalText }),
     previewSwitchTemplate: (projectId: string, targetTemplateId: string) =>
@@ -721,6 +760,19 @@ export const api = {
         journal: Journal;
         newMappings: JournalNodeMapping[];
       }>(`/api/projects/${projectId}/journals/${journalId}/analyze`),
+
+    // ── Verified Citation Evidences (Strict Provenance) ────────
+    getCitations: (projectId: string, journalId: string) =>
+      http.get<{ success: boolean; data: JournalCitationEvidence[] }>(`/api/projects/${projectId}/journals/${journalId}/citations`),
+
+    getAllCitations: (projectId: string) =>
+      http.get<{ success: boolean; data: JournalCitationEvidence[] }>(`/api/projects/${projectId}/journals/citations`),
+
+    extractCitations: (projectId: string, journalId: string) =>
+      http.post<{ success: boolean; data: JournalCitationEvidence[]; message: string }>(`/api/projects/${projectId}/journals/${journalId}/extract-citations`, {}),
+
+    deleteCitation: (projectId: string, citationId: string) =>
+      http.delete<{ success: boolean; message: string }>(`/api/projects/${projectId}/journals/citations/${citationId}`),
 
     // ── Journal Discovery (PRD 011) ──────────────────────────
     discovery: {

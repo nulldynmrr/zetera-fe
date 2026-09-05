@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { api, ProposalTemplate, ProposalTemplateSection, ResearchProject } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
 import { ProjectSidebar } from "@/components/ui/ProjectSidebar";
+import { notify } from "@/lib/notification";
 import {
   FileText,
   ChevronRight,
@@ -103,7 +104,7 @@ export default function ProjectTemplatePage() {
   const [templates, setTemplates] = useState<ProposalTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [sections, setSections] = useState<ProposalTemplateSection[]>([]);
-  const [selectedCitationStyle, setSelectedCitationStyle] = useState<string>("IEEE");
+  const [selectedCitationStyle, setSelectedCitationStyle] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -116,8 +117,9 @@ export default function ProjectTemplatePage() {
         if (projRes.success && projRes.data) {
           setProject(projRes.data);
           // Restore saved citation style jika ada
-          if ((projRes.data as any).citationStyle) {
-            setSelectedCitationStyle((projRes.data as any).citationStyle);
+          const styleFromDb = (projRes.data as any).citationStyle;
+          if (styleFromDb && typeof styleFromDb === "string") {
+            setSelectedCitationStyle(styleFromDb.toUpperCase().trim());
           }
         }
         if (tplRes.success && tplRes.data.length > 0) {
@@ -163,35 +165,50 @@ export default function ProjectTemplatePage() {
   };
 
   const handleSelectCitationStyle = async (styleCode: string) => {
-    setSelectedCitationStyle(styleCode);
+    const upperCode = styleCode.toUpperCase().trim();
+    setSelectedCitationStyle(upperCode);
     try {
-      await api.projects.update(projectId, { citationStyle: styleCode } as any);
+      const res = await api.projects.update(projectId, { citationStyle: upperCode } as any);
+      if (res.success && res.data) {
+        setProject(res.data);
+      } else {
+        setProject((prev) => (prev ? { ...prev, citationStyle: upperCode } : null));
+      }
+      notify.success("Gaya Sitasi Dipilih", `Format sitasi diset ke ${upperCode}`);
     } catch (err) {
       console.error("Gagal auto-save citation style:", err);
+      notify.error("Gagal Menyimpan", "Gaya sitasi gagal disimpan ke server.");
     }
   };
 
   const handleSaveAndProceed = async () => {
     setSaving(true);
     try {
-      // Simpan citationStyle ke project
-      await api.projects.update(projectId, { citationStyle: selectedCitationStyle } as any);
+      const upperCode = (selectedCitationStyle || "IEEE").toUpperCase().trim();
+      const res = await api.projects.update(projectId, { citationStyle: upperCode } as any);
+      if (res.success && res.data) {
+        setProject(res.data);
+      }
       setSavedSuccess(true);
+      notify.success("Berhasil Disimpan", "Gaya sitasi tersimpan. Menuju Telaah Jurnal (F3)...");
       setTimeout(() => {
-        router.push(`/projects/${projectId}/outline`);
-      }, 600);
+        router.push(`/projects/${projectId}/journals`);
+      }, 500);
     } catch (err) {
       console.error("Gagal simpan citation style:", err);
       setSavedSuccess(true);
       setTimeout(() => {
-        router.push(`/projects/${projectId}/outline`);
-      }, 600);
+        router.push(`/projects/${projectId}/journals`);
+      }, 500);
     } finally {
       setSaving(false);
     }
   };
 
-  const selectedStyle = CITATION_STYLES.find((s) => s.code === selectedCitationStyle) || CITATION_STYLES[0];
+  const selectedStyle =
+    CITATION_STYLES.find(
+      (s) => s.code.toUpperCase() === selectedCitationStyle.toUpperCase().trim()
+    ) || CITATION_STYLES[0];
 
   if (loading) {
     return (
@@ -203,7 +220,12 @@ export default function ProjectTemplatePage() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#fefefe", display: "flex", flexDirection: "row" }}>
-      <ProjectSidebar projectId={projectId} approvedJournalsCount={0} totalNodesCount={0} />
+      <ProjectSidebar
+        projectId={projectId}
+        approvedJournalsCount={0}
+        totalNodesCount={0}
+        citationStyleSelected={Boolean(project?.citationStyle || selectedCitationStyle)}
+      />
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
         {/* Header */}
@@ -241,7 +263,7 @@ export default function ProjectTemplatePage() {
             onClick={handleSaveAndProceed}
             icon={savedSuccess ? <CheckCircle2 size={15} /> : <ArrowRight size={15} />}
           >
-            {savedSuccess ? "Tersimpan! Ke Outline..." : "Simpan & Lanjut ke Outline →"}
+            {savedSuccess ? "Tersimpan! Ke Telaah Jurnal..." : "Simpan & Lanjut ke Telaah Jurnal →"}
           </Button>
         </header>
 
@@ -311,7 +333,7 @@ export default function ProjectTemplatePage() {
               {/* Citation Style Grid */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
                 {CITATION_STYLES.map((style) => {
-                  const isSelected = selectedCitationStyle === style.code;
+                  const isSelected = style.code.toUpperCase() === selectedCitationStyle.toUpperCase().trim();
                   const Icon = style.icon;
                   return (
                     <div
@@ -320,7 +342,7 @@ export default function ProjectTemplatePage() {
                       style={{
                         padding: 16,
                         borderRadius: 12,
-                        border: isSelected ? `2px solid ${style.color}` : "1.5px solid #e2e8f0",
+                        border: isSelected ? `2.5px solid ${style.color}` : "1.5px solid #e2e8f0",
                         background: isSelected ? style.bg : "#ffffff",
                         cursor: "pointer",
                         transition: "all 0.15s",
@@ -328,23 +350,39 @@ export default function ProjectTemplatePage() {
                         overflow: "hidden",
                       }}
                     >
-                      {isSelected && (
+                      {isSelected ? (
                         <div
                           style={{
                             position: "absolute",
                             top: 10,
                             right: 10,
-                            width: 20,
-                            height: 20,
-                            borderRadius: "50%",
-                            background: style.color,
                             display: "flex",
                             alignItems: "center",
-                            justifyContent: "center",
+                            gap: 4,
+                            padding: "3px 8px",
+                            borderRadius: 999,
+                            background: style.color,
+                            color: "#ffffff",
+                            fontSize: 11,
+                            fontWeight: 700,
                           }}
                         >
-                          <CheckCircle2 size={12} color="#fff" />
+                          <CheckCircle2 size={13} color="#fff" />
+                          <span>Terpilih</span>
                         </div>
+                      ) : (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: 12,
+                            right: 12,
+                            width: 18,
+                            height: 18,
+                            borderRadius: "50%",
+                            border: "2px solid #cbd5e1",
+                            background: "#ffffff",
+                          }}
+                        />
                       )}
 
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
