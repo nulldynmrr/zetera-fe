@@ -1334,31 +1334,12 @@ export default function JournalsPage() {
                     fontWeight: 700,
                     color: "#0f172a",
                     margin: 0,
-                    maxWidth: 440,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    lineHeight: 1.3,
                   }}
                   title={project?.title || "Eksplorasi Jurnal Acuan"}
                 >
                   {project?.title || "Eksplorasi Jurnal Acuan"}
                 </h1>
-                {project?.field && (
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      padding: "2px 8px",
-                      borderRadius: 6,
-                      background: "#e0f2fe",
-                      color: "#0369a1",
-                      whiteSpace: "nowrap",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {project.field}
-                  </span>
-                )}
               </div>
               <span style={{ fontSize: 12, color: "#64748b" }}>
                 Fase 3: Eksplorasi & Pemilihan Jurnal Bahan Acuan
@@ -1415,7 +1396,7 @@ export default function JournalsPage() {
           style={{
             maxWidth: 1380,
             margin: "0 auto",
-            padding: "24px 24px 60px",
+            padding: "0 24px 60px",
             width: "100%",
             boxSizing: "border-box",
           }}
@@ -1436,12 +1417,11 @@ export default function JournalsPage() {
                 <div
                   style={{
                     position: "sticky",
-                    top: 74,
+                    top: 64,
                     zIndex: 20,
                     background: "#ffffff",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: 16,
-                    padding: "18px 22px",
+                    paddingTop: 20,
+                    paddingBottom: 14,
                     display: "flex",
                     flexDirection: "column",
                     gap: 12,
@@ -1451,8 +1431,7 @@ export default function JournalsPage() {
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                        <Sparkles size={16} color="#059669" />
-                        <h2 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: 0, letterSpacing: "-0.01em" }}>
+                        <h2 style={{ fontSize: 24, fontWeight: 700, color: "#0f172a", margin: 0, letterSpacing: "-0.01em" }}>
                           Pilih Jurnal Sebagai Bahan Acuan Riset
                         </h2>
                       </div>
@@ -1668,10 +1647,8 @@ export default function JournalsPage() {
                                 }}
                                 title={`Topik: ${project.title}`}
                                 style={{
-                                  padding: "4px 10px",
-                                  borderRadius: 9999,
                                   background: discoveryQuery === project.title ? "#0f172a" : "#f1f5f9",
-                                  border: `1px solid ${discoveryQuery === project.title ? "#0f172a" : "#e2e8f0"}`,
+                                  border: "none",
                                   color: discoveryQuery === project.title ? "#ffffff" : "#334155",
                                   fontSize: 11,
                                   fontWeight: 500,
@@ -1699,7 +1676,7 @@ export default function JournalsPage() {
                                   padding: "4px 10px",
                                   borderRadius: 9999,
                                   background: discoveryQuery === masalah ? "#0f172a" : "#f1f5f9",
-                                  border: `1px solid ${discoveryQuery === masalah ? "#0f172a" : "#e2e8f0"}`,
+                                  border: "none",
                                   color: discoveryQuery === masalah ? "#ffffff" : "#334155",
                                   fontSize: 11,
                                   fontWeight: 500,
@@ -1728,7 +1705,7 @@ export default function JournalsPage() {
                                   padding: "4px 10px",
                                   borderRadius: 9999,
                                   background: "#f1f5f9",
-                                  border: "1px solid #e2e8f0",
+                                  border: "none",
                                   color: "#334155",
                                   fontSize: 11,
                                   fontWeight: 500,
@@ -1756,7 +1733,7 @@ export default function JournalsPage() {
                                   padding: "4px 10px",
                                   borderRadius: 9999,
                                   background: "#f1f5f9",
-                                  border: "1px solid #e2e8f0",
+                                  border: "none",
                                   color: "#334155",
                                   fontSize: 11,
                                   fontWeight: 500,
@@ -1775,7 +1752,7 @@ export default function JournalsPage() {
                           </div>
 
                           {/* 3. Divider Vertikal Halus */}
-                          <div style={{ width: 1, height: 18, background: "#cbd5e1", flexShrink: 0, margin: "0 2px" }} />
+                          <div style={{ width: 1, height: 16, background: "#e2e8f0", flexShrink: 0, margin: "0 2px" }} />
 
                           {/* 4. Filter Rumpun Disiplin */}
                           <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, marginLeft: "auto" }}>
@@ -1793,9 +1770,9 @@ export default function JournalsPage() {
                                   style={{
                                     padding: "3px 10px",
                                     borderRadius: 9999,
-                                    border: isSelected ? "1px solid #059669" : "1px solid #e2e8f0",
-                                    background: isSelected ? "#ecfdf5" : "#ffffff",
-                                    color: isSelected ? "#065f46" : "#475569",
+                                    border: "none",
+                                    background: isSelected ? "#059669" : "#ffffff",
+                                    color: isSelected ? "#ffffff" : "#475569",
                                     fontWeight: isSelected ? 700 : 500,
                                     fontSize: 11,
                                     cursor: "pointer",

@@ -57,18 +57,35 @@ import {
   ZoomIn,
   ZoomOut,
   Quote,
+  CreditCard,
+  Network,
+  Activity,
+  ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, ProposalTemplate, AiSkillPrompt } from "@/lib/api-client";
 import { notify } from "@/lib/notification";
 
-type AdminTab = "AI_ENGINE" | "PROMPTS_SKILLS" | "PRICING" | "TEMPLATES_LIBRARY" | "RESEARCH_SYSTEM" | "DASHBOARD" | "SECRETS" | "USERS";
+type AdminTab =
+  | "AI_MODELS"
+  | "AI_EXCHANGE"
+  | "AI_ROUTING"
+  | "AI_LOGS"
+  | "AI_ROUTING_LOGS"
+  | "AI_ENGINE"
+  | "PROMPTS_SKILLS"
+  | "PRICING"
+  | "TEMPLATES_LIBRARY"
+  | "RESEARCH_SYSTEM"
+  | "DASHBOARD"
+  | "SECRETS"
+  | "USERS";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
   const { user, logout, isLoading } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<AdminTab>("AI_ENGINE");
+  const [activeTab, setActiveTab] = useState<AdminTab>("AI_MODELS");
 
   // ── Research System & Citation Explorer Admin State ──
   const [adminProjects, setAdminProjects] = useState<any[]>([]);
@@ -1231,10 +1248,41 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
     );
   }
 
+  const getTabCategory = () => {
+    switch (activeTab) {
+      case "AI_MODELS":
+      case "AI_EXCHANGE":
+      case "AI_ROUTING":
+      case "AI_LOGS":
+      case "AI_ROUTING_LOGS":
+      case "AI_ENGINE":
+        return "AI & Engine";
+      case "PROMPTS_SKILLS":
+      case "TEMPLATES_LIBRARY":
+      case "RESEARCH_SYSTEM":
+        return "Riset & Konten";
+      case "PRICING":
+      case "DASHBOARD":
+      case "USERS":
+      case "SECRETS":
+        return "Bisnis & Pengguna";
+      default:
+        return "Dashboard";
+    }
+  };
+
   const getTabTitle = () => {
     switch (activeTab) {
+      case "AI_MODELS":
       case "AI_ENGINE":
-        return "AI Engine Control";
+        return "Konfigurasi Model Aktif";
+      case "AI_EXCHANGE":
+        return "Master Kurs & Margin";
+      case "AI_ROUTING":
+      case "AI_ROUTING_LOGS":
+        return "Feature-to-Model Routing Matrix";
+      case "AI_LOGS":
+        return "AI Usage Logs & Telemetri";
       case "PROMPTS_SKILLS":
         return "AI Skill Prompts, Gaya Penulisan & Code Binding";
       case "PRICING":
@@ -1249,159 +1297,402 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
         return "Database Secret Keys";
       case "USERS":
         return "Manajemen Pengguna";
+      default:
+        return "Admin Portal";
     }
   };
 
+  const navSections = [
+    {
+      category: "AI & Engine",
+      items: [
+        {
+          id: "AI_MODELS" as AdminTab,
+          title: "Konfigurasi Model",
+          icon: Cpu,
+          badge: aiModels.filter((m) => m.isActive).length ? `${aiModels.filter((m) => m.isActive).length}` : undefined,
+        },
+        {
+          id: "AI_EXCHANGE" as AdminTab,
+          title: "Master Kurs & Margin",
+          icon: Coins,
+        },
+        {
+          id: "AI_ROUTING" as AdminTab,
+          title: "Routing Matrix",
+          icon: Network,
+        },
+        {
+          id: "AI_LOGS" as AdminTab,
+          title: "AI Usage Logs",
+          icon: Activity,
+          badge: usageLogs.length ? `${usageLogs.length}` : undefined,
+        },
+      ],
+    },
+    {
+      category: "Riset & Konten",
+      items: [
+        {
+          id: "PROMPTS_SKILLS" as AdminTab,
+          title: "Skills & Prompts",
+          icon: Sparkles,
+          badge: promptsList.length ? `${promptsList.length}` : undefined,
+        },
+        {
+          id: "TEMPLATES_LIBRARY" as AdminTab,
+          title: "Template & LaTeX",
+          icon: FileCode,
+        },
+        {
+          id: "RESEARCH_SYSTEM" as AdminTab,
+          title: "Sistem & Jurnal Riset",
+          icon: BookOpen,
+        },
+      ],
+    },
+    {
+      category: "Bisnis & Pengguna",
+      items: [
+        {
+          id: "PRICING" as AdminTab,
+          title: "Paket & Harga Kredit",
+          icon: CreditCard,
+          badge: creditPackages.length ? `${creditPackages.length}` : undefined,
+        },
+        {
+          id: "DASHBOARD" as AdminTab,
+          title: "Executive Dashboard",
+          icon: BarChart3,
+        },
+        {
+          id: "USERS" as AdminTab,
+          title: "Manajemen Pengguna",
+          icon: Users,
+          badge: usersList.length ? `${usersList.length}` : undefined,
+        },
+      ],
+    },
+  ];
+
   return (
-    <div style={{ minHeight: "100vh", background: "#FFFFFF", fontFamily: "var(--font-body, 'Poppins', sans-serif)", color: "#0F0F14", paddingBottom: 60 }}>
-      {/* Top Header & Navbar */}
-      <header
+    <div style={{ minHeight: "100vh", background: "#fafafa", fontFamily: "var(--font-body, 'Inter', sans-serif)", color: "#0f172a", display: "flex" }}>
+      {/* ════════════════════════════════════════════════════════════════════════
+          MINIMALIST CLEAN SIDEBAR (Linear / Notion Style)
+         ════════════════════════════════════════════════════════════════════════ */}
+      <aside
         style={{
-          background: "#FFFFFF",
-          borderBottom: "1px solid #E4E4E9",
-          padding: "16px 36px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
+          width: 240,
+          minWidth: 240,
+          height: "100vh",
           position: "sticky",
           top: 0,
-          zIndex: 40,
+          background: "#ffffff",
+          borderRight: "1px solid #f1f5f9",
+          display: "flex",
+          flexDirection: "column",
+          zIndex: 50,
         }}
       >
-        <div>
-          <div style={{ fontSize: 11, color: "#71717A", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>
-            Pages / Dashboard
+        {/* Brand Header */}
+        <div style={{ padding: "18px 18px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <div
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 7,
+                background: "#059669",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#ffffff",
+                flexShrink: 0,
+              }}
+            >
+              <ShieldCheck size={15} />
+            </div>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.01em", fontFamily: "var(--font-display, sans-serif)" }}>
+              Zetera Admin
+            </span>
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, color: "#0F0F14", letterSpacing: "-0.015em" }}>
-            {getTabTitle()}
-          </h1>
+          <span style={{ fontSize: 10, fontWeight: 600, color: "#059669", background: "#e6f9f2", padding: "2px 6px", borderRadius: 999 }}>
+            v2.4
+          </span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          {/* Navigation Pill Switcher */}
-          <div style={{ display: "flex", background: "#F7F7FB", padding: 3, borderRadius: 10, gap: 2, border: "1px solid #E4E4E9" }}>
-            {[
-              { id: "AI_ENGINE", label: "AI Engine Control", icon: Cpu },
-              { id: "PROMPTS_SKILLS", label: "Skills & Prompts", icon: Sparkles },
-              { id: "PRICING", label: "Harga & Paket", icon: Coins },
-              { id: "TEMPLATES_LIBRARY", label: "Library & LaTeX", icon: FileCode },
-              { id: "RESEARCH_SYSTEM", label: "Sistem & Jurnal Riset", icon: BookOpen },
-              { id: "DASHBOARD", label: "Dashboard", icon: BarChart3 },
-              { id: "USERS", label: "Users", icon: Users },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const isSelected = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as AdminTab)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "7px 14px",
-                    borderRadius: 8,
-                    fontSize: 13,
-                    fontWeight: isSelected ? 600 : 500,
-                    color: isSelected ? "#4338CA" : "#71717A",
-                    background: isSelected ? "#EEEAFE" : "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  <Icon size={14} color={isSelected ? "#4338CA" : "#71717A"} />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
+        {/* Navigation Sections */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 18 }}>
+          {navSections.map((sec, secIdx) => (
+            <div key={secIdx}>
+              {/* Category Header */}
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "#94a3b8",
+                  padding: "0 8px 6px",
+                  letterSpacing: "0.01em",
+                }}
+              >
+                {sec.category}
+              </div>
+
+              {/* Category Nav Items */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {sec.items.map((item) => {
+                  const Icon = item.icon;
+                  const isSelected = activeTab === item.id || (item.id === "AI_MODELS" && activeTab === "AI_ENGINE");
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "7px 10px",
+                        borderRadius: 8,
+                        background: isSelected ? "#e6f9f2" : "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        width: "100%",
+                        transition: "all 0.12s ease",
+                        color: isSelected ? "#065f46" : "#475569",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) {
+                          e.currentTarget.style.background = "#f8fafc";
+                          e.currentTarget.style.color = "#0f172a";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) {
+                          e.currentTarget.style.background = "transparent";
+                          e.currentTarget.style.color = "#475569";
+                        }
+                      }}
+                    >
+                      <Icon
+                        size={16}
+                        color={isSelected ? "#059669" : "#64748b"}
+                        style={{ flexShrink: 0, transition: "color 0.12s ease" }}
+                      />
+
+                      <span
+                        style={{
+                          fontSize: 13,
+                          fontWeight: isSelected ? 600 : 500,
+                          flex: 1,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.title}
+                      </span>
+
+                      {item.badge && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 600,
+                            padding: "1px 6px",
+                            borderRadius: 999,
+                            background: isSelected ? "#dcfce7" : "#f1f5f9",
+                            color: isSelected ? "#059669" : "#94a3b8",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Minimal User Profile Card at Bottom */}
+        <div style={{ padding: "10px 14px", borderTop: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: "#f1f5f9",
+                color: "#475569",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 600,
+                fontSize: 11.5,
+                flexShrink: 0,
+              }}
+            >
+              {user?.email?.charAt(0).toUpperCase() || "A"}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#0f172a",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {user?.email || "Admin"}
+              </div>
+              <div style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.1 }}>Superadmin</div>
+            </div>
           </div>
 
-          <div style={{ width: 1, height: 24, background: "#E4E4E9" }} />
+          <button
+            onClick={() => logout()}
+            title="Keluar"
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: 5,
+              borderRadius: 6,
+              color: "#94a3b8",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+          >
+            <LogOut size={14} />
+          </button>
+        </div>
+      </aside>
 
-          {/* User Profile & Actions */}
+      {/* ════════════════════════════════════════════════════════════════════════
+          MAIN CONTENT WRAPPER (Right of Sidebar)
+         ════════════════════════════════════════════════════════════════════════ */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+        {/* Top Header & Navbar (Clean, 56px height, minimalist) */}
+        <header
+          style={{
+            height: 56,
+            background: "#ffffff",
+            borderBottom: "1px solid #f1f5f9",
+            padding: "0 28px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            position: "sticky",
+            top: 0,
+            zIndex: 40,
+          }}
+        >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>
+              {getTabCategory()}
+            </span>
+            <span style={{ color: "#cbd5e1", fontSize: 12 }}>/</span>
+            <h1 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "#0f172a", fontFamily: "var(--font-display, sans-serif)" }}>
+              {getTabTitle()}
+            </h1>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {/* System Status Indicator */}
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "4px 10px",
+                borderRadius: 999,
+                background: "#f0fdf4",
+                fontSize: 11.5,
+                color: "#15803d",
+                fontWeight: 500,
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: "#22c55e",
+                }}
+              />
+              <span>Router Online</span>
+            </div>
+
+            <div style={{ width: 1, height: 18, background: "#f1f5f9" }} />
+
+            {/* Workspace Link */}
             <Link
               href="/dashboard"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 5,
-                fontSize: 12.5,
+                fontSize: 12,
                 fontWeight: 500,
-                color: "#3F3F46",
+                color: "#475569",
                 textDecoration: "none",
-                background: "#F7F7FB",
-                padding: "7px 12px",
-                borderRadius: 8,
-                border: "1px solid #E4E4E9",
+                background: "#f8fafc",
+                padding: "5px 10px",
+                borderRadius: 7,
+                border: "1px solid #f1f5f9",
               }}
             >
               <span>Workspace</span>
-              <ArrowUpRight size={13} color="#71717A" />
+              <ArrowUpRight size={12} color="#94a3b8" />
             </Link>
+          </div>
+        </header>
 
-            <button
-              onClick={() => logout()}
-              title="Keluar"
+        {/* Main Content Area */}
+        <main style={{ maxWidth: 1360, width: "100%", margin: "20px auto 60px", padding: "0 28px" }}>
+          {/* Banner Feedback Alert */}
+          {feedbackMsg && (
+            <div
               style={{
-                background: "#FFF1F2",
-                border: "1px solid #FECDD3",
-                color: "#BE123C",
-                padding: "7px 12px",
-                borderRadius: 8,
-                cursor: "pointer",
-                display: "inline-flex",
+                display: "flex",
                 alignItems: "center",
-                gap: 5,
-                fontSize: 12.5,
+                justifyContent: "space-between",
+                background: feedbackMsg.type === "success" ? "#DCFCE7" : "#FFF1F2",
+                border: `1px solid ${feedbackMsg.type === "success" ? "#86EFAC" : "#FECDD3"}`,
+                color: feedbackMsg.type === "success" ? "#16A34A" : "#BE123C",
+                padding: "12px 18px",
+                borderRadius: 8,
+                marginBottom: 20,
+                fontSize: 13,
                 fontWeight: 500,
               }}
             >
-              <LogOut size={13} />
-              <span>Keluar</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main style={{ maxWidth: 1240, margin: "24px auto 0", padding: "0 24px" }}>
-        {/* Banner Feedback Alert */}
-        {feedbackMsg && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              background: feedbackMsg.type === "success" ? "#DCFCE7" : "#FFF1F2",
-              border: `1px solid ${feedbackMsg.type === "success" ? "#86EFAC" : "#FECDD3"}`,
-              color: feedbackMsg.type === "success" ? "#16A34A" : "#BE123C",
-              padding: "12px 18px",
-              borderRadius: 8,
-              marginBottom: 20,
-              fontSize: 13,
-              fontWeight: 500,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {feedbackMsg.type === "success" ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-              <span>{feedbackMsg.text}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {feedbackMsg.type === "success" ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                <span>{feedbackMsg.text}</span>
+              </div>
+              <button
+                onClick={() => setFeedbackMsg(null)}
+                style={{ background: "transparent", border: "none", cursor: "pointer", color: "inherit", fontSize: 14 }}
+              >
+                ✕
+              </button>
             </div>
-            <button
-              onClick={() => setFeedbackMsg(null)}
-              style={{ background: "transparent", border: "none", cursor: "pointer", color: "inherit", fontSize: 14 }}
-            >
-              ✕
-            </button>
-          </div>
-        )}
+          )}
 
-        {/* ════════════════════════════════════════════════════════════════════════
-            TAB 1: AI ENGINE CONTROL (Mockup 1 with Cendekia Design System)
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "AI_ENGINE" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+          {/* ════════════════════════════════════════════════════════════════════════
+              SUB-TAB 1: KONFIGURASI MODEL AKTIF (AI Engines & API Connections)
+             ════════════════════════════════════════════════════════════════════════ */}
+          {(activeTab === "AI_MODELS" || activeTab === "AI_ENGINE") && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             {/* Header Section & Action Buttons */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
@@ -1686,10 +1977,17 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                 );
               })}
             </div>
+          </div>
+        )}
 
+        {/* ════════════════════════════════════════════════════════════════════════
+            SUB-TAB 2: MASTER EXCHANGE SETTING & KURS MULTIPLIER
+           ════════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "AI_EXCHANGE" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             {/* Master Exchange Setting Panel */}
-            <div style={{ marginTop: 4 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <div>
                   <h2 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
                     Master Exchange Setting
@@ -1836,10 +2134,70 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
               </div>
             </div>
 
+            {/* Formula & Calculation Breakdown Card */}
+            <div
+              style={{
+                background: "#FFFFFF",
+                border: "1px solid #E4E4E9",
+                borderRadius: 12,
+                padding: "20px 24px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <DollarSign size={18} color="#4338CA" />
+                <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: "#0F0F14" }}>
+                  Formula Kurs Efektif & Konversi Router AI
+                </h3>
+              </div>
+              <p style={{ fontSize: 13, color: "#71717A", margin: "0 0 16px", lineHeight: 1.5 }}>
+                Perhitungan kurs di router backend menggunakan formula:
+                <span style={{ display: "inline-block", background: "#F1F5F9", color: "#4338CA", padding: "3px 8px", borderRadius: 6, fontFamily: "monospace", fontWeight: 600, marginLeft: 6 }}>
+                  EffectiveRate = BaseRate × Multiplier × (1 + InflationBuffer)
+                </span>
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+                <div style={{ background: "#F8FAFC", padding: "14px 16px", borderRadius: 10, border: "1px solid #E2E8F0" }}>
+                  <span style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>Base Rate Mentah (USD/IDR)</span>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: "#0F172A", marginTop: 3 }}>
+                    Rp {Number(billingConfig?.baseRateUsdIdr || 16500).toLocaleString("id-ID")}
+                  </div>
+                  <span style={{ fontSize: 10.5, color: "#94A3B8" }}>Kurs acuan server</span>
+                </div>
+                <div style={{ background: "#F8FAFC", padding: "14px 16px", borderRadius: 10, border: "1px solid #E2E8F0" }}>
+                  <span style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>Multiplier Markup (+{Math.round(((billingConfig?.globalMultiplier || 1.35) - 1) * 100)}%)</span>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: "#4338CA", marginTop: 3 }}>
+                    × {billingConfig?.globalMultiplier || 1.35}
+                  </div>
+                  <span style={{ fontSize: 10.5, color: "#94A3B8" }}>Target margin sistem</span>
+                </div>
+                <div style={{ background: "#F8FAFC", padding: "14px 16px", borderRadius: 10, border: "1px solid #E2E8F0" }}>
+                  <span style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>Buffer Pengaman Inflasi</span>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: "#D97706", marginTop: 3 }}>
+                    +{Math.round((billingConfig?.inflationBuffer || 0.05) * 100)}%
+                  </div>
+                  <span style={{ fontSize: 10.5, color: "#94A3B8" }}>Proteksi fluktuasi valuta</span>
+                </div>
+                <div style={{ background: "#F0FDF4", padding: "14px 16px", borderRadius: 10, border: "1px solid #BBF7D0" }}>
+                  <span style={{ fontSize: 11, color: "#15803D", fontWeight: 600 }}>Total Kurs Efektif Final</span>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#166534", marginTop: 3 }}>
+                    Rp {Number(billingConfig?.effectiveRateUsdIdr || 23389).toLocaleString("id-ID")}
+                  </div>
+                  <span style={{ fontSize: 10.5, color: "#16A34A", fontWeight: 500 }}>Tarif aktif di router AI</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════════════
+            SUB-TAB 3: FEATURE ROUTING MATRIX
+           ════════════════════════════════════════════════════════════════════════ */}
+        {(activeTab === "AI_ROUTING" || activeTab === "AI_ROUTING_LOGS") && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             {/* Feature Routing Matrix */}
-            <div style={{ marginTop: 4 }}>
+            <div>
               <div style={{ marginBottom: 12 }}>
-                <h2 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
+                <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 2px", color: "#0F0F14" }}>
                   Feature-to-Model Routing Matrix
                 </h2>
                 <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
@@ -1978,12 +2336,49 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                 </div>
               </div>
             </div>
+          </div>
+        )}
 
-            {/* AI Usage Logs */}
-            <div style={{ marginTop: 4 }}>
+        {/* ════════════════════════════════════════════════════════════════════════
+            SUB-TAB 4: AI USAGE LOGS & TELEMETRY AUDIT
+           ════════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "AI_LOGS" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {/* Metric KPI Cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 10, padding: "14px 18px" }}>
+                <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 500 }}>Total Panggilan Log</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#0F172A", marginTop: 2 }}>{usageLogs.length} Request</div>
+                <div style={{ fontSize: 11, color: "#16A34A", marginTop: 2 }}>Real-time Audit Trail</div>
+              </div>
+              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 10, padding: "14px 18px" }}>
+                <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 500 }}>Total Modal API Provider</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#DC2626", marginTop: 2 }}>
+                  ${usageLogs.reduce((acc, l) => acc + (l.costUsd || 0), 0).toFixed(4)}
+                </div>
+                <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>Biaya LLM Terpakai</div>
+              </div>
+              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 10, padding: "14px 18px" }}>
+                <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 500 }}>Total Dikenakan ke User</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#2563EB", marginTop: 2 }}>
+                  ${usageLogs.reduce((acc, l) => acc + (l.chargeUser || 0), 0).toFixed(4)}
+                </div>
+                <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>Nilai Kredit Terpotong</div>
+              </div>
+              <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 10, padding: "14px 18px" }}>
+                <div style={{ fontSize: 11.5, color: "#15803D", fontWeight: 600 }}>Total Keuntungan (Margin)</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#166534", marginTop: 2 }}>
+                  +${usageLogs.reduce((acc, l) => acc + (l.profitUsd || 0), 0).toFixed(4)}
+                </div>
+                <div style={{ fontSize: 11, color: "#16A34A", marginTop: 2 }}>Laba Bersih Sistem</div>
+              </div>
+            </div>
+
+            {/* AI Usage Logs Table Card */}
+            <div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <div>
-                  <h2 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
+                  <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 2px", color: "#0F0F14" }}>
                     AI Usage Logs
                   </h2>
                   <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
@@ -1992,7 +2387,7 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                 </div>
                 <button
                   onClick={async () => {
-                    const fresh = await api.admin.getUsageLogs({ limit: 15 });
+                    const fresh = await api.admin.getUsageLogs({ limit: 25 });
                     if (fresh.success) setUsageLogs(fresh.data);
                   }}
                   style={{
@@ -6091,6 +6486,7 @@ const response = await executeAiCompletion({
           </div>
         )}
       </main>
+      </div>
 
       {/* MODAL TAMBAH TEMPLATE BARU (3 METODE: UPLOAD LATEX MULTI/SINGLE, UPLOAD DOCX, TULIS MANUAL LATEX) */}
       {showAddTemplateModal && (
