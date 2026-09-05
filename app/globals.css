@@ -161,3 +161,17 @@ body {
   transition: all 0.2s ease;
 }
 
+/* 4-Card Model Grid - Exactly 4 in 1 Row on Desktop/Laptop */
+.admin-model-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+@media (min-width: 1024px) {
+  .admin-model-cards-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+

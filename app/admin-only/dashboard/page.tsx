@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ShieldCheck,
@@ -61,10 +61,13 @@ import {
   Network,
   Activity,
   ChevronRight,
+  ChevronLeft,
+  ChevronDown,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, ProposalTemplate, AiSkillPrompt } from "@/lib/api-client";
 import { notify } from "@/lib/notification";
+import FeatureRoutingCanvas from "./FeatureRoutingCanvas";
 
 type AdminTab =
   | "AI_MODELS"
@@ -81,11 +84,72 @@ type AdminTab =
   | "SECRETS"
   | "USERS";
 
-export default function AdminDashboardPage() {
+const tabToParamMap: Record<AdminTab, string> = {
+  DASHBOARD: "dashboard",
+  AI_MODELS: "models",
+  AI_EXCHANGE: "exchange",
+  AI_ROUTING: "routing",
+  AI_LOGS: "logs",
+  AI_ROUTING_LOGS: "routing",
+  AI_ENGINE: "models",
+  PROMPTS_SKILLS: "prompts",
+  TEMPLATES_LIBRARY: "templates",
+  RESEARCH_SYSTEM: "research",
+  PRICING: "pricing",
+  USERS: "users",
+  SECRETS: "secrets",
+};
+
+const paramToTabMap: Record<string, AdminTab> = {
+  dashboard: "DASHBOARD",
+  models: "AI_MODELS",
+  "ai-models": "AI_MODELS",
+  exchange: "AI_EXCHANGE",
+  kurs: "AI_EXCHANGE",
+  routing: "AI_ROUTING",
+  logs: "AI_LOGS",
+  "usage-logs": "AI_LOGS",
+  prompts: "PROMPTS_SKILLS",
+  skills: "PROMPTS_SKILLS",
+  templates: "TEMPLATES_LIBRARY",
+  latex: "TEMPLATES_LIBRARY",
+  research: "RESEARCH_SYSTEM",
+  journals: "RESEARCH_SYSTEM",
+  pricing: "PRICING",
+  packages: "PRICING",
+  users: "USERS",
+  secrets: "SECRETS",
+};
+
+function AdminDashboardPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, logout, isLoading } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<AdminTab>("AI_MODELS");
+  const tabParam = searchParams.get("tab")?.toLowerCase();
+  const initialTab: AdminTab =
+    tabParam && paramToTabMap[tabParam] ? paramToTabMap[tabParam] : "DASHBOARD";
+
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
+
+  // Sync state if URL changes (e.g. browser back/forward or direct link)
+  useEffect(() => {
+    if (tabParam && paramToTabMap[tabParam]) {
+      setActiveTab(paramToTabMap[tabParam]);
+    } else if (!tabParam) {
+      setActiveTab("DASHBOARD");
+    }
+  }, [tabParam]);
+
+  const handleNavigateTab = (tab: AdminTab) => {
+    setActiveTab(tab);
+    const param = tabToParamMap[tab] || "dashboard";
+    if (param === "dashboard") {
+      router.push("/admin-only/dashboard", { scroll: false });
+    } else {
+      router.push(`/admin-only/dashboard?tab=${param}`, { scroll: false });
+    }
+  };
 
   // ── Research System & Citation Explorer Admin State ──
   const [adminProjects, setAdminProjects] = useState<any[]>([]);
@@ -133,6 +197,42 @@ export default function AdminDashboardPage() {
   const [featureRoutings, setFeatureRoutings] = useState<any[]>([]);
   const [creditPackages, setCreditPackages] = useState<any[]>([]);
   const [usageLogs, setUsageLogs] = useState<any[]>([]);
+  const [logPagination, setLogPagination] = useState({
+    page: 1,
+    limit: 25,
+    total: 0,
+    totalPages: 1,
+  });
+  const [logSearch, setLogSearch] = useState("");
+  const [logTierFilter, setLogTierFilter] = useState<string>("");
+  const [logLoading, setLogLoading] = useState(false);
+
+  const fetchUsageLogs = async (
+    page = 1,
+    limit = logPagination.limit,
+    search = logSearch,
+    tier = logTierFilter
+  ) => {
+    setLogLoading(true);
+    try {
+      const res = await api.admin.getUsageLogs({
+        page,
+        limit,
+        search: search.trim() || undefined,
+        isFreeTier: tier === "" ? undefined : tier,
+      });
+      if (res.success) {
+        setUsageLogs(res.data);
+        if (res.pagination) {
+          setLogPagination(res.pagination);
+        }
+      }
+    } catch (err) {
+      console.error("Gagal memuat log AI:", err);
+    } finally {
+      setLogLoading(false);
+    }
+  };
   const [configs, setConfigs] = useState<any[]>([]);
   const [presets, setPresets] = useState<any[]>([]);
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -145,6 +245,10 @@ export default function AdminDashboardPage() {
   const [promptTagFilter, setPromptTagFilter] = useState<string | null>(null);
   const [promptSearchQuery, setPromptSearchQuery] = useState("");
   const [copiedPromptCode, setCopiedPromptCode] = useState<string | null>(null);
+  const [expandedRecipes, setExpandedRecipes] = useState<{ [id: string]: boolean }>({});
+  const toggleExpandRecipe = (id: string) => {
+    setExpandedRecipes((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState<AiSkillPrompt | null>(null);
@@ -302,7 +406,7 @@ export default function AdminDashboardPage() {
         api.admin.getAiModels().catch(() => ({ success: false, data: [] })),
         api.admin.getFeatureRoutings().catch(() => ({ success: false, data: [] })),
         api.admin.getCreditPackages().catch(() => ({ success: false, data: [] })),
-        api.admin.getUsageLogs({ limit: 15 }).catch(() => ({ success: false, data: [] })),
+        api.admin.getUsageLogs({ page: 1, limit: 25 }).catch(() => ({ success: false, data: [] })),
         api.admin.getUsers().catch(() => ({ success: false, data: [] })),
         api.admin.getConfigs().catch(() => ({ success: false, data: [] })),
         api.admin.getPresets().catch(() => ({ success: false, data: [] })),
@@ -379,7 +483,12 @@ export default function AdminDashboardPage() {
       }
       if (routingsRes?.success && Array.isArray(routingsRes.data)) setFeatureRoutings(routingsRes.data);
       if (packagesRes?.success && Array.isArray(packagesRes.data)) setCreditPackages(packagesRes.data);
-      if (logsRes?.success && Array.isArray(logsRes.data)) setUsageLogs(logsRes.data);
+      if (logsRes?.success && Array.isArray(logsRes.data)) {
+        setUsageLogs(logsRes.data);
+        if ((logsRes as any).pagination) {
+          setLogPagination((logsRes as any).pagination);
+        }
+      }
       if (usersRes?.success && Array.isArray(usersRes.data)) setUsersList(usersRes.data);
       if (configsRes?.success && Array.isArray(configsRes.data)) setConfigs(configsRes.data);
       if (presetsRes?.success && Array.isArray(presetsRes.data)) setPresets(presetsRes.data);
@@ -1020,7 +1129,7 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
             })),
             variables: templateEditForm.variables || [],
           })
-          .catch(() => {});
+          .catch(() => { });
       }
 
       const updatedList = templatesList.map((t) => (t.id === templateEditForm.id ? savedTpl : t));
@@ -1184,7 +1293,7 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
       onConfirm: async () => {
         try {
           if (id && !String(id).startsWith("telkom-") && !String(id).startsWith("tpl-custom-")) {
-            await api.templates.delete(id).catch(() => {});
+            await api.templates.delete(id).catch(() => { });
           }
           const remaining = templatesList.filter((t) => t.id !== id);
           setTemplatesList(remaining);
@@ -1255,6 +1364,13 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
       case "AI_ROUTING":
       case "AI_LOGS":
       case "AI_ROUTING_LOGS":
+      case "DASHBOARD":
+        return "Utama";
+      case "AI_MODELS":
+      case "AI_EXCHANGE":
+      case "AI_ROUTING":
+      case "AI_LOGS":
+      case "AI_ROUTING_LOGS":
       case "AI_ENGINE":
         return "AI & Engine";
       case "PROMPTS_SKILLS":
@@ -1262,7 +1378,6 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
       case "RESEARCH_SYSTEM":
         return "Riset & Konten";
       case "PRICING":
-      case "DASHBOARD":
       case "USERS":
       case "SECRETS":
         return "Bisnis & Pengguna";
@@ -1273,6 +1388,8 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
 
   const getTabTitle = () => {
     switch (activeTab) {
+      case "DASHBOARD":
+        return "Executive Dashboard";
       case "AI_MODELS":
       case "AI_ENGINE":
         return "Konfigurasi Model Aktif";
@@ -1291,8 +1408,6 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
         return "Library Template & LaTeX Manager";
       case "RESEARCH_SYSTEM":
         return "Sistem & Jurnal Riset (Project & Citation Explorer)";
-      case "DASHBOARD":
-        return "Executive Dashboard";
       case "SECRETS":
         return "Database Secret Keys";
       case "USERS":
@@ -1303,6 +1418,16 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
   };
 
   const navSections = [
+    {
+      category: "Utama",
+      items: [
+        {
+          id: "DASHBOARD" as AdminTab,
+          title: "Executive Dashboard",
+          icon: BarChart3,
+        },
+      ],
+    },
     {
       category: "AI & Engine",
       items: [
@@ -1359,11 +1484,6 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
           title: "Paket & Harga Kredit",
           icon: CreditCard,
           badge: creditPackages.length ? `${creditPackages.length}` : undefined,
-        },
-        {
-          id: "DASHBOARD" as AdminTab,
-          title: "Executive Dashboard",
-          icon: BarChart3,
         },
         {
           id: "USERS" as AdminTab,
@@ -1447,7 +1567,7 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                   return (
                     <button
                       key={item.id}
-                      onClick={() => setActiveTab(item.id)}
+                      onClick={() => handleNavigateTab(item.id)}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -1693,56 +1813,2259 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
              ════════════════════════════════════════════════════════════════════════ */}
           {(activeTab === "AI_MODELS" || activeTab === "AI_ENGINE") && (
             <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            {/* Header Section & Action Buttons */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <h2 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
-                  Konfigurasi Model Aktif
-                </h2>
-                <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
-                  Konfigurasikan dan kelola rute model AI serta koneksi API
-                </p>
+              {/* Header Section & Action Buttons */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <h2 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
+                    Konfigurasi Model Aktif
+                  </h2>
+                  <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
+                    Konfigurasikan dan kelola rute model AI serta koneksi API
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    onClick={() => setShowCurlModal(true)}
+                    style={{
+                      background: "#F7F7FB",
+                      color: "#3F3F46",
+                      border: "1px solid #E4E4E9",
+                      borderRadius: 8,
+                      padding: "8px 14px",
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Zap size={14} color="#F59E0B" />
+                    <span>Import cURL</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setEditingModelId(null);
+                      setModelFormData({
+                        routerLabel: "MAIA ROUTER",
+                        baseUrl: "https://api.maiarouter.ai/v1",
+                        modelName: "xai/grok-4-1-fast-non-reasoning",
+                        apiKey: "",
+                        modelKind: "LLM",
+                        pricingUnit: "TOKEN",
+                        priceInputPer1M: 0.25,
+                        priceOutputPer1M: 0.85,
+                        maxBudgetUsd: 50,
+                        rpmLimit: 60,
+                        isFreeTier: false,
+                        isActive: true,
+                      });
+                      setShowModelModal(true);
+                    }}
+                    style={{
+                      background: "#4338CA",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "8px 16px",
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Plus size={15} />
+                    <span>Tambah API</span>
+                  </button>
+                </div>
               </div>
 
-              <div style={{ display: "flex", gap: 10 }}>
-                <button
-                  onClick={() => setShowCurlModal(true)}
+              {/* Grid of Model Cards - 4 in 1 Row */}
+              <div className="admin-model-cards-grid">
+                {aiModels.map((m) => {
+                  const testStatus = modelTestStatus[m.id];
+                  const isTesting = modelTestingId === m.id;
+
+                  return (
+                    <div
+                      key={m.id}
+                      style={{
+                        background: "#FFFFFF",
+                        border: "1px solid #E4E4E9",
+                        borderRadius: 12,
+                        padding: "16px 14px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 10,
+                        minWidth: 0,
+                      }}
+                    >
+                      {/* Header: Title, Free Badge & Toggle */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                          <span
+                            style={{
+                              fontSize: 13.5,
+                              fontWeight: 600,
+                              color: "#0F0F14",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                            title={m.routerLabel}
+                          >
+                            {m.routerLabel}
+                          </span>
+                          {m.isFreeTier && (
+                            <span
+                              style={{
+                                background: "#DCFCE7",
+                                color: "#16A34A",
+                                fontSize: 9.5,
+                                fontWeight: 600,
+                                padding: "2px 6px",
+                                borderRadius: 9999,
+                                flexShrink: 0,
+                              }}
+                            >
+                              FREE $0
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Active Toggle */}
+                        <button
+                          onClick={() => handleToggleModelActive(m.id, m.isActive)}
+                          title={m.isActive ? "Klik untuk Nonaktifkan" : "Klik untuk Aktifkan"}
+                          style={{
+                            width: 36,
+                            height: 20,
+                            borderRadius: 9999,
+                            background: m.isActive ? "#16A34A" : "#E4E4E9",
+                            border: "none",
+                            cursor: "pointer",
+                            position: "relative",
+                            transition: "background 0.2s ease",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 14,
+                              height: 14,
+                              borderRadius: "50%",
+                              background: "#FFFFFF",
+                              position: "absolute",
+                              top: 3,
+                              left: m.isActive ? 19 : 3,
+                              transition: "left 0.2s ease",
+                            }}
+                          />
+                        </button>
+                      </div>
+
+                      {/* Model Name */}
+                      <div>
+                        <label style={{ fontSize: 10.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
+                          Model
+                        </label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={m.modelName}
+                          title={m.modelName}
+                          style={{
+                            width: "100%",
+                            background: "#F7F7FB",
+                            border: "1px solid #E4E4E9",
+                            borderRadius: 7,
+                            padding: "6px 8px",
+                            fontSize: 12,
+                            fontWeight: 500,
+                            color: "#0F0F14",
+                            outline: "none",
+                            textOverflow: "ellipsis",
+                            overflow: "hidden",
+                            whiteSpace: "nowrap",
+                          }}
+                        />
+                      </div>
+
+                      {/* API Key & Pool Count */}
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+                          <label style={{ fontSize: 10.5, fontWeight: 500, color: "#71717A" }}>
+                            API KEY
+                          </label>
+                          {m.keyPoolCount && m.keyPoolCount > 1 ? (
+                            <span style={{ fontSize: 9.5, color: "#4338CA", background: "#EEEAFE", padding: "1px 5px", borderRadius: 4, fontWeight: 600 }}>
+                              {m.keyPoolCount} Keys
+                            </span>
+                          ) : null}
+                        </div>
+                        <input
+                          type="text"
+                          readOnly
+                          value={m.apiKeyMasked || "••••••••••••••••••••••••"}
+                          style={{
+                            width: "100%",
+                            background: "#F7F7FB",
+                            border: "1px solid #E4E4E9",
+                            borderRadius: 7,
+                            padding: "6px 8px",
+                            fontSize: 12,
+                            color: "#71717A",
+                            outline: "none",
+                            letterSpacing: "0.04em",
+                          }}
+                        />
+                      </div>
+
+                      {/* Live Test Status Feedback */}
+                      {testStatus && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 500,
+                            color: testStatus.ok ? "#16A34A" : "#BE123C",
+                            background: testStatus.ok ? "#DCFCE7" : "#FFF1F2",
+                            padding: "3px 7px",
+                            borderRadius: 6,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          {testStatus.ok ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{testStatus.msg}</span>
+                        </div>
+                      )}
+
+                      {/* Footer Row: Meta & Actions */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 4, borderTop: "1px solid #EFEFF3", gap: 4 }}>
+                        <div style={{ fontSize: 10, color: "#71717A", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          RPM: <strong style={{ color: "#0F0F14" }}>{m.rpmLimit || 60}</strong> | In: <strong style={{ color: "#0F0F14" }}>${m.priceInputPer1M}/1M</strong>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                          <button
+                            onClick={() => handleTestModel(m)}
+                            disabled={isTesting}
+                            title="Test Koneksi API"
+                            style={{
+                              background: "#EEEAFE",
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "4px 7px",
+                              fontSize: 10.5,
+                              fontWeight: 500,
+                              color: "#4338CA",
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 3,
+                            }}
+                          >
+                            {isTesting ? <RefreshCw size={10} className="animate-spin" /> : <Play size={10} />}
+                            <span>Test</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingModelId(m.id);
+                              setModelFormData({
+                                routerLabel: m.routerLabel,
+                                baseUrl: m.baseUrl,
+                                modelName: m.modelName,
+                                apiKey: "",
+                                modelKind: m.modelKind,
+                                pricingUnit: m.pricingUnit,
+                                priceInputPer1M: m.priceInputPer1M,
+                                priceOutputPer1M: m.priceOutputPer1M,
+                                maxBudgetUsd: m.maxBudgetUsd || 50,
+                                rpmLimit: m.rpmLimit || 60,
+                                isFreeTier: m.isFreeTier,
+                                isActive: m.isActive,
+                              });
+                              setShowModelModal(true);
+                            }}
+                            title="Edit Model"
+                            style={{
+                              background: "#F7F7FB",
+                              border: "1px solid #E4E4E9",
+                              borderRadius: 6,
+                              padding: "4px 6px",
+                              color: "#3F3F46",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <Pencil size={11} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteModel(m.id, m.routerLabel)}
+                            title="Hapus Model"
+                            style={{
+                              background: "#FFF1F2",
+                              border: "1px solid #FECDD3",
+                              borderRadius: 6,
+                              padding: "4px 6px",
+                              color: "#BE123C",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════════════
+            SUB-TAB 2: MASTER EXCHANGE SETTING & KURS MULTIPLIER
+           ════════════════════════════════════════════════════════════════════════ */}
+          {activeTab === "AI_EXCHANGE" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              {/* Master Exchange Setting Panel */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                  <div>
+                    <h2 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
+                      Master Exchange Setting
+                    </h2>
+                    <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
+                      Kelola kurs mata uang, margin profit, dan buffer inflasi
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setShowExchangeModal(true)}
+                    style={{
+                      background: "#4338CA",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "7px 18px",
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Edit
+                  </button>
+                </div>
+
+                <div
                   style={{
-                    background: "#F7F7FB",
-                    color: "#3F3F46",
-                    border: "1px solid #E4E4E9",
-                    borderRadius: 8,
-                    padding: "8px 14px",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                    gap: 14,
                   }}
                 >
-                  <Zap size={14} color="#F59E0B" />
-                  <span>Import cURL</span>
-                </button>
+                  {/* Global Multiplier */}
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E4E4E9",
+                      borderRadius: 12,
+                      padding: "18px 20px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 10,
+                        background: "#EEEAFE",
+                        color: "#4338CA",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Sliders size={18} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500 }}>Global Multiplier</span>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 2 }}>
+                        <span style={{ fontSize: 22, fontWeight: 600, color: "#0F0F14" }}>
+                          {billingConfig?.globalMultiplier || 1.35}
+                        </span>
+                        <span style={{ fontSize: 12, color: "#71717A" }}>
+                          ({Math.round(((billingConfig?.globalMultiplier || 1.35) - 1) * 100)}%)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Base Rate */}
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E4E4E9",
+                      borderRadius: 12,
+                      padding: "18px 20px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 10,
+                        background: "#EEEAFE",
+                        color: "#4338CA",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <DollarSign size={18} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500 }}>Base Rate (USD / IDR)</span>
+                      <div style={{ fontSize: 22, fontWeight: 600, color: "#0F0F14", marginTop: 2 }}>
+                        Rp {Number(billingConfig?.baseRateUsdIdr || 16500).toLocaleString("id-ID")}
+                      </div>
+                      <span style={{ fontSize: 10.5, color: "#71717A" }}>Kurs Mentah, samakan di web router</span>
+                    </div>
+                  </div>
+
+                  {/* Inflation Buffer */}
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E4E4E9",
+                      borderRadius: 12,
+                      padding: "18px 20px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 10,
+                        background: "#EEEAFE",
+                        color: "#4338CA",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Percent size={18} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500 }}>Inflation Buffer</span>
+                      <div style={{ fontSize: 22, fontWeight: 600, color: "#0F0F14", marginTop: 2 }}>
+                        {Math.round((billingConfig?.inflationBuffer || 0.05) * 100)}%
+                      </div>
+                      <span style={{ fontSize: 10.5, color: "#16A34A", fontWeight: 500 }}>
+                        Effective Rate: Rp {Number(billingConfig?.effectiveRateUsdIdr || 23389).toLocaleString("id-ID")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Formula & Calculation Breakdown Card */}
+              <div
+                style={{
+                  background: "#FFFFFF",
+                  border: "1px solid #E4E4E9",
+                  borderRadius: 12,
+                  padding: "20px 24px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <DollarSign size={18} color="#4338CA" />
+                  <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: "#0F0F14" }}>
+                    Formula Kurs Efektif & Konversi Router AI
+                  </h3>
+                </div>
+                <p style={{ fontSize: 13, color: "#71717A", margin: "0 0 16px", lineHeight: 1.5 }}>
+                  Perhitungan kurs di router backend menggunakan formula:
+
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+                  <div style={{ background: "#F8FAFC", padding: "14px 16px", borderRadius: 10, border: "1px solid #E2E8F0" }}>
+                    <span style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>Base Rate Mentah (USD/IDR)</span>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: "#0F172A", marginTop: 3 }}>
+                      Rp {Number(billingConfig?.baseRateUsdIdr || 16500).toLocaleString("id-ID")}
+                    </div>
+                    <span style={{ fontSize: 10.5, color: "#94A3B8" }}>Kurs acuan server</span>
+                  </div>
+                  <div style={{ background: "#F8FAFC", padding: "14px 16px", borderRadius: 10, border: "1px solid #E2E8F0" }}>
+                    <span style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>Multiplier Markup (+{Math.round(((billingConfig?.globalMultiplier || 1.35) - 1) * 100)}%)</span>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: "#4338CA", marginTop: 3 }}>
+                      × {billingConfig?.globalMultiplier || 1.35}
+                    </div>
+                    <span style={{ fontSize: 10.5, color: "#94A3B8" }}>Target margin sistem</span>
+                  </div>
+                  <div style={{ background: "#F8FAFC", padding: "14px 16px", borderRadius: 10, border: "1px solid #E2E8F0" }}>
+                    <span style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>Buffer Pengaman Inflasi</span>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: "#D97706", marginTop: 3 }}>
+                      +{Math.round((billingConfig?.inflationBuffer || 0.05) * 100)}%
+                    </div>
+                    <span style={{ fontSize: 10.5, color: "#94A3B8" }}>Proteksi fluktuasi valuta</span>
+                  </div>
+                  <div style={{ background: "#F0FDF4", padding: "14px 16px", borderRadius: 10, border: "1px solid #BBF7D0" }}>
+                    <span style={{ fontSize: 11, color: "#15803D", fontWeight: 600 }}>Total Kurs Efektif Final</span>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "#166534", marginTop: 3 }}>
+                      Rp {Number(billingConfig?.effectiveRateUsdIdr || 23389).toLocaleString("id-ID")}
+                    </div>
+                    <span style={{ fontSize: 10.5, color: "#16A34A", fontWeight: 500 }}>Tarif aktif di router AI</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════════════
+            SUB-TAB 3: FEATURE ROUTING MATRIX
+           ════════════════════════════════════════════════════════════════════════ */}
+          {(activeTab === "AI_ROUTING" || activeTab === "AI_ROUTING_LOGS") && (
+            <FeatureRoutingCanvas
+              features={featureRoutings}
+              aiModels={aiModels}
+              onUpdateRouting={handleUpdateRouting}
+              onTestModel={handleTestModel}
+              isTestingModelId={modelTestingId}
+              testStatusMap={modelTestStatus}
+            />
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════════════
+            SUB-TAB 4: AI USAGE LOGS & TELEMETRY AUDIT
+           ════════════════════════════════════════════════════════════════════════ */}
+          {/* ════════════════════════════════════════════════════════════════════════
+            SUB-TAB 4: AI USAGE LOGS & TELEMETRY AUDIT
+           ════════════════════════════════════════════════════════════════════════ */}
+          {activeTab === "AI_LOGS" && (() => {
+            const { page, limit, total, totalPages } = logPagination;
+            const startEntry = total === 0 ? 0 : (page - 1) * limit + 1;
+            const endEntry = Math.min(page * limit, total);
+
+            // Generate pagination numbers array
+            const getPageNumbers = () => {
+              const pages: (number | string)[] = [];
+              if (totalPages <= 7) {
+                for (let i = 1; i <= totalPages; i++) pages.push(i);
+              } else {
+                pages.push(1);
+                if (page > 3) pages.push("...");
+                const start = Math.max(2, page - 1);
+                const end = Math.min(totalPages - 1, page + 1);
+                for (let i = start; i <= end; i++) {
+                  if (!pages.includes(i)) pages.push(i);
+                }
+                if (page < totalPages - 2) pages.push("...");
+                if (!pages.includes(totalPages)) pages.push(totalPages);
+              }
+              return pages;
+            };
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                {/* Metric KPI Cards (Aggregated System Telemetry) */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 10, padding: "14px 18px" }}>
+                    <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 500 }}>Total Panggilan Log</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: "#0F172A", marginTop: 2 }}>
+                      {(stats?.totalCalls || total).toLocaleString()} Request
+                    </div>
+                    <div style={{ fontSize: 11, color: "#16A34A", marginTop: 2 }}>Tercatat di Database MySQL</div>
+                  </div>
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 10, padding: "14px 18px" }}>
+                    <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 500 }}>Total Modal API Provider</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: "#DC2626", marginTop: 2 }}>
+                      ${stats?.totalCostUsd ? stats.totalCostUsd.toFixed(4) : usageLogs.reduce((acc, l) => acc + (l.costUsd || 0), 0).toFixed(4)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>Biaya LLM Kumulatif</div>
+                  </div>
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 10, padding: "14px 18px" }}>
+                    <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 500 }}>Total Dikenakan ke User</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: "#2563EB", marginTop: 2 }}>
+                      ${stats?.totalChargeUsd ? stats.totalChargeUsd.toFixed(4) : usageLogs.reduce((acc, l) => acc + (l.chargeUser || 0), 0).toFixed(4)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>Nilai Kredit Terpotong</div>
+                  </div>
+                  <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 10, padding: "14px 18px" }}>
+                    <div style={{ fontSize: 11.5, color: "#15803D", fontWeight: 600 }}>Total Keuntungan (Margin)</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: "#166534", marginTop: 2 }}>
+                      +${stats?.totalProfitUsd ? stats.totalProfitUsd.toFixed(4) : usageLogs.reduce((acc, l) => acc + (l.profitUsd || 0), 0).toFixed(4)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#16A34A", marginTop: 2 }}>Laba Bersih Sistem</div>
+                  </div>
+                </div>
+
+                {/* AI Usage Logs Table Card */}
+                <div
+                  style={{
+                    background: "#FFFFFF",
+                    border: "1px solid #E4E4E9",
+                    borderRadius: 12,
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
+                    overflow: "hidden",
+                  }}
+                >
+                  {/* Toolbar: Header, Search, Filter & Controls */}
+                  <div
+                    style={{
+                      padding: "16px 20px",
+                      borderBottom: "1px solid #E4E4E9",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div>
+                        <h2 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 2px", color: "#0F0F14" }}>
+                          AI Usage Logs & Telemetry Audit
+                        </h2>
+                        <p style={{ fontSize: 12.5, color: "#71717A", margin: 0 }}>
+                          Audit jejak audit token, model eksekusi, modal HPP, tarif user, dan laba margin per transaksi
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => fetchUsageLogs(page, limit, logSearch, logTierFilter)}
+                        disabled={logLoading}
+                        style={{
+                          background: "#F7F7FB",
+                          border: "1px solid #E4E4E9",
+                          borderRadius: 6,
+                          padding: "6px 12px",
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: "#3F3F46",
+                          cursor: logLoading ? "not-allowed" : "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          opacity: logLoading ? 0.7 : 1,
+                        }}
+                      >
+                        <RefreshCw size={12} className={logLoading ? "animate-spin" : ""} />
+                        <span>{logLoading ? "Memuat..." : "Refresh Log"}</span>
+                      </button>
+                    </div>
+
+                    {/* Filter & Search Bar */}
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      {/* Search input */}
+                      <div style={{ position: "relative", flex: 1, minWidth: 260 }}>
+                        <Search size={14} color="#94A3B8" style={{ position: "absolute", left: 12, top: 10 }} />
+                        <input
+                          type="text"
+                          value={logSearch}
+                          onChange={(e) => setLogSearch(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              fetchUsageLogs(1, limit, logSearch, logTierFilter);
+                            }
+                          }}
+                          placeholder="Cari berdasarkan email pengguna, nama, atau fitur riset... (Tekan Enter)"
+                          style={{
+                            width: "100%",
+                            height: 34,
+                            paddingLeft: 34,
+                            paddingRight: 28,
+                            borderRadius: 6,
+                            border: "1px solid #E4E4E9",
+                            background: "#FAFAFC",
+                            fontSize: 12.5,
+                            color: "#0F0F14",
+                            outline: "none",
+                          }}
+                        />
+                        {logSearch && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLogSearch("");
+                              fetchUsageLogs(1, limit, "", logTierFilter);
+                            }}
+                            style={{ position: "absolute", right: 8, top: 8, background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => fetchUsageLogs(1, limit, logSearch, logTierFilter)}
+                        style={{
+                          height: 34,
+                          padding: "0 14px",
+                          borderRadius: 6,
+                          background: "#4338CA",
+                          color: "#FFFFFF",
+                          border: "none",
+                          fontSize: 12.5,
+                          fontWeight: 500,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Cari
+                      </button>
+
+                      {/* Tier Filter */}
+                      <select
+                        value={logTierFilter}
+                        onChange={(e) => {
+                          setLogTierFilter(e.target.value);
+                          fetchUsageLogs(1, limit, logSearch, e.target.value);
+                        }}
+                        style={{
+                          height: 34,
+                          padding: "0 10px",
+                          borderRadius: 6,
+                          border: "1px solid #E4E4E9",
+                          background: "#FFFFFF",
+                          fontSize: 12,
+                          color: "#3F3F46",
+                          outline: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <option value="">Semua Panggilan Model</option>
+                        <option value="true">Free Tier ($0 HPP)</option>
+                        <option value="false">Paid Tier (LLM Berbayar)</option>
+                      </select>
+
+                      {/* Items per page selector */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: "#71717A" }}>Baris:</span>
+                        <select
+                          value={limit}
+                          onChange={(e) => {
+                            const newLimit = Number(e.target.value);
+                            fetchUsageLogs(1, newLimit, logSearch, logTierFilter);
+                          }}
+                          style={{
+                            height: 34,
+                            padding: "0 8px",
+                            borderRadius: 6,
+                            border: "1px solid #E4E4E9",
+                            background: "#FFFFFF",
+                            fontSize: 12,
+                            color: "#3F3F46",
+                            outline: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <option value="10">10 / hal</option>
+                          <option value="25">25 / hal</option>
+                          <option value="50">50 / hal</option>
+                          <option value="100">100 / hal</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Table */}
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 12.5 }}>
+                      <thead>
+                        <tr style={{ background: "#F7F7FB", borderBottom: "1px solid #E4E4E9", color: "#52525B", fontWeight: 600, fontSize: 12 }}>
+                          <th style={{ padding: "10px 14px" }}>Timestamp</th>
+                          <th style={{ padding: "10px 14px" }}>Email Pengguna</th>
+                          <th style={{ padding: "10px 14px" }}>Fitur Riset</th>
+                          <th style={{ padding: "10px 14px" }}>Model & Provider</th>
+                          <th style={{ padding: "10px 14px" }}>Tokens (In / Out)</th>
+                          <th style={{ padding: "10px 14px" }}>Modal API ($)</th>
+                          <th style={{ padding: "10px 14px" }}>Tarif User ($)</th>
+                          <th style={{ padding: "10px 16px" }}>Profit Margin ($)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {logLoading ? (
+                          <tr>
+                            <td colSpan={8} style={{ textAlign: "center", padding: "40px 18px", color: "#71717A" }}>
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                                <RefreshCw size={15} className="animate-spin" color="#4338CA" />
+                                <span>Mengambil data log dari database...</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : usageLogs.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} style={{ textAlign: "center", padding: "40px 18px", color: "#71717A" }}>
+                              Belum ada riwayat pemanggilan AI yang sesuai dengan filter.
+                            </td>
+                          </tr>
+                        ) : (
+                          usageLogs.map((log) => (
+                            <tr
+                              key={log.id}
+                              style={{
+                                borderBottom: "1px solid #F1F5F9",
+                                transition: "background 0.1s ease",
+                              }}
+                            >
+                              <td style={{ padding: "11px 14px", color: "#71717A", fontSize: 11.5, whiteSpace: "nowrap" }}>
+                                {new Date(log.timestamp).toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" })}{" "}
+                                <span style={{ color: "#0F0F14", fontWeight: 500 }}>
+                                  {new Date(log.timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                </span>
+                              </td>
+                              <td style={{ padding: "11px 14px", color: "#0F0F14" }}>
+                                <div style={{ display: "flex", flexDirection: "column" }}>
+                                  <span style={{ fontWeight: 600 }}>{log.userEmail}</span>
+                                  {log.userName && log.userName !== "Guest" && (
+                                    <span style={{ fontSize: 11, color: "#71717A" }}>{log.userName}</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td style={{ padding: "11px 14px", color: "#3F3F46" }}>
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    padding: "2px 7px",
+                                    borderRadius: 4,
+                                    background: "#F4F4F5",
+                                    color: "#3F3F46",
+                                    fontSize: 11.5,
+                                    fontWeight: 500,
+                                  }}
+                                >
+                                  {log.featureLabel}
+                                </span>
+                              </td>
+                              <td style={{ padding: "11px 14px", color: "#0F0F14", fontSize: 11.5 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontFamily: "monospace" }}>{log.modelName}</span>
+                                  {log.isFreeTier ? (
+                                    <span style={{ fontSize: 9.5, padding: "1px 5px", borderRadius: 4, background: "#ECFDF5", color: "#059669", fontWeight: 700 }}>
+                                      FREE
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: 9.5, padding: "1px 5px", borderRadius: 4, background: "#EFF6FF", color: "#2563EB", fontWeight: 700 }}>
+                                      PAID
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td style={{ padding: "11px 14px", fontFamily: "monospace", fontSize: 11.5, whiteSpace: "nowrap" }}>
+                                <span style={{ color: "#64748B" }}>{(log.inputTokens || 0).toLocaleString()}</span>
+                                <span style={{ color: "#CBD5E1" }}> / </span>
+                                <span style={{ color: "#0F0F14", fontWeight: 600 }}>{(log.outputTokens || 0).toLocaleString()}</span>
+                              </td>
+                              <td style={{ padding: "11px 14px", fontFamily: "monospace", fontSize: 11.5, color: "#64748B" }}>
+                                ${log.costUsd !== undefined ? log.costUsd.toFixed(5) : "0.00000"}
+                              </td>
+                              <td style={{ padding: "11px 14px", fontFamily: "monospace", fontSize: 11.5, color: "#0F0F14", fontWeight: 500 }}>
+                                ${log.chargeUser !== undefined ? log.chargeUser.toFixed(5) : "0.00000"}
+                              </td>
+                              <td style={{ padding: "11px 16px" }}>
+                                <span
+                                  style={{
+                                    background: "#DCFCE7",
+                                    color: "#16A34A",
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    padding: "2px 7px",
+                                    borderRadius: 4,
+                                    fontFamily: "monospace",
+                                  }}
+                                >
+                                  +${log.profitUsd !== undefined ? log.profitUsd.toFixed(5) : "0.00000"}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination Footer */}
+                  <div
+                    style={{
+                      padding: "12px 20px",
+                      borderTop: "1px solid #E4E4E9",
+                      background: "#FAFAFC",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: "#71717A" }}>
+                      Menampilkan <strong style={{ color: "#0F0F14" }}>{startEntry}–{endEntry}</strong> dari <strong style={{ color: "#0F0F14" }}>{total.toLocaleString()}</strong> log pemanggilan
+                    </div>
+
+                    {/* Pagination Controls */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {/* Previous Page */}
+                      <button
+                        type="button"
+                        onClick={() => fetchUsageLogs(page - 1, limit, logSearch, logTierFilter)}
+                        disabled={page <= 1 || logLoading}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          padding: "5px 10px",
+                          borderRadius: 6,
+                          border: "1px solid #E4E4E9",
+                          background: page <= 1 ? "#F4F4F5" : "#FFFFFF",
+                          color: page <= 1 ? "#A1A1AA" : "#3F3F46",
+                          fontSize: 11.5,
+                          fontWeight: 500,
+                          cursor: page <= 1 || logLoading ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        <ChevronLeft size={13} />
+                        <span>Sebelumnya</span>
+                      </button>
+
+                      {/* Numeric page pills */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        {getPageNumbers().map((pNum, pIdx) => {
+                          if (pNum === "...") {
+                            return (
+                              <span key={`dots-${pIdx}`} style={{ padding: "0 4px", color: "#A1A1AA", fontSize: 12 }}>
+                                ...
+                              </span>
+                            );
+                          }
+                          const isCurrent = pNum === page;
+                          return (
+                            <button
+                              key={`p-${pNum}`}
+                              type="button"
+                              onClick={() => fetchUsageLogs(Number(pNum), limit, logSearch, logTierFilter)}
+                              disabled={logLoading}
+                              style={{
+                                width: 28,
+                                height: 28,
+                                borderRadius: 6,
+                                border: isCurrent ? "1px solid #4338CA" : "1px solid #E4E4E9",
+                                background: isCurrent ? "#4338CA" : "#FFFFFF",
+                                color: isCurrent ? "#FFFFFF" : "#3F3F46",
+                                fontSize: 12,
+                                fontWeight: isCurrent ? 700 : 500,
+                                cursor: logLoading ? "not-allowed" : "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              {pNum}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Next Page */}
+                      <button
+                        type="button"
+                        onClick={() => fetchUsageLogs(page + 1, limit, logSearch, logTierFilter)}
+                        disabled={page >= totalPages || logLoading}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          padding: "5px 10px",
+                          borderRadius: 6,
+                          border: "1px solid #E4E4E9",
+                          background: page >= totalPages ? "#F4F4F5" : "#FFFFFF",
+                          color: page >= totalPages ? "#A1A1AA" : "#3F3F46",
+                          fontSize: 11.5,
+                          fontWeight: 500,
+                          cursor: page >= totalPages || logLoading ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        <span>Berikutnya</span>
+                        <ChevronRight size={13} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ════════════════════════════════════════════════════════════════════════
+            TAB: AI SKILL PROMPTS, GAYA PENULISAN & CODE BINDING
+           ════════════════════════════════════════════════════════════════════════ */}
+          {activeTab === "PROMPTS_SKILLS" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              {/* Top Metric Cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Total Skill Prompts</span>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: "#EEEAFE", display: "flex", alignItems: "center", justifyContent: "center", color: "#4338CA" }}>
+                      <Sparkles size={16} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#0F0F14" }}>{promptsList.length}</div>
+                  <div style={{ fontSize: 11.5, color: "#16A34A", fontWeight: 500, marginTop: 4 }}>
+                    Tersinkronisasi Real-time di Database
+                  </div>
+                </div>
+
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Resep Baku Sub-bab 1-3</span>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#2563EB" }}>
+                      <ListOrdered size={16} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#0F0F14" }}>
+                    {promptsList.filter((p) => p.category === "SUBCHAPTER").length || 19} Sub-bab
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#71717A", marginTop: 4 }}>
+                    1.1 s/d 1.7, 2.1 s/d 2.4, 3.1 s/d 3.8
+                  </div>
+                </div>
+
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Preset Gaya Penulisan</span>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: "#FDF2F8", display: "flex", alignItems: "center", justifyContent: "center", color: "#DB2777" }}>
+                      <FileEdit size={16} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#0F0F14" }}>4 Gaya Formal</div>
+                  <div style={{ fontSize: 11.5, color: "#71717A", marginTop: 4 }}>
+                    APA 7th, Telaah Kritis, Metodologi, Implikasi
+                  </div>
+                </div>
+
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Penyimpanan Engine</span>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: "#ECFDF5", display: "flex", alignItems: "center", justifyContent: "center", color: "#059669" }}>
+                      <Database size={16} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#059669" }}>Dynamic MySQL</div>
+                  <div style={{ fontSize: 11.5, color: "#71717A", marginTop: 4 }}>
+                    Tabel <code>ai_skill_prompts</code> (TTL Cache 30s)
+                  </div>
+                </div>
+              </div>
+
+              {/* Sub-Tab Navigation Bar */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #E4E4E9", paddingBottom: 12 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[
+                    { id: "RECIPES", label: "Katalog Prompt & 19 Resep Sub-bab", icon: ListOrdered },
+                    { id: "WRITING_STYLES", label: "Gaya Penulisan Akademik (Tone Presets)", icon: FileEdit },
+                    { id: "CODE_BINDING", label: "Cara Terhubung ke Code & Dynamic Binding", icon: Code },
+                  ].map((st) => {
+                    const Icon = st.icon;
+                    const isCur = promptSubTab === st.id;
+                    return (
+                      <button
+                        key={st.id}
+                        onClick={() => setPromptSubTab(st.id as any)}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "8px 16px",
+                          borderRadius: 8,
+                          fontSize: 13,
+                          fontWeight: isCur ? 600 : 500,
+                          background: isCur ? "#4338CA" : "#F7F7FB",
+                          color: isCur ? "#FFFFFF" : "#71717A",
+                          border: "1px solid",
+                          borderColor: isCur ? "#4338CA" : "#E4E4E9",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <Icon size={14} />
+                        <span>{st.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    onClick={async () => {
+                      const res = await api.prompts.list();
+                      if (res.success) {
+                        setPromptsList(res.data);
+                        setFeedbackMsg({ type: "success", text: "Skill & Prompt berhasil disinkronkan dari database." });
+                      }
+                    }}
+                    style={{
+                      background: "#F7F7FB",
+                      border: "1px solid #E4E4E9",
+                      color: "#3F3F46",
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      fontSize: 12.5,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <RefreshCw size={13} />
+                    <span>Sync DB</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setEditingPrompt(null);
+                      setIsCreatingPrompt(true);
+                      setPromptFormData({
+                        code: "CUSTOM_SKILL_" + Math.random().toString(36).substring(2, 6).toUpperCase(),
+                        title: "",
+                        category: "SUBCHAPTER",
+                        tags: "kustom, riset",
+                        description: "",
+                        systemPrompt: "",
+                        recipeSteps: [],
+                        isActive: true,
+                      });
+                      setShowPromptModal(true);
+                    }}
+                    style={{
+                      background: "#4338CA",
+                      color: "#FFFFFF",
+                      border: "none",
+                      padding: "8px 16px",
+                      borderRadius: 8,
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Plus size={14} />
+                    <span>Tambah Skill Baru</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* ── SUB-TAB 1: RECIPES & PROMPTS ── */}
+              {promptSubTab === "RECIPES" && (() => {
+                // Define clean logical groups
+                const groups = [
+                  {
+                    id: "CORE_SYSTEM",
+                    key: "CORE",
+                    title: "Core System Engines",
+                    subtitle: "Prompt orkestrator sentral: Blueprint Generator, Proposal Synthesis SINTA, Screening Jurnal, & Chat Assistant",
+                    icon: Zap,
+                    color: "#4338CA",
+                    badgeBg: "#EEF2FF",
+                    filterFn: (p: AiSkillPrompt) => p.category !== "SUBCHAPTER" && !p.code.startsWith("SUBCHAPTER_"),
+                  },
+                  {
+                    id: "BAB_1",
+                    key: "BAB1",
+                    title: "BAB I — Pendahuluan",
+                    subtitle: "Resep baku sub-bab 1.1 s/d 1.7 (Piramida terbalik, Fenomena empiris, Gap penelitian, Batasan, Tujuan, & Sistematika)",
+                    icon: BookOpen,
+                    color: "#2563EB",
+                    badgeBg: "#EFF6FF",
+                    filterFn: (p: AiSkillPrompt) => p.code.startsWith("SUBCHAPTER_1_"),
+                  },
+                  {
+                    id: "BAB_2",
+                    key: "BAB2",
+                    title: "BAB II — Landasan Teori & Tinjauan Pustaka",
+                    subtitle: "Resep baku sub-bab 2.1 s/d 2.4 (Landasan Teori, Matriks Komparasi Penelitian Terdahulu, Kerangka Berpikir, & Hipotesis)",
+                    icon: Layers,
+                    color: "#059669",
+                    badgeBg: "#ECFDF5",
+                    filterFn: (p: AiSkillPrompt) => p.code.startsWith("SUBCHAPTER_2_"),
+                  },
+                  {
+                    id: "BAB_3",
+                    key: "BAB3",
+                    title: "BAB III — Metodologi Penelitian",
+                    subtitle: "Resep baku sub-bab 3.1 s/d 3.8 (Desain Penelitian, Objek/Subjek, Sampling Slovin, Instrumen, Definisi Operasional, Validitas & Reliabilitas)",
+                    icon: GraduationCap,
+                    color: "#D97706",
+                    badgeBg: "#FFFBEB",
+                    filterFn: (p: AiSkillPrompt) => p.code.startsWith("SUBCHAPTER_3_"),
+                  },
+                  {
+                    id: "CUSTOM",
+                    key: "CUSTOM",
+                    title: "Custom Skill & Prompt Tambahan",
+                    subtitle: "Prompt kustom khusus yang didaftarkan manual oleh administrator",
+                    icon: Sparkles,
+                    color: "#7E22CE",
+                    badgeBg: "#FAF5FF",
+                    filterFn: (p: AiSkillPrompt) => p.category === "CUSTOM" || (!p.isSystem && !p.code.startsWith("SUBCHAPTER_") && !["OUTLINE_BLUEPRINT_SYSTEM", "PROPOSAL_CHAT_SYSTEM", "PROPOSAL_DRAFT_SYSTEM", "PROPOSAL_FULL_SYNTHESIS_SYSTEM", "JOURNAL_SCREENING_SYSTEM", "LITERATURE_SEARCH_SYSTEM"].includes(p.code)),
+                  },
+                ];
+
+                // Filter logic
+                const matchesSearchAndTag = (p: AiSkillPrompt) => {
+                  if (promptTagFilter) {
+                    const tags = Array.isArray(p.tags) ? p.tags : [];
+                    if (!tags.includes(promptTagFilter)) return false;
+                  }
+                  if (promptSearchQuery.trim()) {
+                    const q = promptSearchQuery.toLowerCase();
+                    const matchTitle = (p.title || "").toLowerCase().includes(q);
+                    const matchCode = (p.code || "").toLowerCase().includes(q);
+                    const matchDesc = (p.description || "").toLowerCase().includes(q);
+                    if (!matchTitle && !matchCode && !matchDesc) return false;
+                  }
+                  return true;
+                };
+
+                const filteredPrompts = promptsList.filter((p) => {
+                  if (promptCategoryFilter !== "ALL") {
+                    const grp = groups.find((g) => g.id === promptCategoryFilter);
+                    if (grp && !grp.filterFn(p)) return false;
+                  }
+                  return matchesSearchAndTag(p);
+                });
+                const totalFilteredCount = filteredPrompts.length;
+
+                // Card renderer helper
+                const renderPromptCard = (p: AiSkillPrompt) => {
+                  const tags = Array.isArray(p.tags) ? p.tags : [];
+                  const recipeSteps = Array.isArray(p.recipeSteps) ? p.recipeSteps : [];
+                  const isExpanded = !!expandedRecipes[p.id];
+
+                  // Category badge style
+                  let catBadgeBg = "#F4F4F5";
+                  let catBadgeColor = "#52525B";
+                  let catBadgeBorder = "#E4E4E9";
+                  if (p.category === "SUBCHAPTER") {
+                    catBadgeBg = "#EFF6FF";
+                    catBadgeColor = "#1D4ED8";
+                    catBadgeBorder = "#BFDBFE";
+                  } else if (p.category === "PROPOSAL") {
+                    catBadgeBg = "#FAF5FF";
+                    catBadgeColor = "#7E22CE";
+                    catBadgeBorder = "#E9D5FF";
+                  } else if (p.category === "OUTLINE") {
+                    catBadgeBg = "#ECFDF5";
+                    catBadgeColor = "#059669";
+                    catBadgeBorder = "#A7F3D0";
+                  } else if (p.category === "SCREENING" || p.category === "LITERATURE") {
+                    catBadgeBg = "#FFFBEB";
+                    catBadgeColor = "#B45309";
+                    catBadgeBorder = "#FDE68A";
+                  }
+
+                  return (
+                    <div
+                      key={p.id}
+                      style={{
+                        background: "#FFFFFF",
+                        border: "1px solid #E4E4E9",
+                        borderRadius: 10,
+                        padding: 16,
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+                        transition: "border-color 0.15s ease",
+                      }}
+                    >
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {/* Header: Badges & Code */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                padding: "2px 7px",
+                                borderRadius: 5,
+                                background: catBadgeBg,
+                                color: catBadgeColor,
+                                border: `1px solid ${catBadgeBorder}`,
+                                letterSpacing: "0.02em",
+                              }}
+                            >
+                              {p.category}
+                            </span>
+                            <span style={{ fontSize: 10, color: "#94A3B8", fontFamily: "monospace" }}>
+                              v{p.version}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(p.code);
+                              setCopiedPromptCode(p.code);
+                              setTimeout(() => setCopiedPromptCode(null), 2000);
+                            }}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              fontSize: 10.5,
+                              fontFamily: "monospace",
+                              color: copiedPromptCode === p.code ? "#059669" : "#52525B",
+                              background: copiedPromptCode === p.code ? "#ECFDF5" : "#F7F7FB",
+                              border: "1px solid #E4E4E9",
+                              padding: "2px 7px",
+                              borderRadius: 5,
+                              cursor: "pointer",
+                            }}
+                            title="Salin kode pemanggilan di code"
+                          >
+                            {copiedPromptCode === p.code ? <Check size={11} /> : <Copy size={11} />}
+                            <span>{p.code}</span>
+                          </button>
+                        </div>
+
+                        {/* Title & Description */}
+                        <div>
+                          <h4 style={{ fontSize: 14, fontWeight: 700, color: "#0F0F14", margin: "0 0 3px", lineHeight: 1.3 }}>
+                            {p.title}
+                          </h4>
+                          <p style={{ fontSize: 12, color: "#71717A", margin: 0, lineHeight: 1.45 }}>
+                            {p.description || "Panduan akademis dan instruksi pemodelan sistematis."}
+                          </p>
+                        </div>
+
+                        {/* Collapsible Recipe Steps */}
+                        {recipeSteps.length > 0 && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            <button
+                              type="button"
+                              onClick={() => toggleExpandRecipe(p.id)}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                width: "100%",
+                                padding: "6px 10px",
+                                borderRadius: 6,
+                                background: isExpanded ? "#EEF2FF" : "#F7F7FB",
+                                border: `1px solid ${isExpanded ? "#C7D2FE" : "#E4E4E9"}`,
+                                fontSize: 11.5,
+                                fontWeight: 600,
+                                color: isExpanded ? "#4338CA" : "#52525B",
+                                cursor: "pointer",
+                                transition: "all 0.15s ease",
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <ListOrdered size={13} color={isExpanded ? "#4338CA" : "#71717A"} />
+                                <span>Resep Standar ({recipeSteps.length} Langkah)</span>
+                              </div>
+                              <ChevronDown
+                                size={13}
+                                style={{
+                                  transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                                  transition: "transform 0.2s ease",
+                                }}
+                              />
+                            </button>
+
+                            {isExpanded && (
+                              <div
+                                style={{
+                                  background: "#FAFAFC",
+                                  borderRadius: 6,
+                                  padding: "9px 11px",
+                                  border: "1px solid #E4E4E9",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 5,
+                                  maxHeight: 180,
+                                  overflowY: "auto",
+                                }}
+                              >
+                                {recipeSteps.map((step, sIdx) => (
+                                  <div key={sIdx} style={{ fontSize: 11, color: "#3F3F46", display: "flex", gap: 6, lineHeight: 1.35 }}>
+                                    <span style={{ color: "#4338CA", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>
+                                      {sIdx + 1}.
+                                    </span>
+                                    <span>{step}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Minimalist Tags (Max 2 displayed to eliminate visual noise) */}
+                        {tags.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {tags.slice(0, 3).map((tag) => (
+                              <span
+                                key={tag}
+                                onClick={() => setPromptTagFilter(tag)}
+                                style={{
+                                  fontSize: 10,
+                                  padding: "2px 6px",
+                                  borderRadius: 4,
+                                  background: "#F7F7FB",
+                                  color: "#71717A",
+                                  border: "1px solid #E4E4E9",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                            {tags.length > 3 && (
+                              <span style={{ fontSize: 10, color: "#A1A1AA", padding: "2px 4px" }}>
+                                +{tags.length - 3} lainnya
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Footer Actions */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid #F4F4F5" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: p.isActive ? "#10B981" : "#94A3B8" }} />
+                          <span style={{ fontSize: 10.5, color: "#71717A", fontWeight: 500 }}>
+                            {p.isSystem ? "Built-in System" : "Custom Admin"}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingPrompt(p);
+                            setIsCreatingPrompt(false);
+                            setPromptFormData({
+                              code: p.code,
+                              title: p.title,
+                              category: p.category,
+                              tags: (Array.isArray(p.tags) ? p.tags : []).join(", "),
+                              description: p.description || "",
+                              systemPrompt: p.systemPrompt || "",
+                              recipeSteps: Array.isArray(p.recipeSteps) ? [...p.recipeSteps] : [],
+                              isActive: p.isActive,
+                            });
+                            setShowPromptModal(true);
+                          }}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            padding: "5px 10px",
+                            borderRadius: 6,
+                            background: "#F7F7FB",
+                            border: "1px solid #E4E4E9",
+                            fontSize: 11.5,
+                            fontWeight: 600,
+                            color: "#0F0F14",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <Pencil size={11} />
+                          <span>Edit Prompt</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                };
+
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                    {/* Top Segmented Navigation & Search Row */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      {/* Segmented Filter Pills */}
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                        <button
+                          type="button"
+                          onClick={() => setPromptCategoryFilter("ALL")}
+                          style={{
+                            padding: "6px 14px",
+                            borderRadius: 20,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            border: promptCategoryFilter === "ALL" ? "1px solid #4338CA" : "1px solid #E4E4E9",
+                            background: promptCategoryFilter === "ALL" ? "#4338CA" : "#FFFFFF",
+                            color: promptCategoryFilter === "ALL" ? "#FFFFFF" : "#52525B",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          Semua Prompt ({promptsList.length})
+                        </button>
+
+                        {groups.map((grp) => {
+                          const count = promptsList.filter(grp.filterFn).length;
+                          if (count === 0 && grp.id === "CUSTOM") return null;
+                          const isSelected = promptCategoryFilter === grp.id;
+                          return (
+                            <button
+                              key={grp.id}
+                              type="button"
+                              onClick={() => setPromptCategoryFilter(grp.id)}
+                              style={{
+                                padding: "6px 12px",
+                                borderRadius: 20,
+                                fontSize: 12,
+                                fontWeight: 500,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                border: isSelected ? `1px solid ${grp.color}` : "1px solid #E4E4E9",
+                                background: isSelected ? grp.badgeBg : "#FFFFFF",
+                                color: isSelected ? grp.color : "#52525B",
+                                transition: "all 0.15s ease",
+                              }}
+                            >
+                              <grp.icon size={13} color={isSelected ? grp.color : "#71717A"} />
+                              <span>{grp.title.split("—")[0].trim()} ({count})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Search Bar & Active Tag Filter */}
+                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        <div style={{ position: "relative", flex: 1 }}>
+                          <Search size={15} color="#94a3b8" style={{ position: "absolute", left: 12, top: 11 }} />
+                          <input
+                            type="text"
+                            value={promptSearchQuery}
+                            onChange={(e) => setPromptSearchQuery(e.target.value)}
+                            placeholder="Cari prompt berdasarkan nama, kode (misal: SUBCHAPTER_1_1), atau deskripsi..."
+                            style={{
+                              width: "100%",
+                              height: 36,
+                              paddingLeft: 34,
+                              paddingRight: 12,
+                              borderRadius: 8,
+                              border: "1px solid #E4E4E9",
+                              background: "#FFFFFF",
+                              fontSize: 12.5,
+                              color: "#0F0F14",
+                              outline: "none",
+                            }}
+                          />
+                          {promptSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setPromptSearchQuery("")}
+                              style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+
+                        {promptTagFilter && (
+                          <button
+                            type="button"
+                            onClick={() => setPromptTagFilter(null)}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                              padding: "6px 10px",
+                              borderRadius: 6,
+                              background: "#ECFDF5",
+                              border: "1px solid #A7F3D0",
+                              color: "#059669",
+                              fontSize: 11.5,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <span>Tag: #{promptTagFilter}</span>
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Grouped Render Sections */}
+                    {promptCategoryFilter === "ALL" && !promptSearchQuery.trim() && !promptTagFilter ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+                        {groups.map((grp) => {
+                          const groupPrompts = promptsList.filter(grp.filterFn);
+                          if (groupPrompts.length === 0) return null;
+
+                          return (
+                            <div key={grp.id} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                              {/* Section Header */}
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  paddingBottom: 8,
+                                  borderBottom: "1px solid #E4E4E9",
+                                }}
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <div
+                                    style={{
+                                      width: 28,
+                                      height: 28,
+                                      borderRadius: 6,
+                                      background: grp.badgeBg,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      color: grp.color,
+                                    }}
+                                  >
+                                    <grp.icon size={15} />
+                                  </div>
+                                  <div>
+                                    <h3 style={{ fontSize: 14.5, fontWeight: 700, color: "#0F0F14", margin: 0 }}>
+                                      {grp.title} <span style={{ fontSize: 12, fontWeight: 500, color: "#71717A" }}>({groupPrompts.length})</span>
+                                    </h3>
+                                    <p style={{ fontSize: 11.5, color: "#71717A", margin: 0 }}>
+                                      {grp.subtitle}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span style={{ fontSize: 11, color: "#71717A", background: "#F4F4F5", padding: "2px 8px", borderRadius: 10, fontWeight: 500 }}>
+                                  {groupPrompts.length} Prompt
+                                </span>
+                              </div>
+
+                              {/* Grid for this group */}
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
+                                {groupPrompts.map(renderPromptCard)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      /* Filtered or Search View */
+                      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 6, borderBottom: "1px solid #E4E4E9" }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "#0F0F14" }}>
+                            Menampilkan {totalFilteredCount} Prompt Ditemukan
+                          </span>
+                          {(promptSearchQuery || promptTagFilter || promptCategoryFilter !== "ALL") && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPromptCategoryFilter("ALL");
+                                setPromptSearchQuery("");
+                                setPromptTagFilter(null);
+                              }}
+                              style={{ fontSize: 11.5, color: "#4338CA", background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}
+                            >
+                              Reset Semua Filter
+                            </button>
+                          )}
+                        </div>
+
+                        {totalFilteredCount === 0 ? (
+                          <div style={{ padding: 40, textAlign: "center", background: "#F7F7FB", borderRadius: 10, border: "1px solid #E4E4E9" }}>
+                            <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
+                              Tidak ada skill prompt yang sesuai dengan kriteria filter atau pencarian.
+                            </p>
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
+                            {filteredPrompts.map(renderPromptCard)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* ── SUB-TAB 2: GAYA PENULISAN (WRITING STYLES) ── */}
+              {promptSubTab === "WRITING_STYLES" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: 24 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      <FileEdit size={20} color="#4338CA" />
+                      <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
+                        Standar Gaya Penulisan & Academic Tone Presets
+                      </h3>
+                    </div>
+                    <p style={{ fontSize: 13, color: "#71717A", margin: 0, lineHeight: 1.5, maxWidth: 840 }}>
+                      AI Writer di Zetera menggunakan parameter gaya penulisan formal akademik bahasa Indonesia standar Dikti. Anda dapat menyesuaikan arahan gaya berikut yang langsung diinjeksikan saat draf proposal dan perbaikan paragraf dihasilkan.
+                    </p>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 16 }}>
+                    {[
+                      {
+                        id: "style-1",
+                        code: "STYLE_FORMAL_DIKTI",
+                        title: "1. Gaya Skripsi Formal Indonesia (Standar Dikti / APA 7th)",
+                        badge: "DEFAULT DRAFTER",
+                        desc: "Bahasa baku baku EYD V, sudut pandang orang ketiga (objektif), piramida terbalik, dan sitasi formal APA 7th (Penulis, Tahun).",
+                        prompt: `Gunakan bahasa Indonesia baku akademis formal berstandar pedoman penulisan Tugas Akhir Indonesia. Hindari kata ganti orang pertama (saya/kami). Gunakan kalimat pasif ilmiah ("dilakukan analisis", "ditemukan"). Terapkan sitasi APA 7th secara konsisten.`,
+                      },
+                      {
+                        id: "style-2",
+                        code: "STYLE_CRITICAL_SYNTHESIS",
+                        title: "2. Gaya Telaah Kritis & Novelty Gap",
+                        badge: "LITERATURE & BAB 2",
+                        desc: "Menonjolkan perbandingan antar paper, menemukan kontradiksi empiris, dan mempertegas posisi kebaruan (research gap).",
+                        prompt: `Sajikan analisis sintesis kritis yang mengomparasikan minimal 2 sudut pandang peneliti terdahulu. Tegaskan persamaan, perbedaan, dan research gap yang membuktikan novelty penelitian ini.`,
+                      },
+                      {
+                        id: "style-3",
+                        code: "STYLE_METHODOLOGY_PROCEDURAL",
+                        title: "3. Gaya Metodologi Prosedural & Uji Statistik",
+                        badge: "METODOLOGI & BAB 3",
+                        desc: "Rinci, operasional, memuat rumus sampling (Slovin/Krejcie) atau triangulasi kualitatif secara presisi.",
+                        prompt: `Tuliskan metodologi secara prosedural langkah demi langkah. Cantumkan rujukan buku metodologi resmi (Sugiyono, Creswell), rumus sampling, dan justifikasi instrumen ukur.`,
+                      },
+                      {
+                        id: "style-4",
+                        code: "STYLE_IMPLICATION_DISCUSSION",
+                        title: "4. Gaya Pembahasan & Implikasi Kontribusi",
+                        badge: "MANFAAT & PEMBAHASAN",
+                        desc: "Menghubungkan hasil temuan teknis dengan implikasi teoretis keilmuan dan manfaat aplikatif bagi stakeholder.",
+                        prompt: `Uraikan dampak dan implikasi riset secara berimbang antara kontribusi keilmuan teoretis dan manfaat praktis lapangan bagi pengguna/industri.`,
+                      },
+                    ].map((st) => (
+                      <div
+                        key={st.id}
+                        style={{
+                          background: "#FFFFFF",
+                          border: "1px solid #E4E4E9",
+                          borderRadius: 12,
+                          padding: 20,
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          gap: 14,
+                        }}
+                      >
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: "#EEEAFE", color: "#4338CA", border: "1px solid #C7D2FE" }}>
+                              {st.badge}
+                            </span>
+                            <span style={{ fontSize: 11, fontFamily: "monospace", color: "#71717A" }}>{st.code}</span>
+                          </div>
+                          <h4 style={{ fontSize: 14.5, fontWeight: 700, margin: 0, color: "#0F0F14" }}>{st.title}</h4>
+                          <p style={{ fontSize: 12.5, color: "#71717A", margin: 0, lineHeight: 1.45 }}>{st.desc}</p>
+                          <div style={{ background: "#F7F7FB", padding: "10px 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 12, color: "#3F3F46", fontFamily: "monospace", lineHeight: 1.45 }}>
+                            "{st.prompt}"
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setEditingPrompt(null);
+                            setIsCreatingPrompt(true);
+                            setPromptFormData({
+                              code: st.code,
+                              title: st.title,
+                              category: "PROPOSAL",
+                              tags: "gaya_penulisan, tone, akademik",
+                              description: st.desc,
+                              systemPrompt: st.prompt,
+                              recipeSteps: [],
+                              isActive: true,
+                            });
+                            setShowPromptModal(true);
+                          }}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 6,
+                            padding: "7px 14px",
+                            borderRadius: 6,
+                            background: "#F7F7FB",
+                            border: "1px solid #E4E4E9",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: "#4338CA",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Pencil size={12} />
+                          <span>Kustomisasi Preset Gaya Ini</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── SUB-TAB 3: CARA TERHUBUNG KE CODE & DYNAMIC BINDING ── */}
+              {promptSubTab === "CODE_BINDING" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: 24 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      <Code size={20} color="#4338CA" />
+                      <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
+                        Arsitektur Dynamic Code Binding (Database &rarr; AI Backend)
+                      </h3>
+                    </div>
+                    <p style={{ fontSize: 13, color: "#71717A", margin: 0, lineHeight: 1.5, maxWidth: 840 }}>
+                      Bagaimana backend Zetera memanggil dan menyuntikkan prompt dinamis dari database tanpa memerlukan perubahan kode program atau *re-deployment*.
+                    </p>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 18 }}>
+                    {/* Code Card 1 */}
+                    <div style={{ background: "#0F172A", borderRadius: 12, padding: 20, color: "#F8FAFC", display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#34D399" }}>1. Membaca 19 Resep Sub-bab Dinamis</span>
+                        <span style={{ fontSize: 11, color: "#94A3B8" }}>outline.service.js</span>
+                      </div>
+                      <pre style={{ fontSize: 12, fontFamily: "monospace", margin: 0, color: "#CBD5E1", lineHeight: 1.5, overflowX: "auto" }}>
+                        {`// Ambil seluruh resep sub-bab dari database MySQL
+const dbGuides = await getAllSubchapterGuides();
+const activeGuides = dbGuides || SUBCHAPTER_MODELING_GUIDES;
+
+// AI Generator secara otomatis merender instruksi
+const systemPrompt = \`
+Gunakan resep pemodelan berikut:
+\${Object.entries(activeGuides)
+  .map(([code, g]) => \`- Sub-bab \${code}: \${g.steps.join(", ")}\`)
+  .join("\\n")}
+\`;`}
+                      </pre>
+                    </div>
+
+                    {/* Code Card 2 */}
+                    <div style={{ background: "#0F172A", borderRadius: 12, padding: 20, color: "#F8FAFC", display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#38BDF8" }}>2. Memanggil Skill Tertentu dengan Variabel</span>
+                        <span style={{ fontSize: 11, color: "#94A3B8" }}>proposal.service.js</span>
+                      </div>
+                      <pre style={{ fontSize: 12, fontFamily: "monospace", margin: 0, color: "#CBD5E1", lineHeight: 1.5, overflowX: "auto" }}>
+                        {`// Ambil prompt sistem & interpolasi variabel {{TOPIC}}
+const promptSkill = await getSkillPrompt("SUBCHAPTER_1_1", {
+  TOPIC: project.title,
+  PRODI: project.prodi,
+  APPROACH: project.approachType,
+});
+
+// Eksekusi via Dual-Tier AI Router
+const response = await executeAiCompletion({
+  featureCode: "DRAFT_SKRIPSI",
+  messages: [{ role: "system", content: promptSkill.renderedSystemPrompt }],
+  userId,
+});`}
+                      </pre>
+                    </div>
+
+                    {/* Code Card 3 */}
+                    <div style={{ background: "#0F172A", borderRadius: 12, padding: 20, color: "#F8FAFC", display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#F472B6" }}>3. Variable Injection Reference</span>
+                        <span style={{ fontSize: 11, color: "#94A3B8" }}>Interpolation Engine</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "#CBD5E1", display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div><code style={{ color: "#34D399" }}>{"{{TOPIC}}"}</code> : Judul skripsi / topik penelitian</div>
+                        <div><code style={{ color: "#38BDF8" }}>{"{{PRODI}}"}</code> : Program studi / disiplin ilmu</div>
+                        <div><code style={{ color: "#F472B6" }}>{"{{APPROACH}}"}</code> : Pendekatan riset (KUANTITATIF / KUALITATIF)</div>
+                        <div><code style={{ color: "#FBBF24" }}>{"{{MEMORY_CONTEXT}}"}</code> : Rangkuman paper & landscape literatur</div>
+                      </div>
+                    </div>
+
+                    {/* Code Card 4 */}
+                    <div style={{ background: "#0F172A", borderRadius: 12, padding: 20, color: "#F8FAFC", display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#FBBF24" }}>4. In-Memory Cache (TTL 30 Detik)</span>
+                        <span style={{ fontSize: 11, color: "#94A3B8" }}>Zero Latency</span>
+                      </div>
+                      <p style={{ fontSize: 12, color: "#94A3B8", margin: 0, lineHeight: 1.5 }}>
+                        Untuk menjamin performa tanpa overhead query ke database pada setiap token generation, prompt dicache selama 30 detik. Saat Admin mengklik <strong>"Simpan Perubahan"</strong> di UI Admin, cache otomatis dibersihkan seketika.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Prompt Modal (Create & Edit) */}
+              {showPromptModal && (
+                <div
+                  style={{
+                    position: "fixed",
+                    inset: 0,
+                    background: "rgba(15,23,42,0.6)",
+                    backdropFilter: "blur(4px)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 100,
+                    padding: 20,
+                  }}
+                >
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      borderRadius: 16,
+                      maxWidth: 760,
+                      width: "100%",
+                      maxHeight: "90vh",
+                      overflowY: "auto",
+                      padding: 28,
+                      boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 20,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #E4E4E9", paddingBottom: 14 }}>
+                      <div>
+                        <h3 style={{ fontSize: 18, fontWeight: 700, color: "#0F0F14", margin: 0 }}>
+                          {isCreatingPrompt ? "Tambah Skill Prompt Baru" : `Edit Skill: ${promptFormData.title || promptFormData.code}`}
+                        </h3>
+                        <span style={{ fontSize: 12, color: "#71717A" }}>
+                          Identifier: <code style={{ color: "#4338CA", fontWeight: 700 }}>{promptFormData.code}</code>
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => setShowPromptModal(false)}
+                        style={{ background: "none", border: "none", color: "#71717A", cursor: "pointer" }}
+                      >
+                        <X size={20} />
+                      </button>
+                    </div>
+
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        setSavingPrompt(true);
+                        try {
+                          const tagArray = promptFormData.tags.split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
+                          if (isCreatingPrompt) {
+                            await api.prompts.create({
+                              code: promptFormData.code,
+                              title: promptFormData.title,
+                              category: promptFormData.category,
+                              tags: tagArray,
+                              description: promptFormData.description,
+                              systemPrompt: promptFormData.systemPrompt,
+                              recipeSteps: promptFormData.recipeSteps,
+                              isActive: promptFormData.isActive,
+                            });
+                            setFeedbackMsg({ type: "success", text: "Skill Prompt baru berhasil dibuat di database." });
+                          } else if (editingPrompt) {
+                            await api.prompts.update(editingPrompt.id, {
+                              title: promptFormData.title,
+                              category: promptFormData.category,
+                              tags: tagArray,
+                              description: promptFormData.description,
+                              systemPrompt: promptFormData.systemPrompt,
+                              recipeSteps: promptFormData.recipeSteps,
+                              isActive: promptFormData.isActive,
+                            });
+                            setFeedbackMsg({ type: "success", text: `Prompt "${promptFormData.title}" berhasil diperbarui.` });
+                          }
+                          const fresh = await api.prompts.list();
+                          if (fresh.success) setPromptsList(fresh.data);
+                          setShowPromptModal(false);
+                        } catch (err: any) {
+                          notify.error("Gagal menyimpan prompt: " + (err.message || err));
+                        } finally {
+                          setSavingPrompt(false);
+                        }
+                      }}
+                      style={{ display: "flex", flexDirection: "column", gap: 16 }}
+                    >
+                      {/* Row 0: Code Identifier (Locked on Edit) */}
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <label style={{ fontSize: 12, fontWeight: 600, color: "#3F3F46" }}>
+                            Kode Identifier Pemanggilan di Code
+                          </label>
+                          {!isCreatingPrompt ? (
+                            <span style={{ fontSize: 11, background: "#EFF6FF", color: "#1D4ED8", padding: "2px 8px", borderRadius: 6, fontWeight: 700, border: "1px solid #BFDBFE" }}>
+                              🔒 Terkunci (Terhubung ke Backend)
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11, color: "#71717A" }}>
+                              Gunakan format UPPERCASE (Contoh: CUSTOM_ANALISIS_GAP)
+                            </span>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          disabled={!isCreatingPrompt}
+                          value={promptFormData.code}
+                          onChange={(e) => setPromptFormData({ ...promptFormData, code: e.target.value.toUpperCase().replace(/\s+/g, "_") })}
+                          placeholder="Contoh: SUBCHAPTER_1_1"
+                          style={{
+                            width: "100%",
+                            height: 38,
+                            padding: "0 12px",
+                            borderRadius: 8,
+                            border: "1px solid #E4E4E9",
+                            fontSize: 13,
+                            fontFamily: "monospace",
+                            fontWeight: 700,
+                            background: !isCreatingPrompt ? "#F1F5F9" : "#FFFFFF",
+                            color: !isCreatingPrompt ? "#64748B" : "#0F0F14",
+                            cursor: !isCreatingPrompt ? "not-allowed" : "text",
+                          }}
+                        />
+                      </div>
+
+                      {/* Title & Category */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 180px", gap: 14 }}>
+                        <div>
+                          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
+                            Judul Skill / Sub-bab
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={promptFormData.title}
+                            onChange={(e) => setPromptFormData({ ...promptFormData, title: e.target.value })}
+                            placeholder="Contoh: BAB 1.1: Latar Belakang (Piramida Terbalik)"
+                            style={{ width: "100%", height: 38, padding: "0 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13 }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
+                            Kategori
+                          </label>
+                          <select
+                            value={promptFormData.category}
+                            onChange={(e) => setPromptFormData({ ...promptFormData, category: e.target.value })}
+                            style={{ width: "100%", height: 38, padding: "0 8px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13, background: "#FFFFFF" }}
+                          >
+                            <option value="SUBCHAPTER">Sub-bab Outline</option>
+                            <option value="OUTLINE">Blueprint Architect</option>
+                            <option value="PROPOSAL">Proposal Drafter</option>
+                            <option value="SCREENING">Screening Jurnal</option>
+                            <option value="LITERATURE">Literature Search</option>
+                            <option value="CUSTOM">Custom Skill</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Tags & Description */}
+                      <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
+                          Tagging (Pisahkan dengan koma)
+                        </label>
+                        <input
+                          type="text"
+                          value={promptFormData.tags}
+                          onChange={(e) => setPromptFormData({ ...promptFormData, tags: e.target.value })}
+                          placeholder="bab1, latar_belakang, piramida_terbalik, 8_langkah, gap"
+                          style={{ width: "100%", height: 38, padding: "0 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13 }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
+                          Deskripsi / Tujuan Akademis
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={promptFormData.description}
+                          onChange={(e) => setPromptFormData({ ...promptFormData, description: e.target.value })}
+                          placeholder="Uraian singkat tujuan instruksional dan peran akademik prompt ini..."
+                          style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13, fontFamily: "inherit" }}
+                        />
+                      </div>
+
+                      {/* Step-by-Step Recipe Builder */}
+                      <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
+                          Resep Butir Langkah Baku ({promptFormData.recipeSteps.length} Butir)
+                        </label>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8, maxHeight: 180, overflowY: "auto" }}>
+                          {promptFormData.recipeSteps.map((step, idx) => (
+                            <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8, background: "#F7F7FB", padding: "6px 10px", borderRadius: 6, border: "1px solid #E4E4E9" }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "#4338CA", width: 20 }}>{idx + 1}.</span>
+                              <span style={{ fontSize: 12, color: "#1E293B", flex: 1 }}>{step}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPromptFormData({
+                                    ...promptFormData,
+                                    recipeSteps: promptFormData.recipeSteps.filter((_, i) => i !== idx),
+                                  });
+                                }}
+                                style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer" }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input
+                            type="text"
+                            value={newStepInput}
+                            onChange={(e) => setNewStepInput(e.target.value)}
+                            placeholder="Ketik butir instruksi langkah baru..."
+                            style={{ flex: 1, height: 36, padding: "0 10px", borderRadius: 6, border: "1px solid #E4E4E9", fontSize: 12.5 }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                if (newStepInput.trim()) {
+                                  setPromptFormData({
+                                    ...promptFormData,
+                                    recipeSteps: [...promptFormData.recipeSteps, newStepInput.trim()],
+                                  });
+                                  setNewStepInput("");
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (newStepInput.trim()) {
+                                setPromptFormData({
+                                  ...promptFormData,
+                                  recipeSteps: [...promptFormData.recipeSteps, newStepInput.trim()],
+                                });
+                                setNewStepInput("");
+                              }
+                            }}
+                            style={{
+                              background: "#F7F7FB",
+                              border: "1px solid #E4E4E9",
+                              padding: "6px 12px",
+                              borderRadius: 6,
+                              fontSize: 12.5,
+                              fontWeight: 500,
+                              cursor: "pointer",
+                            }}
+                          >
+                            + Tambah Butir
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* System Prompt Box */}
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <label style={{ fontSize: 12, fontWeight: 600, color: "#3F3F46" }}>
+                            System Prompt Template (AI Instructions)
+                          </label>
+                          <span style={{ fontSize: 11, color: "#71717A" }}>
+                            Gunakan variabel: <code style={{ color: "#4338CA" }}>{"{{TOPIC}}"}</code>, <code style={{ color: "#4338CA" }}>{"{{PRODI}}"}</code>
+                          </span>
+                        </div>
+                        <textarea
+                          rows={6}
+                          required
+                          value={promptFormData.systemPrompt}
+                          onChange={(e) => setPromptFormData({ ...promptFormData, systemPrompt: e.target.value })}
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: 8,
+                            border: "1px solid #E4E4E9",
+                            fontSize: 12.5,
+                            fontFamily: "monospace",
+                            background: "#0F172A",
+                            color: "#F8FAFC",
+                            lineHeight: 1.45,
+                          }}
+                        />
+                      </div>
+
+                      {/* Submit Actions */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, paddingTop: 10, borderTop: "1px solid #E4E4E9" }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowPromptModal(false)}
+                          style={{
+                            background: "#F7F7FB",
+                            border: "1px solid #E4E4E9",
+                            padding: "8px 14px",
+                            borderRadius: 6,
+                            fontSize: 13,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Batal
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={savingPrompt}
+                          style={{
+                            background: "#4338CA",
+                            color: "#FFFFFF",
+                            border: "none",
+                            padding: "8px 18px",
+                            borderRadius: 6,
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {savingPrompt ? "Menyimpan ke DB..." : "Simpan Perubahan ke Database"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════════════
+            TAB 2: HARGA & LANGGANAN
+           ════════════════════════════════════════════════════════════════════════ */}
+          {activeTab === "PRICING" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <h2 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
+                    List Paket Harga
+                  </h2>
+                  <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
+                    Atur harga paket, kuota koin, dan status langganan
+                  </p>
+                </div>
 
                 <button
                   onClick={() => {
-                    setEditingModelId(null);
-                    setModelFormData({
-                      routerLabel: "MAIA ROUTER",
-                      baseUrl: "https://api.maiarouter.ai/v1",
-                      modelName: "xai/grok-4-1-fast-non-reasoning",
-                      apiKey: "",
-                      modelKind: "LLM",
-                      pricingUnit: "TOKEN",
-                      priceInputPer1M: 0.25,
-                      priceOutputPer1M: 0.85,
-                      maxBudgetUsd: 50,
-                      rpmLimit: 60,
-                      isFreeTier: false,
+                    setEditingPackageId(null);
+                    setPackageFormData({
+                      name: "",
+                      type: "ONE_TIME",
+                      creditsGranted: 100,
+                      durationDays: null as any,
+                      priceNormal: 25000,
+                      priceDiscount: 19000,
+                      badgeLabel: "HEMAT 24%",
                       isActive: true,
                     });
-                    setShowModelModal(true);
+                    setShowPackageModal(true);
                   }}
                   style={{
                     background: "#4338CA",
@@ -1759,452 +4082,11 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                   }}
                 >
                   <Plus size={15} />
-                  <span>Tambah API</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Grid of Model Cards */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-                gap: 16,
-              }}
-            >
-              {aiModels.map((m) => {
-                const testStatus = modelTestStatus[m.id];
-                const isTesting = modelTestingId === m.id;
-
-                return (
-                  <div
-                    key={m.id}
-                    style={{
-                      background: "#FFFFFF",
-                      border: "1px solid #E4E4E9",
-                      borderRadius: 12,
-                      padding: "18px 20px",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 12,
-                    }}
-                  >
-                    {/* Header: Title, Free Badge & Toggle */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 15, fontWeight: 600, color: "#0F0F14" }}>
-                          {m.routerLabel}
-                        </span>
-                        {m.isFreeTier && (
-                          <span style={{ background: "#DCFCE7", color: "#16A34A", fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 9999 }}>
-                            FREE $0
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Active Toggle */}
-                      <button
-                        onClick={() => handleToggleModelActive(m.id, m.isActive)}
-                        title={m.isActive ? "Klik untuk Nonaktifkan" : "Klik untuk Aktifkan"}
-                        style={{
-                          width: 40,
-                          height: 22,
-                          borderRadius: 9999,
-                          background: m.isActive ? "#16A34A" : "#E4E4E9",
-                          border: "none",
-                          cursor: "pointer",
-                          position: "relative",
-                          transition: "background 0.2s ease",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: "50%",
-                            background: "#FFFFFF",
-                            position: "absolute",
-                            top: 3,
-                            left: m.isActive ? 21 : 3,
-                            transition: "left 0.2s ease",
-                          }}
-                        />
-                      </button>
-                    </div>
-
-                    {/* Model Name */}
-                    <div>
-                      <label style={{ fontSize: 11, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
-                        Model
-                      </label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={m.modelName}
-                        style={{
-                          width: "100%",
-                          background: "#F7F7FB",
-                          border: "1px solid #E4E4E9",
-                          borderRadius: 8,
-                          padding: "7px 10px",
-                          fontSize: 12.5,
-                          fontWeight: 500,
-                          color: "#0F0F14",
-                          outline: "none",
-                        }}
-                      />
-                    </div>
-
-                    {/* API Key */}
-                    <div>
-                      <label style={{ fontSize: 11, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
-                        API KEY
-                      </label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={m.apiKeyMasked || "••••••••••••••••••••••••"}
-                        style={{
-                          width: "100%",
-                          background: "#F7F7FB",
-                          border: "1px solid #E4E4E9",
-                          borderRadius: 8,
-                          padding: "7px 10px",
-                          fontSize: 12.5,
-                          color: "#71717A",
-                          outline: "none",
-                          letterSpacing: "0.06em",
-                        }}
-                      />
-                    </div>
-
-                    {/* Live Test Status Feedback */}
-                    {testStatus && (
-                      <div
-                        style={{
-                          fontSize: 11.5,
-                          fontWeight: 500,
-                          color: testStatus.ok ? "#16A34A" : "#BE123C",
-                          background: testStatus.ok ? "#DCFCE7" : "#FFF1F2",
-                          padding: "4px 8px",
-                          borderRadius: 6,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 5,
-                        }}
-                      >
-                        {testStatus.ok ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
-                        <span>{testStatus.msg}</span>
-                      </div>
-                    )}
-
-                    {/* Footer Row: Meta & Actions */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 4, borderTop: "1px solid #EFEFF3" }}>
-                      <div style={{ fontSize: 11, color: "#71717A" }}>
-                        RPM: <strong style={{ color: "#0F0F14" }}>{m.rpmLimit || 60}</strong> | Input: <strong style={{ color: "#0F0F14" }}>${m.priceInputPer1M}/1M</strong>
-                      </div>
-
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button
-                          onClick={() => handleTestModel(m)}
-                          disabled={isTesting}
-                          title="Test Koneksi API"
-                          style={{
-                            background: "#EEEAFE",
-                            border: "none",
-                            borderRadius: 6,
-                            padding: "4px 8px",
-                            fontSize: 11,
-                            fontWeight: 500,
-                            color: "#4338CA",
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 3,
-                          }}
-                        >
-                          {isTesting ? <RefreshCw size={11} className="animate-spin" /> : <Play size={11} />}
-                          <span>Test</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditingModelId(m.id);
-                            setModelFormData({
-                              routerLabel: m.routerLabel,
-                              baseUrl: m.baseUrl,
-                              modelName: m.modelName,
-                              apiKey: "",
-                              modelKind: m.modelKind,
-                              pricingUnit: m.pricingUnit,
-                              priceInputPer1M: m.priceInputPer1M,
-                              priceOutputPer1M: m.priceOutputPer1M,
-                              maxBudgetUsd: m.maxBudgetUsd || 50,
-                              rpmLimit: m.rpmLimit || 60,
-                              isFreeTier: m.isFreeTier,
-                              isActive: m.isActive,
-                            });
-                            setShowModelModal(true);
-                          }}
-                          title="Edit Model"
-                          style={{
-                            background: "#F7F7FB",
-                            border: "1px solid #E4E4E9",
-                            borderRadius: 6,
-                            padding: "4px 7px",
-                            color: "#3F3F46",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <Pencil size={12} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteModel(m.id, m.routerLabel)}
-                          title="Hapus Model"
-                          style={{
-                            background: "#FFF1F2",
-                            border: "1px solid #FECDD3",
-                            borderRadius: 6,
-                            padding: "4px 7px",
-                            color: "#BE123C",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════════════
-            SUB-TAB 2: MASTER EXCHANGE SETTING & KURS MULTIPLIER
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "AI_EXCHANGE" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            {/* Master Exchange Setting Panel */}
-            <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                <div>
-                  <h2 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
-                    Master Exchange Setting
-                  </h2>
-                  <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
-                    Kelola kurs mata uang, margin profit, dan buffer inflasi
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => setShowExchangeModal(true)}
-                  style={{
-                    background: "#4338CA",
-                    color: "#FFFFFF",
-                    border: "none",
-                    borderRadius: 8,
-                    padding: "7px 18px",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                  }}
-                >
-                  Edit
+                  <span>Tambah Paket</span>
                 </button>
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                  gap: 14,
-                }}
-              >
-                {/* Global Multiplier */}
-                <div
-                  style={{
-                    background: "#FFFFFF",
-                    border: "1px solid #E4E4E9",
-                    borderRadius: 12,
-                    padding: "18px 20px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 10,
-                      background: "#EEEAFE",
-                      color: "#4338CA",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Sliders size={18} />
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500 }}>Global Multiplier</span>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 2 }}>
-                      <span style={{ fontSize: 22, fontWeight: 600, color: "#0F0F14" }}>
-                        {billingConfig?.globalMultiplier || 1.35}
-                      </span>
-                      <span style={{ fontSize: 12, color: "#71717A" }}>
-                        ({Math.round(((billingConfig?.globalMultiplier || 1.35) - 1) * 100)}%)
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Base Rate */}
-                <div
-                  style={{
-                    background: "#FFFFFF",
-                    border: "1px solid #E4E4E9",
-                    borderRadius: 12,
-                    padding: "18px 20px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 10,
-                      background: "#EEEAFE",
-                      color: "#4338CA",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <DollarSign size={18} />
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500 }}>Base Rate (USD / IDR)</span>
-                    <div style={{ fontSize: 22, fontWeight: 600, color: "#0F0F14", marginTop: 2 }}>
-                      Rp {Number(billingConfig?.baseRateUsdIdr || 16500).toLocaleString("id-ID")}
-                    </div>
-                    <span style={{ fontSize: 10.5, color: "#71717A" }}>Kurs Mentah, samakan di web router</span>
-                  </div>
-                </div>
-
-                {/* Inflation Buffer */}
-                <div
-                  style={{
-                    background: "#FFFFFF",
-                    border: "1px solid #E4E4E9",
-                    borderRadius: 12,
-                    padding: "18px 20px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 10,
-                      background: "#EEEAFE",
-                      color: "#4338CA",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Percent size={18} />
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500 }}>Inflation Buffer</span>
-                    <div style={{ fontSize: 22, fontWeight: 600, color: "#0F0F14", marginTop: 2 }}>
-                      {Math.round((billingConfig?.inflationBuffer || 0.05) * 100)}%
-                    </div>
-                    <span style={{ fontSize: 10.5, color: "#16A34A", fontWeight: 500 }}>
-                      Effective Rate: Rp {Number(billingConfig?.effectiveRateUsdIdr || 23389).toLocaleString("id-ID")}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Formula & Calculation Breakdown Card */}
-            <div
-              style={{
-                background: "#FFFFFF",
-                border: "1px solid #E4E4E9",
-                borderRadius: 12,
-                padding: "20px 24px",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <DollarSign size={18} color="#4338CA" />
-                <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: "#0F0F14" }}>
-                  Formula Kurs Efektif & Konversi Router AI
-                </h3>
-              </div>
-              <p style={{ fontSize: 13, color: "#71717A", margin: "0 0 16px", lineHeight: 1.5 }}>
-                Perhitungan kurs di router backend menggunakan formula:
-                <span style={{ display: "inline-block", background: "#F1F5F9", color: "#4338CA", padding: "3px 8px", borderRadius: 6, fontFamily: "monospace", fontWeight: 600, marginLeft: 6 }}>
-                  EffectiveRate = BaseRate × Multiplier × (1 + InflationBuffer)
-                </span>
-              </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
-                <div style={{ background: "#F8FAFC", padding: "14px 16px", borderRadius: 10, border: "1px solid #E2E8F0" }}>
-                  <span style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>Base Rate Mentah (USD/IDR)</span>
-                  <div style={{ fontSize: 17, fontWeight: 700, color: "#0F172A", marginTop: 3 }}>
-                    Rp {Number(billingConfig?.baseRateUsdIdr || 16500).toLocaleString("id-ID")}
-                  </div>
-                  <span style={{ fontSize: 10.5, color: "#94A3B8" }}>Kurs acuan server</span>
-                </div>
-                <div style={{ background: "#F8FAFC", padding: "14px 16px", borderRadius: 10, border: "1px solid #E2E8F0" }}>
-                  <span style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>Multiplier Markup (+{Math.round(((billingConfig?.globalMultiplier || 1.35) - 1) * 100)}%)</span>
-                  <div style={{ fontSize: 17, fontWeight: 700, color: "#4338CA", marginTop: 3 }}>
-                    × {billingConfig?.globalMultiplier || 1.35}
-                  </div>
-                  <span style={{ fontSize: 10.5, color: "#94A3B8" }}>Target margin sistem</span>
-                </div>
-                <div style={{ background: "#F8FAFC", padding: "14px 16px", borderRadius: 10, border: "1px solid #E2E8F0" }}>
-                  <span style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>Buffer Pengaman Inflasi</span>
-                  <div style={{ fontSize: 17, fontWeight: 700, color: "#D97706", marginTop: 3 }}>
-                    +{Math.round((billingConfig?.inflationBuffer || 0.05) * 100)}%
-                  </div>
-                  <span style={{ fontSize: 10.5, color: "#94A3B8" }}>Proteksi fluktuasi valuta</span>
-                </div>
-                <div style={{ background: "#F0FDF4", padding: "14px 16px", borderRadius: 10, border: "1px solid #BBF7D0" }}>
-                  <span style={{ fontSize: 11, color: "#15803D", fontWeight: 600 }}>Total Kurs Efektif Final</span>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "#166534", marginTop: 3 }}>
-                    Rp {Number(billingConfig?.effectiveRateUsdIdr || 23389).toLocaleString("id-ID")}
-                  </div>
-                  <span style={{ fontSize: 10.5, color: "#16A34A", fontWeight: 500 }}>Tarif aktif di router AI</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════════════
-            SUB-TAB 3: FEATURE ROUTING MATRIX
-           ════════════════════════════════════════════════════════════════════════ */}
-        {(activeTab === "AI_ROUTING" || activeTab === "AI_ROUTING_LOGS") && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            {/* Feature Routing Matrix */}
-            <div>
-              <div style={{ marginBottom: 12 }}>
-                <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 2px", color: "#0F0F14" }}>
-                  Feature-to-Model Routing Matrix
-                </h2>
-                <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
-                  Tentukan model AI primer dan fallback per fitur riset skripsi (Dual-Tier Free & Paid)
-                </p>
-              </div>
-
+              {/* List Paket Harga Table */}
               <div
                 style={{
                   background: "#FFFFFF",
@@ -2217,394 +4099,287 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                   <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13 }}>
                     <thead>
                       <tr style={{ background: "#F7F7FB", borderBottom: "1px solid #E4E4E9", color: "#3F3F46", fontWeight: 500 }}>
-                        <th style={{ padding: "12px 18px" }}>Fitur Riset Skripsi</th>
-                        <th style={{ padding: "12px 14px" }}>Kode Sistem</th>
-                        <th style={{ padding: "12px 14px" }}>Primary Model</th>
-                        <th style={{ padding: "12px 14px" }}>Fallback Model</th>
-                        <th style={{ padding: "12px 14px" }}>Flat Credit</th>
-                        <th style={{ padding: "12px 18px" }}>Tier</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {featureRoutings.map((feat) => {
-                        const currentPrimary = feat.routing?.primaryModelId || "";
-                        const currentFallback = feat.routing?.fallbackModelId || "";
-                        const primaryObj = aiModels.find((m) => m.id === currentPrimary);
-
-                        return (
-                          <tr key={feat.id} style={{ borderBottom: "1px solid #EFEFF3" }}>
-                            <td style={{ padding: "12px 18px", fontWeight: 600, color: "#0F0F14" }}>
-                              {feat.label}
-                              <div style={{ fontSize: 11, fontWeight: 400, color: "#71717A" }}>
-                                {feat.description}
-                              </div>
-                            </td>
-                            <td style={{ padding: "12px 14px", fontFamily: "monospace", fontSize: 11.5, color: "#71717A" }}>
-                              {feat.code}
-                            </td>
-                            <td style={{ padding: "12px 14px" }}>
-                              <select
-                                value={currentPrimary}
-                                onChange={(e) =>
-                                  handleUpdateRouting(feat.id, e.target.value, currentFallback || null, feat.baseCreditCost)
-                                }
-                                style={{
-                                  background: "#F7F7FB",
-                                  border: "1px solid #E4E4E9",
-                                  borderRadius: 6,
-                                  padding: "5px 8px",
-                                  fontSize: 12,
-                                  color: "#0F0F14",
-                                  outline: "none",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                {aiModels.map((m) => (
-                                  <option key={m.id} value={m.id}>
-                                    {m.routerLabel} ({m.modelName}) {m.isFreeTier ? "[FREE]" : ""}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td style={{ padding: "12px 14px" }}>
-                              <select
-                                value={currentFallback || ""}
-                                onChange={(e) =>
-                                  handleUpdateRouting(feat.id, currentPrimary, e.target.value || null, feat.baseCreditCost)
-                                }
-                                style={{
-                                  background: "#F7F7FB",
-                                  border: "1px solid #E4E4E9",
-                                  borderRadius: 6,
-                                  padding: "5px 8px",
-                                  fontSize: 12,
-                                  color: "#71717A",
-                                  outline: "none",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                <option value="">(Tanpa Fallback)</option>
-                                {aiModels
-                                  .filter((m) => m.id !== currentPrimary)
-                                  .map((m) => (
-                                    <option key={m.id} value={m.id}>
-                                      {m.routerLabel}
-                                    </option>
-                                  ))}
-                              </select>
-                            </td>
-                            <td style={{ padding: "12px 14px" }}>
-                              <input
-                                type="number"
-                                min={0}
-                                defaultValue={feat.baseCreditCost}
-                                onBlur={(e) =>
-                                  handleUpdateRouting(
-                                    feat.id,
-                                    currentPrimary,
-                                    currentFallback || null,
-                                    Number(e.target.value) || 0
-                                  )
-                                }
-                                style={{
-                                  width: 55,
-                                  background: "#F7F7FB",
-                                  border: "1px solid #E4E4E9",
-                                  borderRadius: 6,
-                                  padding: "4px 6px",
-                                  fontSize: 12,
-                                  textAlign: "center",
-                                }}
-                              />
-                            </td>
-                            <td style={{ padding: "12px 18px" }}>
-                              {primaryObj?.isFreeTier ? (
-                                <span style={{ background: "#DCFCE7", color: "#16A34A", fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 9999 }}>
-                                  FREE $0
-                                </span>
-                              ) : (
-                                <span style={{ background: "#EEEAFE", color: "#4338CA", fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 9999 }}>
-                                  PAID
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════════════
-            SUB-TAB 4: AI USAGE LOGS & TELEMETRY AUDIT
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "AI_LOGS" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            {/* Metric KPI Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 10, padding: "14px 18px" }}>
-                <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 500 }}>Total Panggilan Log</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#0F172A", marginTop: 2 }}>{usageLogs.length} Request</div>
-                <div style={{ fontSize: 11, color: "#16A34A", marginTop: 2 }}>Real-time Audit Trail</div>
-              </div>
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 10, padding: "14px 18px" }}>
-                <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 500 }}>Total Modal API Provider</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#DC2626", marginTop: 2 }}>
-                  ${usageLogs.reduce((acc, l) => acc + (l.costUsd || 0), 0).toFixed(4)}
-                </div>
-                <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>Biaya LLM Terpakai</div>
-              </div>
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 10, padding: "14px 18px" }}>
-                <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 500 }}>Total Dikenakan ke User</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#2563EB", marginTop: 2 }}>
-                  ${usageLogs.reduce((acc, l) => acc + (l.chargeUser || 0), 0).toFixed(4)}
-                </div>
-                <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>Nilai Kredit Terpotong</div>
-              </div>
-              <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 10, padding: "14px 18px" }}>
-                <div style={{ fontSize: 11.5, color: "#15803D", fontWeight: 600 }}>Total Keuntungan (Margin)</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#166534", marginTop: 2 }}>
-                  +${usageLogs.reduce((acc, l) => acc + (l.profitUsd || 0), 0).toFixed(4)}
-                </div>
-                <div style={{ fontSize: 11, color: "#16A34A", marginTop: 2 }}>Laba Bersih Sistem</div>
-              </div>
-            </div>
-
-            {/* AI Usage Logs Table Card */}
-            <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <div>
-                  <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 2px", color: "#0F0F14" }}>
-                    AI Usage Logs
-                  </h2>
-                  <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
-                    Monitor riwayat token, biaya modal, dan laba transaksi
-                  </p>
-                </div>
-                <button
-                  onClick={async () => {
-                    const fresh = await api.admin.getUsageLogs({ limit: 25 });
-                    if (fresh.success) setUsageLogs(fresh.data);
-                  }}
-                  style={{
-                    background: "#F7F7FB",
-                    border: "1px solid #E4E4E9",
-                    borderRadius: 6,
-                    padding: "6px 12px",
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: "#3F3F46",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 5,
-                  }}
-                >
-                  <RefreshCw size={12} />
-                  <span>Refresh Log</span>
-                </button>
-              </div>
-
-              <div
-                style={{
-                  background: "#FFFFFF",
-                  border: "1px solid #E4E4E9",
-                  borderRadius: 12,
-                  overflow: "hidden",
-                }}
-              >
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 12.5 }}>
-                    <thead>
-                      <tr style={{ background: "#F7F7FB", borderBottom: "1px solid #E4E4E9", color: "#3F3F46", fontWeight: 500 }}>
                         <th style={{ padding: "12px 18px", width: 36 }}>
                           <input type="checkbox" />
                         </th>
-                        <th style={{ padding: "12px 14px" }}>Timestamp</th>
-                        <th style={{ padding: "12px 14px" }}>Email User</th>
-                        <th style={{ padding: "12px 14px" }}>Fitur</th>
-                        <th style={{ padding: "12px 14px" }}>Tokens (In/Out)</th>
-                        <th style={{ padding: "12px 14px" }}>Modal API ($)</th>
-                        <th style={{ padding: "12px 14px" }}>Charge User ($)</th>
-                        <th style={{ padding: "12px 18px" }}>Profit ($)</th>
+                        <th style={{ padding: "12px 14px" }}>Nama Paket</th>
+                        <th style={{ padding: "12px 14px" }}>Tipe Paket</th>
+                        <th style={{ padding: "12px 14px" }}>Koin</th>
+                        <th style={{ padding: "12px 14px" }}>Harga</th>
+                        <th style={{ padding: "12px 14px" }}>Status</th>
+                        <th style={{ padding: "12px 18px", textAlign: "right" }}>Aksi</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {usageLogs.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} style={{ textAlign: "center", padding: "32px 18px", color: "#71717A" }}>
-                            Belum ada riwayat pemanggilan AI yang tercatat.
+                      {creditPackages.map((pkg) => (
+                        <tr key={pkg.id} style={{ borderBottom: "1px solid #EFEFF3" }}>
+                          <td style={{ padding: "12px 18px" }}>
+                            <input type="checkbox" />
                           </td>
-                        </tr>
-                      ) : (
-                        usageLogs.map((log) => (
-                          <tr key={log.id} style={{ borderBottom: "1px solid #EFEFF3" }}>
-                            <td style={{ padding: "12px 18px" }}>
-                              <input type="checkbox" />
-                            </td>
-                            <td style={{ padding: "12px 14px", color: "#71717A", fontSize: 11.5 }}>
-                              {new Date(log.timestamp).toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit" })}{" "}
-                              {new Date(log.timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-                            </td>
-                            <td style={{ padding: "12px 14px", fontWeight: 500, color: "#0F0F14" }}>
-                              {log.userEmail}
-                            </td>
-                            <td style={{ padding: "12px 14px", color: "#71717A" }}>
-                              {log.featureLabel}
-                            </td>
-                            <td style={{ padding: "12px 14px", fontFamily: "monospace", fontSize: 11.5 }}>
-                              {log.inputTokens.toLocaleString()} / {log.outputTokens.toLocaleString()}
-                            </td>
-                            <td style={{ padding: "12px 14px", fontFamily: "monospace", fontSize: 11.5, color: "#71717A" }}>
-                              ${log.costUsd?.toFixed(5) || "0.00000"}
-                            </td>
-                            <td style={{ padding: "12px 14px", fontFamily: "monospace", fontSize: 11.5, color: "#0F0F14" }}>
-                              ${log.chargeUser?.toFixed(5) || "0.00000"}
-                            </td>
-                            <td style={{ padding: "12px 18px" }}>
+                          <td style={{ padding: "12px 14px", fontWeight: 600, color: "#0F0F14" }}>
+                            {pkg.name}
+                            {pkg.badgeLabel && (
+                              <span
+                                style={{
+                                  marginLeft: 8,
+                                  fontSize: 10,
+                                  fontWeight: 500,
+                                  background: "#EEEAFE",
+                                  color: "#4338CA",
+                                  padding: "2px 7px",
+                                  borderRadius: 9999,
+                                }}
+                              >
+                                {pkg.badgeLabel}
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: "12px 14px", color: "#71717A" }}>
+                            {pkg.type === "SUBSCRIPTION" ? `Langganan (${pkg.durationDays || 30} Hari)` : "ONTIME (Permanen)"}
+                          </td>
+                          <td style={{ padding: "12px 14px", fontWeight: 600, color: "#0F0F14" }}>
+                            {pkg.creditsGranted}
+                          </td>
+                          <td style={{ padding: "12px 14px" }}>
+                            {pkg.priceDiscount ? (
+                              <div>
+                                <span style={{ fontSize: 11, color: "#BE123C", textDecoration: "line-through", display: "block" }}>
+                                  Rp {Number(pkg.priceNormal).toLocaleString("id-ID")}
+                                </span>
+                                <span style={{ fontWeight: 600, color: "#0F0F14" }}>
+                                  Rp {Number(pkg.priceDiscount).toLocaleString("id-ID")}
+                                </span>
+                              </div>
+                            ) : (
+                              <span style={{ fontWeight: 600, color: "#0F0F14" }}>
+                                Rp {Number(pkg.priceNormal).toLocaleString("id-ID")}
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: "12px 14px" }}>
+                            {pkg.isActive ? (
                               <span
                                 style={{
                                   background: "#DCFCE7",
                                   color: "#16A34A",
                                   fontSize: 11,
                                   fontWeight: 600,
-                                  padding: "2px 7px",
+                                  padding: "3px 10px",
                                   borderRadius: 9999,
-                                  fontFamily: "monospace",
                                 }}
                               >
-                                +${log.profitUsd?.toFixed(5) || "0.00000"}
+                                AKTIF
                               </span>
-                            </td>
-                          </tr>
-                        ))
-                      )}
+                            ) : (
+                              <span
+                                style={{
+                                  background: "#F7F7FB",
+                                  color: "#71717A",
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  padding: "3px 10px",
+                                  borderRadius: 9999,
+                                }}
+                              >
+                                NONAKTIF
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: "12px 18px", textAlign: "right" }}>
+                            <div style={{ display: "inline-flex", gap: 8 }}>
+                              <button
+                                onClick={() => {
+                                  setEditingPackageId(pkg.id);
+                                  setPackageFormData({
+                                    name: pkg.name,
+                                    type: pkg.type,
+                                    creditsGranted: pkg.creditsGranted,
+                                    durationDays: pkg.durationDays || 30,
+                                    priceNormal: pkg.priceNormal,
+                                    priceDiscount: pkg.priceDiscount || 0,
+                                    badgeLabel: pkg.badgeLabel || "",
+                                    isActive: pkg.isActive,
+                                  });
+                                  setShowPackageModal(true);
+                                }}
+                                style={{ background: "transparent", border: "none", cursor: "pointer", color: "#3F3F46" }}
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDeletePackage(pkg.id, pkg.name)}
+                                style={{ background: "transparent", border: "none", cursor: "pointer", color: "#BE123C" }}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* ════════════════════════════════════════════════════════════════════════
-            TAB: AI SKILL PROMPTS, GAYA PENULISAN & CODE BINDING
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "PROMPTS_SKILLS" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            {/* Top Metric Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Total Skill Prompts</span>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: "#EEEAFE", display: "flex", alignItems: "center", justifyContent: "center", color: "#4338CA" }}>
+              {/* Ideal Credit & Margin Simulator */}
+              <div
+                style={{
+                  background: "#FFFFFF",
+                  border: "1px solid #E4E4E9",
+                  borderRadius: 12,
+                  padding: "20px 24px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 8, background: "#EEEAFE", color: "#4338CA", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <Sparkles size={16} />
                   </div>
-                </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: "#0F0F14" }}>{promptsList.length}</div>
-                <div style={{ fontSize: 11.5, color: "#16A34A", fontWeight: 500, marginTop: 4 }}>
-                  Tersinkronisasi Real-time di Database
-                </div>
-              </div>
-
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Resep Baku Sub-bab 1-3</span>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#2563EB" }}>
-                    <ListOrdered size={16} />
+                  <div>
+                    <h3 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
+                      Ideal Credit & Profit Margin Simulator
+                    </h3>
+                    <p style={{ fontSize: 12.5, color: "#71717A", margin: 0 }}>
+                      Hitung rekomendasi harga jual paket & kuota koin berdasarkan modal API dan target margin laba
+                    </p>
                   </div>
                 </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: "#0F0F14" }}>
-                  {promptsList.filter((p) => p.category === "SUBCHAPTER").length || 19} Sub-bab
-                </div>
-                <div style={{ fontSize: 11.5, color: "#71717A", marginTop: 4 }}>
-                  1.1 s/d 1.7, 2.1 s/d 2.4, 3.1 s/d 3.8
-                </div>
-              </div>
 
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Preset Gaya Penulisan</span>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: "#FDF2F8", display: "flex", alignItems: "center", justifyContent: "center", color: "#DB2777" }}>
-                    <FileEdit size={16} />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 16 }}>
+                  <div>
+                    <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 4 }}>
+                      Model AI Target
+                    </label>
+                    <select
+                      value={simModelId}
+                      onChange={(e) => setSimModelId(e.target.value)}
+                      style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, color: "#0F0F14" }}
+                    >
+                      {aiModels.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.routerLabel} ({m.modelName})
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: "#0F0F14" }}>4 Gaya Formal</div>
-                <div style={{ fontSize: 11.5, color: "#71717A", marginTop: 4 }}>
-                  APA 7th, Telaah Kritis, Metodologi, Implikasi
-                </div>
-              </div>
 
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Penyimpanan Engine</span>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: "#ECFDF5", display: "flex", alignItems: "center", justifyContent: "center", color: "#059669" }}>
-                    <Database size={16} />
+                  <div>
+                    <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 4 }}>
+                      Target Margin Laba (%)
+                    </label>
+                    <select
+                      value={simTargetMargin}
+                      onChange={(e) => setSimTargetMargin(Number(e.target.value))}
+                      style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, color: "#0F0F14" }}
+                    >
+                      <option value={0.3}>30% Margin Laba</option>
+                      <option value={0.4}>40% Margin Laba</option>
+                      <option value={0.5}>50% Margin Laba</option>
+                      <option value={0.7}>70% Margin Laba</option>
+                      <option value={0.9}>90% (SaaS Super Profit)</option>
+                    </select>
                   </div>
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "#059669" }}>Dynamic MySQL</div>
-                <div style={{ fontSize: 11.5, color: "#71717A", marginTop: 4 }}>
-                  Tabel <code>ai_skill_prompts</code> (TTL Cache 30s)
-                </div>
-              </div>
-            </div>
 
-            {/* Sub-Tab Navigation Bar */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #E4E4E9", paddingBottom: 12 }}>
-              <div style={{ display: "flex", gap: 8 }}>
-                {[
-                  { id: "RECIPES", label: "Katalog Prompt & 19 Resep Sub-bab", icon: ListOrdered },
-                  { id: "WRITING_STYLES", label: "Gaya Penulisan Akademik (Tone Presets)", icon: FileEdit },
-                  { id: "CODE_BINDING", label: "Cara Terhubung ke Code & Dynamic Binding", icon: Code },
-                ].map((st) => {
-                  const Icon = st.icon;
-                  const isCur = promptSubTab === st.id;
-                  return (
+                  <div>
+                    <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 4 }}>
+                      Estimasi Generate / Bulan
+                    </label>
+                    <input
+                      type="number"
+                      value={simGenerations}
+                      onChange={(e) => setSimGenerations(Number(e.target.value) || 30)}
+                      style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, color: "#0F0F14" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "flex-end" }}>
                     <button
-                      key={st.id}
-                      onClick={() => setPromptSubTab(st.id as any)}
+                      type="button"
+                      onClick={handleRunSimulator}
                       style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        padding: "8px 16px",
+                        width: "100%",
+                        background: "#4338CA",
+                        color: "#FFFFFF",
+                        border: "none",
                         borderRadius: 8,
+                        padding: "8px 14px",
                         fontSize: 13,
-                        fontWeight: isCur ? 600 : 500,
-                        background: isCur ? "#4338CA" : "#F7F7FB",
-                        color: isCur ? "#FFFFFF" : "#71717A",
-                        border: "1px solid",
-                        borderColor: isCur ? "#4338CA" : "#E4E4E9",
+                        fontWeight: 500,
                         cursor: "pointer",
-                        transition: "all 0.15s ease",
                       }}
                     >
-                      <Icon size={14} />
-                      <span>{st.label}</span>
+                      Kalkulasi Paket
                     </button>
-                  );
-                })}
-              </div>
+                  </div>
+                </div>
 
-              <div style={{ display: "flex", gap: 10 }}>
+                {simResult && (
+                  <div
+                    style={{
+                      background: "#F7F7FB",
+                      border: "1px solid #E4E4E9",
+                      borderRadius: 8,
+                      padding: "16px 18px",
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                      gap: 14,
+                    }}
+                  >
+                    <div>
+                      <span style={{ fontSize: 11, color: "#71717A" }}>Total HPP Modal API</span>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: "#0F0F14" }}>
+                        Rp {simResult.totalHppIdr.toLocaleString("id-ID")}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 11, color: "#71717A" }}>Saran Harga Jual</span>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: "#16A34A" }}>
+                        Rp {simResult.suggestedPriceIdr.toLocaleString("id-ID")}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 11, color: "#71717A" }}>Rekomendasi Kuota Koin</span>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: "#0F0F14" }}>
+                        {simResult.recommendedCredits} Kredit
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 11, color: "#71717A" }}>Efektivitas Margin</span>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: "#4338CA" }}>
+                        {simResult.effectiveMarginPercent}% Laba Bersih
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════════════
+            TAB 3: EXECUTIVE DASHBOARD (100% Real Database Queries)
+           ════════════════════════════════════════════════════════════════════════ */}
+          {activeTab === "DASHBOARD" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* Executive Header & Quick Refresh */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <h2 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
+                    Executive Telemetry & Revenue
+                  </h2>
+                  <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
+                    Ringkasan performa sistem AI, konsumsi token, dan margin keuntungan real-time
+                  </p>
+                </div>
                 <button
                   onClick={async () => {
-                    const res = await api.prompts.list();
-                    if (res.success) {
-                      setPromptsList(res.data);
-                      setFeedbackMsg({ type: "success", text: "Skill & Prompt berhasil disinkronkan dari database." });
-                    }
+                    const res = await api.admin.getStats().catch(() => null);
+                    if (res?.success && res.data) setStats(res.data);
                   }}
                   style={{
                     background: "#F7F7FB",
-                    border: "1px solid #E4E4E9",
                     color: "#3F3F46",
-                    padding: "8px 14px",
+                    border: "1px solid #E4E4E9",
                     borderRadius: 8,
+                    padding: "7px 14px",
                     fontSize: 12.5,
                     fontWeight: 500,
                     cursor: "pointer",
@@ -2614,3878 +4389,2747 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                   }}
                 >
                   <RefreshCw size={13} />
-                  <span>Sync DB</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setEditingPrompt(null);
-                    setIsCreatingPrompt(true);
-                    setPromptFormData({
-                      code: "CUSTOM_SKILL_" + Math.random().toString(36).substring(2, 6).toUpperCase(),
-                      title: "",
-                      category: "SUBCHAPTER",
-                      tags: "kustom, riset",
-                      description: "",
-                      systemPrompt: "",
-                      recipeSteps: [],
-                      isActive: true,
-                    });
-                    setShowPromptModal(true);
-                  }}
-                  style={{
-                    background: "#4338CA",
-                    color: "#FFFFFF",
-                    border: "none",
-                    padding: "8px 16px",
-                    borderRadius: 8,
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <Plus size={14} />
-                  <span>Tambah Skill Baru</span>
+                  <span>Segarkan Telemetri</span>
                 </button>
               </div>
-            </div>
 
-            {/* ── SUB-TAB 1: RECIPES & PROMPTS ── */}
-            {promptSubTab === "RECIPES" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                {/* Search & Filter Bar */}
-                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                  <div style={{ position: "relative", flex: 1 }}>
-                    <Search size={16} color="#94a3b8" style={{ position: "absolute", left: 14, top: 11 }} />
-                    <input
-                      type="text"
-                      value={promptSearchQuery}
-                      onChange={(e) => setPromptSearchQuery(e.target.value)}
-                      placeholder="Cari prompt berdasarkan judul, kode (misal: SUBCHAPTER_1_1), atau deskripsi..."
-                      style={{
-                        width: "100%",
-                        height: 38,
-                        paddingLeft: 38,
-                        paddingRight: 14,
-                        borderRadius: 8,
-                        border: "1px solid #E4E4E9",
-                        background: "#FFFFFF",
-                        fontSize: 13,
-                        color: "#0F0F14",
-                        outline: "none",
-                      }}
-                    />
-                    {promptSearchQuery && (
-                      <button
-                        onClick={() => setPromptSearchQuery("")}
-                        style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}
-                      >
-                        <X size={15} />
-                      </button>
-                    )}
+              {/* 4 Hero KPI Cards */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                  gap: 14,
+                }}
+              >
+                {/* Total Users */}
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 8, background: "#EEEAFE", color: "#4338CA", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Users size={15} />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: "#71717A" }}>Total Pengguna</span>
                   </div>
-
-                  {/* Category Filter */}
-                  <select
-                    value={promptCategoryFilter}
-                    onChange={(e) => setPromptCategoryFilter(e.target.value)}
-                    style={{
-                      height: 38,
-                      padding: "0 12px",
-                      borderRadius: 8,
-                      border: "1px solid #E4E4E9",
-                      background: "#FFFFFF",
-                      fontSize: 13,
-                      color: "#3F3F46",
-                      outline: "none",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <option value="ALL">Semua Kategori ({promptsList.length})</option>
-                    <option value="SUBCHAPTER">Sub-bab Outline 1-3 ({promptsList.filter(p => p.category === "SUBCHAPTER").length})</option>
-                    <option value="OUTLINE">Blueprint Architect ({promptsList.filter(p => p.category === "OUTLINE").length})</option>
-                    <option value="PROPOSAL">Proposal Drafter ({promptsList.filter(p => p.category === "PROPOSAL").length})</option>
-                    <option value="SCREENING">Screening Jurnal ({promptsList.filter(p => p.category === "SCREENING").length})</option>
-                    <option value="LITERATURE">Literature Search ({promptsList.filter(p => p.category === "LITERATURE").length})</option>
-                    <option value="CUSTOM">Kustom ({promptsList.filter(p => p.category === "CUSTOM").length})</option>
-                  </select>
-
-                  {promptTagFilter && (
-                    <button
-                      onClick={() => setPromptTagFilter(null)}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                        padding: "6px 12px",
-                        borderRadius: 8,
-                        background: "#ECFDF5",
-                        border: "1px solid #A7F3D0",
-                        color: "#059669",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <span>Tag: #{promptTagFilter}</span>
-                      <X size={13} />
-                    </button>
-                  )}
+                  <div style={{ fontSize: 26, fontWeight: 600, color: "#0F0F14", letterSpacing: "-0.015em" }}>
+                    {Number(stats?.executiveMetrics?.totalUsers ?? stats?.totalUsers ?? usersList?.length ?? 0).toLocaleString("id-ID")}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#16A34A", fontWeight: 500, marginTop: 4 }}>
+                    {stats?.executiveMetrics?.totalProjects ?? stats?.totalProjects ?? 0} Proyek Riset Aktif
+                  </div>
                 </div>
 
-                {/* Prompt Cards Grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 16 }}>
-                  {promptsList
-                    .filter((p) => {
-                      if (promptCategoryFilter !== "ALL" && p.category !== promptCategoryFilter) return false;
-                      if (promptTagFilter) {
-                        const tags = Array.isArray(p.tags) ? p.tags : [];
-                        if (!tags.includes(promptTagFilter)) return false;
-                      }
-                      if (promptSearchQuery.trim()) {
-                        const q = promptSearchQuery.toLowerCase();
-                        const matchTitle = p.title.toLowerCase().includes(q);
-                        const matchCode = p.code.toLowerCase().includes(q);
-                        const matchDesc = (p.description || "").toLowerCase().includes(q);
-                        if (!matchTitle && !matchCode && !matchDesc) return false;
-                      }
+                {/* Total Pendapatan */}
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 8, background: "#EEEAFE", color: "#4338CA", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Coins size={15} />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: "#71717A" }}>Total Pendapatan</span>
+                  </div>
+                  <div style={{ fontSize: 26, fontWeight: 600, color: "#0F0F14", letterSpacing: "-0.015em" }}>
+                    Rp {Number(Math.round(stats?.executiveMetrics?.totalRevenueIdr ?? stats?.billing?.totalRevenueIdr ?? 0)).toLocaleString("id-ID")}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#16A34A", fontWeight: 500, marginTop: 4 }}>
+                    Laba Bersih: ${Number(stats?.executiveMetrics?.totalProfitUsd ?? stats?.billing?.netProfitUsd ?? 0).toFixed(4)}
+                  </div>
+                </div>
+
+                {/* Pengeluaran AI */}
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 8, background: "#EEEAFE", color: "#4338CA", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <TrendingUp size={15} />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: "#71717A" }}>Pengeluaran Modal AI</span>
+                  </div>
+                  <div style={{ fontSize: 26, fontWeight: 600, color: "#0F0F14", letterSpacing: "-0.015em" }}>
+                    Rp {Number(Math.round(stats?.billing?.aiExpenseIdr ?? (stats?.executiveMetrics?.totalAiCostUsd || 0) * (stats?.executiveMetrics?.currentExchangeRate || 17739))).toLocaleString("id-ID")}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#71717A", fontWeight: 500, marginTop: 4 }}>
+                    Modal Provider: ${Number(stats?.executiveMetrics?.totalAiCostUsd ?? stats?.billing?.aiExpenseUsd ?? 0).toFixed(4)}
+                  </div>
+                </div>
+
+                {/* Sisa Budget AI */}
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 30, height: 30, borderRadius: 8, background: "#EEEAFE", color: "#4338CA", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <Cpu size={15} />
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: "#71717A" }}>Sisa Budget AI</span>
+                    </div>
+                    <span
+                      style={{
+                        background: (stats?.billing?.remainingPercent ?? 100) < 20 ? "#FFF1F2" : "#DCFCE7",
+                        color: (stats?.billing?.remainingPercent ?? 100) < 20 ? "#BE123C" : "#16A34A",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        padding: "2px 7px",
+                        borderRadius: 9999,
+                      }}
+                    >
+                      {stats?.billing?.remainingPercent ?? 100}% Tersedia
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 26, fontWeight: 600, color: "#0F0F14", letterSpacing: "-0.015em" }}>
+                    ${Number(stats?.billing?.remainingBudgetUsd ?? (1.0 - (stats?.executiveMetrics?.totalAiCostUsd || 0))).toFixed(2)}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#71717A", fontWeight: 500, marginTop: 4 }}>
+                    Deposit: ${Number(stats?.billing?.totalBudgetCapUsd ?? stats?.executiveMetrics?.totalBudgetCapUsd ?? 1.0).toFixed(2)} • Token: {Number(stats?.executiveMetrics?.totalTokensProcessed ?? stats?.billing?.totalTokensUsed ?? 0).toLocaleString("id-ID")}
+                  </div>
+                </div>
+              </div>
+
+              {/* Charts Row */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 16 }}>
+                {/* 1. Real 7-Day Trend Chart */}
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "20px 22px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: "#0F0F14" }}>
+                      Rangkuman Pendapatan & Beban AI (7 Hari)
+                    </h3>
+
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", height: 160, gap: 10, paddingBottom: 8, borderBottom: "1px solid #E4E4E9" }}>
+                    {(() => {
+                      const trends = stats?.dailyTrends || [];
+                      const maxExpense = Math.max(...trends.map((t: any) => t.expenseIdr || 0), 100);
+
+                      return (trends.length > 0 ? trends : [
+                        { label: "1 Mei", expenseIdr: 0 },
+                        { label: "2 Mei", expenseIdr: 0 },
+                        { label: "3 Mei", expenseIdr: 0 },
+                        { label: "4 Mei", expenseIdr: 0 },
+                        { label: "5 Mei", expenseIdr: 0 },
+                        { label: "6 Mei", expenseIdr: 0 },
+                        { label: "Hari ini", expenseIdr: 0 },
+                      ]).map((bar: any, idx: number) => {
+                        const heightPercent = bar.expenseIdr > 0 ? Math.max(15, Math.min(100, Math.round((bar.expenseIdr / maxExpense) * 100))) : 8;
+                        return (
+                          <div key={idx} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }}>
+                            <div
+                              title={`Rp ${Number(Math.round(bar.expenseIdr || 0)).toLocaleString()} (${bar.callsCount || 0} calls)`}
+                              style={{
+                                width: "100%",
+                                maxWidth: 28,
+                                height: `${heightPercent}%`,
+                                borderRadius: "4px 4px 0 0",
+                                background: bar.expenseIdr > 0 ? "#4338CA" : "#E4E4E9",
+                                transition: "height 0.3s ease",
+                              }}
+                            />
+                            <span style={{ fontSize: 9.5, color: "#71717A", marginTop: 6, textAlign: "center", whiteSpace: "nowrap" }}>
+                              {bar.label}
+                            </span>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+
+                {/* 2. Model AI Donut (Free vs Paid Real Ratio) */}
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: "#0F0F14" }}>
+                      Rasio Panggilan Model AI (Free vs Paid)
+                    </h3>
+                  </div>
+
+                  {(() => {
+                    const freeCalls = stats?.executiveMetrics?.freeAiCalls ?? stats?.billing?.totalFreeCalls ?? 0;
+                    const paidCalls = stats?.executiveMetrics?.paidAiCalls ?? stats?.billing?.totalPaidCalls ?? 0;
+                    const totalCalls = freeCalls + paidCalls;
+                    const freePercent = totalCalls > 0 ? Math.round((freeCalls / totalCalls) * 100) : 75;
+                    const paidPercent = 100 - freePercent;
+
+                    return (
+                      <>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", position: "relative", height: 120 }}>
+                          <svg width="110" height="110" viewBox="0 0 36 36">
+                            <circle cx="18" cy="18" r="14" fill="none" stroke="#F7F7FB" strokeWidth="4" />
+                            <circle
+                              cx="18"
+                              cy="18"
+                              r="14"
+                              fill="none"
+                              stroke="#16A34A"
+                              strokeWidth="4"
+                              strokeDasharray={`${freePercent} 100`}
+                              strokeDashoffset="25"
+                            />
+                            <circle
+                              cx="18"
+                              cy="18"
+                              r="14"
+                              fill="none"
+                              stroke="#4338CA"
+                              strokeWidth="4"
+                              strokeDasharray={`${paidPercent} 100`}
+                              strokeDashoffset={`${25 + freePercent}`}
+                            />
+                          </svg>
+                          <div style={{ position: "absolute", textAlign: "center", fontSize: 11, fontWeight: 600, color: "#0F0F14" }}>
+                            {totalCalls}<br />
+                            <span style={{ fontSize: 9, color: "#71717A", fontWeight: 400 }}>Panggilan</span>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5 }}>
+                            <div style={{ width: 8, height: 8, borderRadius: 2, background: "#16A34A" }} />
+                            <span style={{ color: "#0F0F14", fontWeight: 500 }}>Tier Gratis (Groq / ZAI)</span>
+                            <span style={{ marginLeft: "auto", color: "#71717A" }}>{freeCalls} kali ({freePercent}%)</span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5 }}>
+                            <div style={{ width: 8, height: 8, borderRadius: 2, background: "#4338CA" }} />
+                            <span style={{ color: "#0F0F14", fontWeight: 500 }}>Tier Berbayar (XAI Grok)</span>
+                            <span style={{ marginLeft: "auto", color: "#71717A" }}>{paidCalls} kali ({paidPercent}%)</span>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Bottom Row: Recent 10 Database AI Activities Table */}
+              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, overflow: "hidden" }}>
+                <div style={{ padding: "16px 20px", borderBottom: "1px solid #E4E4E9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: "#0F0F14" }}>
+                    Aktivitas AI & Konsumsi Kredit Terkini
+                  </h3>
+                  <span style={{ fontSize: 11, color: "#71717A" }}>Tabel Database ai_usage_logs ({stats?.executiveMetrics?.totalAiCalls ?? (usageLogs?.length || 0)} Total Panggilan)</span>
+                </div>
+
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 12.5 }}>
+                    <thead>
+                      <tr style={{ background: "#F7F7FB", borderBottom: "1px solid #E4E4E9", color: "#3F3F46", fontWeight: 500 }}>
+                        <th style={{ padding: "10px 16px" }}>Timestamp</th>
+                        <th style={{ padding: "10px 14px" }}>Pengguna</th>
+                        <th style={{ padding: "10px 14px" }}>Fitur Riset</th>
+                        <th style={{ padding: "10px 14px" }}>Model</th>
+                        <th style={{ padding: "10px 14px" }}>Tokens</th>
+                        <th style={{ padding: "10px 14px" }}>Kredit</th>
+                        <th style={{ padding: "10px 16px" }}>Profit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const recentItems =
+                          (stats?.recentLogs && stats.recentLogs.length > 0)
+                            ? stats.recentLogs
+                            : (stats?.recentActivities && stats.recentActivities.length > 0)
+                              ? stats.recentActivities
+                              : (usageLogs && usageLogs.length > 0)
+                                ? usageLogs
+                                : [];
+
+                        if (recentItems.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={7} style={{ textAlign: "center", padding: "24px 16px", color: "#71717A" }}>
+                                Belum ada aktivitas AI yang tercatat di database.
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return recentItems.slice(0, 10).map((log: any) => {
+                          const dateObj = new Date(log.timestamp || log.createdAt);
+                          const userText = log.userEmail || log.user?.email || "Guest / Anonymous";
+                          const featureText = log.featureLabel || log.feature?.label || log.featureCode || "AI Service";
+                          const modelText = log.modelName || log.model?.modelName || log.model?.routerLabel || "Groq Free";
+                          const totalToks = (log.inputTokens || 0) + (log.outputTokens || 0);
+                          const profitNum = Number(log.profitUsd || 0);
+
+                          return (
+                            <tr key={log.id} style={{ borderBottom: "1px solid #EFEFF3" }}>
+                              <td style={{ padding: "10px 16px", color: "#71717A", fontSize: 11.5 }}>
+                                {isNaN(dateObj.getTime())
+                                  ? "-"
+                                  : dateObj.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit" }) +
+                                  " " +
+                                  dateObj.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                              </td>
+                              <td style={{ padding: "10px 14px", fontWeight: 500, color: "#0F0F14" }}>
+                                {userText}
+                              </td>
+                              <td style={{ padding: "10px 14px", color: "#71717A" }}>
+                                {featureText}
+                              </td>
+                              <td style={{ padding: "10px 14px", color: "#71717A" }}>
+                                {modelText}
+                              </td>
+                              <td style={{ padding: "10px 14px", fontFamily: "monospace", fontSize: 11.5 }}>
+                                {totalToks.toLocaleString("id-ID")}
+                              </td>
+                              <td style={{ padding: "10px 14px", fontWeight: 600, color: "#0F0F14" }}>
+                                {log.isFreeTier || log.isFreeTierCall ? (
+                                  <span style={{ color: "#16A34A" }}>0 (Free)</span>
+                                ) : (
+                                  `${log.creditsCharged || 0} koin`
+                                )}
+                              </td>
+                              <td style={{ padding: "10px 16px" }}>
+                                <span
+                                  style={{
+                                    background: "#DCFCE7",
+                                    color: "#16A34A",
+                                    fontSize: 10.5,
+                                    fontWeight: 600,
+                                    padding: "2px 6px",
+                                    borderRadius: 9999,
+                                  }}
+                                >
+                                  +${profitNum.toFixed(5)}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════════════
+            TAB 4: SECRET KEYS
+           ════════════════════════════════════════════════════════════════════════ */}
+          {activeTab === "SECRETS" && (
+            <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "20px 24px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
+                    Database Secret Keys
+                  </h3>
+                  <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
+                    Semua secret terenkripsi standar AES-256 dan disinkronkan otomatis ke AiModelConfig
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCurlModal(true)}
+                  style={{ background: "#F7F7FB", color: "#3F3F46", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}
+                >
+                  Import cURL
+                </button>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {configs.map((c) => (
+                  <div key={c.id} style={{ background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontWeight: 600, color: "#0F0F14", fontSize: 13 }}>{c.key}</div>
+                      <div style={{ fontSize: 11.5, color: "#71717A" }}>{c.description}</div>
+                    </div>
+                    <code style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", padding: "4px 8px", borderRadius: 6, fontSize: 11.5, color: "#3F3F46" }}>
+                      {c.maskedValue}
+                    </code>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════════════
+            TAB 5: USERS
+           ════════════════════════════════════════════════════════════════════════ */}
+          {activeTab === "USERS" && (
+            <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, overflow: "hidden" }}>
+              <div style={{ padding: "18px 22px", borderBottom: "1px solid #E4E4E9" }}>
+                <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
+                  Daftar Pengguna
+                </h3>
+                <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
+                  Kelola hak akses role pengguna dan saldo kredit
+                </p>
+              </div>
+
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#F7F7FB", borderBottom: "1px solid #E4E4E9", color: "#3F3F46", fontWeight: 500 }}>
+                      <th style={{ padding: "12px 18px" }}>Nama</th>
+                      <th style={{ padding: "12px 14px" }}>Email</th>
+                      <th style={{ padding: "12px 14px" }}>Role</th>
+                      <th style={{ padding: "12px 14px" }}>Kredit</th>
+                      <th style={{ padding: "12px 18px", textAlign: "right" }}>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usersList.map((u) => (
+                      <tr key={u.id} style={{ borderBottom: "1px solid #EFEFF3" }}>
+                        <td style={{ padding: "12px 18px", fontWeight: 600, color: "#0F0F14" }}>{u.name}</td>
+                        <td style={{ padding: "12px 14px", color: "#71717A" }}>{u.email}</td>
+                        <td style={{ padding: "12px 14px" }}>
+                          <span
+                            style={{
+                              background: u.role === "ADMIN" ? "#EEEAFE" : "#DCFCE7",
+                              color: u.role === "ADMIN" ? "#4338CA" : "#16A34A",
+                              fontSize: 11,
+                              fontWeight: 500,
+                              padding: "2px 7px",
+                              borderRadius: 9999,
+                            }}
+                          >
+                            {u.role}
+                          </span>
+                        </td>
+                        <td style={{ padding: "12px 14px", fontWeight: 600, color: "#0F0F14" }}>
+                          {u.totalCredits || 0}
+                        </td>
+                        <td style={{ padding: "12px 18px", textAlign: "right" }}>
+                          <button
+                            onClick={() => handleToggleUserRole(u.id, u.role)}
+                            style={{
+                              background: "#F7F7FB",
+                              border: "1px solid #E4E4E9",
+                              borderRadius: 6,
+                              padding: "4px 8px",
+                              fontSize: 11.5,
+                              fontWeight: 500,
+                              cursor: "pointer",
+                              color: "#4338CA",
+                            }}
+                          >
+                            Ubah ke {u.role === "ADMIN" ? "USER" : "ADMIN"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════════════
+            TAB 6: LIBRARY & LATEX TEMPLATES MANAGEMENT (WITH LIVE PREVIEW)
+           ════════════════════════════════════════════════════════════════════════ */}
+          {activeTab === "TEMPLATES_LIBRARY" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              {/* Header Section & Action Toolbar */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <FileCode size={20} color="#4338CA" />
+                    <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
+                      Library Master Template & LaTeX Engine
+                    </h2>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 9999, background: "#EEEAFE", color: "#4338CA" }}>
+                      {templatesList.length} Template Terdaftar
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 13, color: "#71717A", margin: "3px 0 0" }}>
+                    Kustomisasi struktur bab, konfigurasi preamble LaTeX, aturan margin, dan pantau live visual render dokumen A4 secara real-time.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={handleResetToDefaultFif}
+                    style={{
+                      background: "#F7F7FB",
+                      color: "#3F3F46",
+                      border: "1px solid #E4E4E9",
+                      borderRadius: 8,
+                      padding: "7px 12px",
+                      fontSize: 12.5,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                    title="Kembalikan ke Master Standar Telkom FIF"
+                  >
+                    <Undo size={13} />
+                    <span>Reset Standar FIF</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCloneCurrentTemplate}
+                    style={{
+                      background: "#F7F7FB",
+                      color: "#3F3F46",
+                      border: "1px solid #E4E4E9",
+                      borderRadius: 8,
+                      padding: "7px 12px",
+                      fontSize: 12.5,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Copy size={13} />
+                    <span>Duplikasi</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCreateNewTemplate}
+                    style={{
+                      background: "#F7F7FB",
+                      color: "#3F3F46",
+                      border: "1px solid #E4E4E9",
+                      borderRadius: 8,
+                      padding: "7px 12px",
+                      fontSize: 12.5,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Plus size={13} />
+                    <span>+ Template Baru</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveCurrentTemplate}
+                    disabled={savingTemplate}
+                    style={{
+                      background: "#4338CA",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "7px 16px",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      boxShadow: "0 2px 8px rgba(67, 56, 202, 0.25)",
+                    }}
+                  >
+                    {savingTemplate ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
+                    <span>{savingTemplate ? "Menyimpan..." : "Simpan Perubahan"}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Template Catalog Selector Strip */}
+              <div style={{ background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 12, padding: "14px 16px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: "#0F0F14" }}>Pilih Template Aktif:</span>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {(["ALL", "LATEX", "TELKOM", "KUANTITATIF"] as const).map((cat) => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setTemplateCategoryFilter(cat)}
+                          style={{
+                            padding: "3px 9px",
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            border: templateCategoryFilter === cat ? "1px solid #4338CA" : "1px solid #E4E4E9",
+                            background: templateCategoryFilter === cat ? "#EEEAFE" : "#FFFFFF",
+                            color: templateCategoryFilter === cat ? "#4338CA" : "#71717A",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {cat === "ALL" ? "Semua" : cat === "LATEX" ? "LaTeX Master" : cat === "TELKOM" ? "Telkom University" : "Kuantitatif"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 8, padding: "4px 10px", width: 260 }}>
+                    <Search size={13} color="#94A3B8" />
+                    <input
+                      type="text"
+                      placeholder="Cari nama template / prodi..."
+                      value={templateSearchQuery}
+                      onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                      style={{ border: "none", outline: "none", fontSize: 12, width: "100%", color: "#0F0F14" }}
+                    />
+                  </div>
+                </div>
+
+                {/* Template Cards Grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
+                  {templatesList
+                    .filter((t) => {
+                      const matchSearch = (t.name || "").toLowerCase().includes(templateSearchQuery.toLowerCase()) || (t.sourceFaculty || "").toLowerCase().includes(templateSearchQuery.toLowerCase());
+                      if (!matchSearch) return false;
+                      if (templateCategoryFilter === "LATEX") return t.isLatex || t.documentClass;
+                      if (templateCategoryFilter === "TELKOM") return (t.university || "").includes("Telkom") || (t.name || "").includes("Telkom") || (t.sourceFaculty || "").includes("FIF");
+                      if (templateCategoryFilter === "KUANTITATIF") return (t.name || "").toLowerCase().includes("kuantitatif") || (t.code || "").includes("KUANTITATIF");
                       return true;
                     })
-                    .map((p) => {
-                      const tags = Array.isArray(p.tags) ? p.tags : [];
-                      const recipeSteps = Array.isArray(p.recipeSteps) ? p.recipeSteps : [];
-
+                    .map((t) => {
+                      const isSelected = selectedTemplateId === t.id;
                       return (
                         <div
-                          key={p.id}
+                          key={t.id}
+                          onClick={() => handleSelectTemplate(t)}
                           style={{
-                            background: "#FFFFFF",
-                            border: "1px solid #E4E4E9",
-                            borderRadius: 12,
-                            padding: 20,
+                            padding: "12px 14px",
+                            borderRadius: 10,
+                            border: isSelected ? "2px solid #4338CA" : "1px solid #E4E4E9",
+                            background: isSelected ? "#FFFFFF" : "#FAFAFC",
+                            boxShadow: isSelected ? "0 4px 14px rgba(67, 56, 202, 0.12)" : "none",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
                             display: "flex",
                             flexDirection: "column",
                             justifyContent: "space-between",
-                            gap: 14,
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
                           }}
                         >
-                          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                            {/* Card Header Badges */}
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span
-                                  style={{
-                                    fontSize: 10.5,
-                                    fontWeight: 700,
-                                    padding: "2px 8px",
-                                    borderRadius: 6,
-                                    background: p.category === "SUBCHAPTER" ? "#EFF6FF" : p.category === "PROPOSAL" ? "#FAF5FF" : "#ECFDF5",
-                                    color: p.category === "SUBCHAPTER" ? "#1D4ED8" : p.category === "PROPOSAL" ? "#7E22CE" : "#059669",
-                                    border: `1px solid ${p.category === "SUBCHAPTER" ? "#BFDBFE" : p.category === "PROPOSAL" ? "#E9D5FF" : "#A7F3D0"}`,
-                                  }}
-                                >
-                                  {p.category}
-                                </span>
-                                <span style={{ fontSize: 10.5, color: "#94A3B8", fontFamily: "monospace" }}>
-                                  v{p.version}
-                                </span>
-                              </div>
-
-                              <button
-                                onClick={() => {
-                                  navigator.clipboard.writeText(p.code);
-                                  setCopiedPromptCode(p.code);
-                                  setTimeout(() => setCopiedPromptCode(null), 2000);
-                                }}
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                  fontSize: 11,
-                                  fontFamily: "monospace",
-                                  color: copiedPromptCode === p.code ? "#059669" : "#71717A",
-                                  background: copiedPromptCode === p.code ? "#ECFDF5" : "#F7F7FB",
-                                  border: "1px solid #E4E4E9",
-                                  padding: "2px 7px",
-                                  borderRadius: 6,
-                                  cursor: "pointer",
-                                }}
-                                title="Salin kode pemanggilan di code"
-                              >
-                                {copiedPromptCode === p.code ? <Check size={11} /> : <Copy size={11} />}
-                                <span>{p.code}</span>
-                              </button>
-                            </div>
-
-                            {/* Title & Description */}
-                            <div>
-                              <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0F0F14", margin: "0 0 4px" }}>
-                                {p.title}
-                              </h3>
-                              <p style={{ fontSize: 12.5, color: "#71717A", margin: 0, lineHeight: 1.45 }}>
-                                {p.description || "Panduan akademis dan instruksi pemodelan sistematis."}
-                              </p>
-                            </div>
-
-                            {/* Step-by-Step Recipe Preview */}
-                            {recipeSteps.length > 0 && (
-                              <div style={{ background: "#F7F7FB", borderRadius: 8, padding: 10, border: "1px solid #E4E4E9" }}>
-                                <div style={{ fontSize: 10.5, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
-                                  Resep Standar ({recipeSteps.length} Langkah):
-                                </div>
-                                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 110, overflowY: "auto" }}>
-                                  {recipeSteps.map((step, sIdx) => (
-                                    <div key={sIdx} style={{ fontSize: 11.5, color: "#3F3F46", display: "flex", gap: 6, lineHeight: 1.35 }}>
-                                      <span style={{ color: "#4338CA", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>
-                                        {sIdx + 1}.
-                                      </span>
-                                      <span>{step}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Tags */}
-                            {tags.length > 0 && (
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, paddingTop: 2 }}>
-                                {tags.map((tag) => (
-                                  <span
-                                    key={tag}
-                                    onClick={() => setPromptTagFilter(tag)}
-                                    style={{
-                                      fontSize: 10.5,
-                                      padding: "2px 6px",
-                                      borderRadius: 4,
-                                      background: "#F7F7FB",
-                                      color: "#71717A",
-                                      border: "1px solid #E4E4E9",
-                                      cursor: "pointer",
-                                    }}
-                                  >
-                                    #{tag}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Card Footer Actions */}
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid #F1F5F9" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              {p.isSystem ? (
-                                <span style={{ fontSize: 10.5, color: "#0369A1", background: "#E0F2FE", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
-                                  System Built-in
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: 10.5, color: "#7E22CE", background: "#F3E8FF", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
-                                  Custom Admin
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: isSelected ? "#EEEAFE" : "#F1F5F9", color: isSelected ? "#4338CA" : "#64748B" }}>
+                                {t.code || (t.isLatex ? "LATEX" : "DOCX")}
+                              </span>
+                              {t.isDefault && (
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#DCFCE7", color: "#16A34A" }}>
+                                  Standar Resmi
                                 </span>
                               )}
                             </div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#0F0F14", lineHeight: 1.4, marginBottom: 4 }}>
+                              {t.name}
+                            </div>
+                            <div style={{ fontSize: 11.5, color: "#71717A" }}>
+                              {t.sourceFaculty || "Fakultas"} • {t.university || "Universitas"}
+                            </div>
+                          </div>
 
-                            <button
-                              onClick={() => {
-                                setEditingPrompt(p);
-                                setIsCreatingPrompt(false);
-                                setPromptFormData({
-                                  code: p.code,
-                                  title: p.title,
-                                  category: p.category,
-                                  tags: (Array.isArray(p.tags) ? p.tags : []).join(", "),
-                                  description: p.description || "",
-                                  systemPrompt: p.systemPrompt || "",
-                                  recipeSteps: Array.isArray(p.recipeSteps) ? [...p.recipeSteps] : [],
-                                  isActive: p.isActive,
-                                });
-                                setShowPromptModal(true);
-                              }}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                                padding: "6px 12px",
-                                borderRadius: 6,
-                                background: "#F7F7FB",
-                                border: "1px solid #E4E4E9",
-                                fontSize: 12,
-                                fontWeight: 600,
-                                color: "#0F0F14",
-                                cursor: "pointer",
-                              }}
-                            >
-                              <Pencil size={12} />
-                              <span>Edit Prompt & Resep</span>
-                            </button>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, paddingTop: 8, borderTop: "1px solid #EFEFF3", fontSize: 11, color: "#94A3B8" }}>
+                            <span>{t.sections?.length || 0} Bagian / Bab</span>
+                            {isSelected && <span style={{ color: "#4338CA", fontWeight: 700 }}>● Aktif Mengedit</span>}
                           </div>
                         </div>
                       );
                     })}
                 </div>
               </div>
-            )}
 
-            {/* ── SUB-TAB 2: GAYA PENULISAN (WRITING STYLES) ── */}
-            {promptSubTab === "WRITING_STYLES" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: 24 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <FileEdit size={20} color="#4338CA" />
-                    <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
-                      Standar Gaya Penulisan & Academic Tone Presets
-                    </h3>
-                  </div>
-                  <p style={{ fontSize: 13, color: "#71717A", margin: 0, lineHeight: 1.5, maxWidth: 840 }}>
-                    AI Writer di Zetera menggunakan parameter gaya penulisan formal akademik bahasa Indonesia standar Dikti. Anda dapat menyesuaikan arahan gaya berikut yang langsung diinjeksikan saat draf proposal dan perbaikan paragraf dihasilkan.
-                  </p>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 16 }}>
-                  {[
-                    {
-                      id: "style-1",
-                      code: "STYLE_FORMAL_DIKTI",
-                      title: "1. Gaya Skripsi Formal Indonesia (Standar Dikti / APA 7th)",
-                      badge: "DEFAULT DRAFTER",
-                      desc: "Bahasa baku baku EYD V, sudut pandang orang ketiga (objektif), piramida terbalik, dan sitasi formal APA 7th (Penulis, Tahun).",
-                      prompt: `Gunakan bahasa Indonesia baku akademis formal berstandar pedoman penulisan Tugas Akhir Indonesia. Hindari kata ganti orang pertama (saya/kami). Gunakan kalimat pasif ilmiah ("dilakukan analisis", "ditemukan"). Terapkan sitasi APA 7th secara konsisten.`,
-                    },
-                    {
-                      id: "style-2",
-                      code: "STYLE_CRITICAL_SYNTHESIS",
-                      title: "2. Gaya Telaah Kritis & Novelty Gap",
-                      badge: "LITERATURE & BAB 2",
-                      desc: "Menonjolkan perbandingan antar paper, menemukan kontradiksi empiris, dan mempertegas posisi kebaruan (research gap).",
-                      prompt: `Sajikan analisis sintesis kritis yang mengomparasikan minimal 2 sudut pandang peneliti terdahulu. Tegaskan persamaan, perbedaan, dan research gap yang membuktikan novelty penelitian ini.`,
-                    },
-                    {
-                      id: "style-3",
-                      code: "STYLE_METHODOLOGY_PROCEDURAL",
-                      title: "3. Gaya Metodologi Prosedural & Uji Statistik",
-                      badge: "METODOLOGI & BAB 3",
-                      desc: "Rinci, operasional, memuat rumus sampling (Slovin/Krejcie) atau triangulasi kualitatif secara presisi.",
-                      prompt: `Tuliskan metodologi secara prosedural langkah demi langkah. Cantumkan rujukan buku metodologi resmi (Sugiyono, Creswell), rumus sampling, dan justifikasi instrumen ukur.`,
-                    },
-                    {
-                      id: "style-4",
-                      code: "STYLE_IMPLICATION_DISCUSSION",
-                      title: "4. Gaya Pembahasan & Implikasi Kontribusi",
-                      badge: "MANFAAT & PEMBAHASAN",
-                      desc: "Menghubungkan hasil temuan teknis dengan implikasi teoretis keilmuan dan manfaat aplikatif bagi stakeholder.",
-                      prompt: `Uraikan dampak dan implikasi riset secara berimbang antara kontribusi keilmuan teoretis dan manfaat praktis lapangan bagi pengguna/industri.`,
-                    },
-                  ].map((st) => (
-                    <div
-                      key={st.id}
-                      style={{
-                        background: "#FFFFFF",
-                        border: "1px solid #E4E4E9",
-                        borderRadius: 12,
-                        padding: 20,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                        gap: 14,
-                      }}
-                    >
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: "#EEEAFE", color: "#4338CA", border: "1px solid #C7D2FE" }}>
-                            {st.badge}
-                          </span>
-                          <span style={{ fontSize: 11, fontFamily: "monospace", color: "#71717A" }}>{st.code}</span>
-                        </div>
-                        <h4 style={{ fontSize: 14.5, fontWeight: 700, margin: 0, color: "#0F0F14" }}>{st.title}</h4>
-                        <p style={{ fontSize: 12.5, color: "#71717A", margin: 0, lineHeight: 1.45 }}>{st.desc}</p>
-                        <div style={{ background: "#F7F7FB", padding: "10px 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 12, color: "#3F3F46", fontFamily: "monospace", lineHeight: 1.45 }}>
-                          "{st.prompt}"
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          setEditingPrompt(null);
-                          setIsCreatingPrompt(true);
-                          setPromptFormData({
-                            code: st.code,
-                            title: st.title,
-                            category: "PROPOSAL",
-                            tags: "gaya_penulisan, tone, akademik",
-                            description: st.desc,
-                            systemPrompt: st.prompt,
-                            recipeSteps: [],
-                            isActive: true,
-                          });
-                          setShowPromptModal(true);
-                        }}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 6,
-                          padding: "7px 14px",
-                          borderRadius: 6,
-                          background: "#F7F7FB",
-                          border: "1px solid #E4E4E9",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: "#4338CA",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <Pencil size={12} />
-                        <span>Kustomisasi Preset Gaya Ini</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── SUB-TAB 3: CARA TERHUBUNG KE CODE & DYNAMIC BINDING ── */}
-            {promptSubTab === "CODE_BINDING" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: 24 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <Code size={20} color="#4338CA" />
-                    <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
-                      Arsitektur Dynamic Code Binding (Database &rarr; AI Backend)
-                    </h3>
-                  </div>
-                  <p style={{ fontSize: 13, color: "#71717A", margin: 0, lineHeight: 1.5, maxWidth: 840 }}>
-                    Bagaimana backend Zetera memanggil dan menyuntikkan prompt dinamis dari database tanpa memerlukan perubahan kode program atau *re-deployment*.
-                  </p>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 18 }}>
-                  {/* Code Card 1 */}
-                  <div style={{ background: "#0F172A", borderRadius: 12, padding: 20, color: "#F8FAFC", display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 8 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#34D399" }}>1. Membaca 19 Resep Sub-bab Dinamis</span>
-                      <span style={{ fontSize: 11, color: "#94A3B8" }}>outline.service.js</span>
-                    </div>
-                    <pre style={{ fontSize: 12, fontFamily: "monospace", margin: 0, color: "#CBD5E1", lineHeight: 1.5, overflowX: "auto" }}>
-{`// Ambil seluruh resep sub-bab dari database MySQL
-const dbGuides = await getAllSubchapterGuides();
-const activeGuides = dbGuides || SUBCHAPTER_MODELING_GUIDES;
-
-// AI Generator secara otomatis merender instruksi
-const systemPrompt = \`
-Gunakan resep pemodelan berikut:
-\${Object.entries(activeGuides)
-  .map(([code, g]) => \`- Sub-bab \${code}: \${g.steps.join(", ")}\`)
-  .join("\\n")}
-\`;`}
-                    </pre>
-                  </div>
-
-                  {/* Code Card 2 */}
-                  <div style={{ background: "#0F172A", borderRadius: 12, padding: 20, color: "#F8FAFC", display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 8 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#38BDF8" }}>2. Memanggil Skill Tertentu dengan Variabel</span>
-                      <span style={{ fontSize: 11, color: "#94A3B8" }}>proposal.service.js</span>
-                    </div>
-                    <pre style={{ fontSize: 12, fontFamily: "monospace", margin: 0, color: "#CBD5E1", lineHeight: 1.5, overflowX: "auto" }}>
-{`// Ambil prompt sistem & interpolasi variabel {{TOPIC}}
-const promptSkill = await getSkillPrompt("SUBCHAPTER_1_1", {
-  TOPIC: project.title,
-  PRODI: project.prodi,
-  APPROACH: project.approachType,
-});
-
-// Eksekusi via Dual-Tier AI Router
-const response = await executeAiCompletion({
-  featureCode: "DRAFT_SKRIPSI",
-  messages: [{ role: "system", content: promptSkill.renderedSystemPrompt }],
-  userId,
-});`}
-                    </pre>
-                  </div>
-
-                  {/* Code Card 3 */}
-                  <div style={{ background: "#0F172A", borderRadius: 12, padding: 20, color: "#F8FAFC", display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 8 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#F472B6" }}>3. Variable Injection Reference</span>
-                      <span style={{ fontSize: 11, color: "#94A3B8" }}>Interpolation Engine</span>
-                    </div>
-                    <div style={{ fontSize: 12, color: "#CBD5E1", display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div><code style={{ color: "#34D399" }}>{"{{TOPIC}}"}</code> : Judul skripsi / topik penelitian</div>
-                      <div><code style={{ color: "#38BDF8" }}>{"{{PRODI}}"}</code> : Program studi / disiplin ilmu</div>
-                      <div><code style={{ color: "#F472B6" }}>{"{{APPROACH}}"}</code> : Pendekatan riset (KUANTITATIF / KUALITATIF)</div>
-                      <div><code style={{ color: "#FBBF24" }}>{"{{MEMORY_CONTEXT}}"}</code> : Rangkuman paper & landscape literatur</div>
-                    </div>
-                  </div>
-
-                  {/* Code Card 4 */}
-                  <div style={{ background: "#0F172A", borderRadius: 12, padding: 20, color: "#F8FAFC", display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 8 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#FBBF24" }}>4. In-Memory Cache (TTL 30 Detik)</span>
-                      <span style={{ fontSize: 11, color: "#94A3B8" }}>Zero Latency</span>
-                    </div>
-                    <p style={{ fontSize: 12, color: "#94A3B8", margin: 0, lineHeight: 1.5 }}>
-                      Untuk menjamin performa tanpa overhead query ke database pada setiap token generation, prompt dicache selama 30 detik. Saat Admin mengklik <strong>"Simpan Perubahan"</strong> di UI Admin, cache otomatis dibersihkan seketika.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Prompt Modal (Create & Edit) */}
-            {showPromptModal && (
-              <div
-                style={{
-                  position: "fixed",
-                  inset: 0,
-                  background: "rgba(15,23,42,0.6)",
-                  backdropFilter: "blur(4px)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  zIndex: 100,
-                  padding: 20,
-                }}
-              >
-                <div
-                  style={{
-                    background: "#FFFFFF",
-                    borderRadius: 16,
-                    maxWidth: 760,
-                    width: "100%",
-                    maxHeight: "90vh",
-                    overflowY: "auto",
-                    padding: 28,
-                    boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 20,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #E4E4E9", paddingBottom: 14 }}>
-                    <div>
-                      <h3 style={{ fontSize: 18, fontWeight: 700, color: "#0F0F14", margin: 0 }}>
-                        {isCreatingPrompt ? "Tambah Skill Prompt Baru" : `Edit Skill: ${promptFormData.title || promptFormData.code}`}
+              {/* Master Customizer & Live Dual-Mode Split-Screen Layout */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.1fr", gap: 20, alignItems: "start" }}>
+                {/* ── LEFT COLUMN: TEMPLATE CUSTOMIZER & LATEX/DOCX CONFIGURATOR ── */}
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 14, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 18 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #EFEFF3", paddingBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <SlidersHorizontal size={16} color="#4338CA" />
+                      <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
+                        Editor Konfigurasi Template
                       </h3>
-                      <span style={{ fontSize: 12, color: "#71717A" }}>
-                        Identifier: <code style={{ color: "#4338CA", fontWeight: 700 }}>{promptFormData.code}</code>
-                      </span>
                     </div>
                     <button
-                      onClick={() => setShowPromptModal(false)}
-                      style={{ background: "none", border: "none", color: "#71717A", cursor: "pointer" }}
+                      type="button"
+                      onClick={() => handleDeleteCurrentTemplate(templateEditForm.id)}
+                      style={{ background: "transparent", border: "none", color: "#EF4444", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
                     >
-                      <X size={20} />
+                      <Trash2 size={13} />
+                      <span>Hapus Template</span>
                     </button>
                   </div>
 
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      setSavingPrompt(true);
-                      try {
-                        const tagArray = promptFormData.tags.split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
-                        if (isCreatingPrompt) {
-                          await api.prompts.create({
-                            code: promptFormData.code,
-                            title: promptFormData.title,
-                            category: promptFormData.category,
-                            tags: tagArray,
-                            description: promptFormData.description,
-                            systemPrompt: promptFormData.systemPrompt,
-                            recipeSteps: promptFormData.recipeSteps,
-                            isActive: promptFormData.isActive,
+                  {/* Sub-Tab Navigation: Form vs Tulis LaTeX Mentah vs Variabel */}
+                  <div style={{ display: "flex", gap: 6, background: "#F1F5F9", padding: 4, borderRadius: 10, border: "1px solid #E2E8F0" }}>
+                    <button
+                      type="button"
+                      onClick={() => setSplitEditorTab("FORM")}
+                      style={{
+                        flex: 1,
+                        padding: "7px 10px",
+                        borderRadius: 7,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        border: "none",
+                        background: splitEditorTab === "FORM" ? "#FFFFFF" : "transparent",
+                        color: splitEditorTab === "FORM" ? "#4338CA" : "#64748B",
+                        boxShadow: splitEditorTab === "FORM" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <Sliders size={13} />
+                      <span>Form & Bab</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSplitEditorTab("RAW_LATEX");
+                        if (!templateEditForm.rawLatex) {
+                          setTemplateEditForm({
+                            ...templateEditForm,
+                            rawLatex: generateLatexFromTemplate(templateEditForm),
                           });
-                          setFeedbackMsg({ type: "success", text: "Skill Prompt baru berhasil dibuat di database." });
-                        } else if (editingPrompt) {
-                          await api.prompts.update(editingPrompt.id, {
-                            title: promptFormData.title,
-                            category: promptFormData.category,
-                            tags: tagArray,
-                            description: promptFormData.description,
-                            systemPrompt: promptFormData.systemPrompt,
-                            recipeSteps: promptFormData.recipeSteps,
-                            isActive: promptFormData.isActive,
-                          });
-                          setFeedbackMsg({ type: "success", text: `Prompt "${promptFormData.title}" berhasil diperbarui.` });
                         }
-                        const fresh = await api.prompts.list();
-                        if (fresh.success) setPromptsList(fresh.data);
-                        setShowPromptModal(false);
-                      } catch (err: any) {
-                        notify.error("Gagal menyimpan prompt: " + (err.message || err));
-                      } finally {
-                        setSavingPrompt(false);
-                      }
-                    }}
-                    style={{ display: "flex", flexDirection: "column", gap: 16 }}
-                  >
-                    {/* Row 0: Code Identifier (Locked on Edit) */}
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: "#3F3F46" }}>
-                          Kode Identifier Pemanggilan di Code
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: "7px 10px",
+                        borderRadius: 7,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        border: "none",
+                        background: splitEditorTab === "RAW_LATEX" ? "#FFFFFF" : "transparent",
+                        color: splitEditorTab === "RAW_LATEX" ? "#4338CA" : "#64748B",
+                        boxShadow: splitEditorTab === "RAW_LATEX" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <Code size={13} />
+                      <span>Tulis LaTeX Mentah</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSplitEditorTab("VARIABLES")}
+                      style={{
+                        flex: 1,
+                        padding: "7px 10px",
+                        borderRadius: 7,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        border: "none",
+                        background: splitEditorTab === "VARIABLES" ? "#FFFFFF" : "transparent",
+                        color: splitEditorTab === "VARIABLES" ? "#4338CA" : "#64748B",
+                        boxShadow: splitEditorTab === "VARIABLES" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <Layers size={13} />
+                      <span>Variabel ({templateEditForm.variables?.length || 0})</span>
+                    </button>
+                  </div>
+
+                  {/* TAB 1: FORMULIR & STRUKTUR BAB */}
+                  {splitEditorTab === "FORM" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      {/* Format Type Selector Switcher */}
+                      <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>Format Dokumen:</div>
+                          <div style={{ fontSize: 11, color: "#64748B" }}>Tentukan mesin render dokumen template ini</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTemplateEditForm({
+                                ...templateEditForm,
+                                formatType: "LATEX",
+                                isLatex: true,
+                              })
+                            }
+                            style={{
+                              padding: "5px 12px",
+                              borderRadius: 7,
+                              fontSize: 12,
+                              fontWeight: 700,
+                              border: (templateEditForm.formatType === "LATEX" || templateEditForm.isLatex) ? "1.5px solid #4338CA" : "1px solid #CBD5E1",
+                              background: (templateEditForm.formatType === "LATEX" || templateEditForm.isLatex) ? "#EEEAFE" : "#FFFFFF",
+                              color: (templateEditForm.formatType === "LATEX" || templateEditForm.isLatex) ? "#4338CA" : "#64748B",
+                              cursor: "pointer",
+                            }}
+                          >
+                            LaTeX (.tex / .zip)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTemplateEditForm({
+                                ...templateEditForm,
+                                formatType: "DOCX",
+                                isLatex: false,
+                              })
+                            }
+                            style={{
+                              padding: "5px 12px",
+                              borderRadius: 7,
+                              fontSize: 12,
+                              fontWeight: 700,
+                              border: templateEditForm.formatType === "DOCX" ? "1.5px solid #2563EB" : "1px solid #CBD5E1",
+                              background: templateEditForm.formatType === "DOCX" ? "#EFF6FF" : "#FFFFFF",
+                              color: templateEditForm.formatType === "DOCX" ? "#2563EB" : "#64748B",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Word (.docx)
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 1. Identitas & Info Kampus */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
+                          1. Identitas Template & Lembaga
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
+                            Nama Template:
+                          </label>
+                          <input
+                            type="text"
+                            value={templateEditForm.name || ""}
+                            onChange={(e) => setTemplateEditForm({ ...templateEditForm, name: e.target.value })}
+                            style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 13 }}
+                          />
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          <div>
+                            <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
+                              Fakultas:
+                            </label>
+                            <input
+                              type="text"
+                              value={templateEditForm.sourceFaculty || ""}
+                              onChange={(e) => setTemplateEditForm({ ...templateEditForm, sourceFaculty: e.target.value })}
+                              style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12.5 }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
+                              Universitas:
+                            </label>
+                            <input
+                              type="text"
+                              value={templateEditForm.university || ""}
+                              onChange={(e) => setTemplateEditForm({ ...templateEditForm, university: e.target.value })}
+                              style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12.5 }}
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
+                            Deskripsi / Pedoman Singkat:
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={templateEditForm.description || ""}
+                            onChange={(e) => setTemplateEditForm({ ...templateEditForm, description: e.target.value })}
+                            style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12, resize: "vertical" }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* 2. Upload Paket Berkas Template (.ZIP / .DOCX) */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
+                          2. Unggah Berkas Paket Template ({templateEditForm.formatType === "DOCX" ? ".DOCX" : ".ZIP LaTeX"})
+                        </div>
+                        <label
+                          style={{
+                            border: "2px dashed #CBD5E1",
+                            borderRadius: 10,
+                            padding: "16px 14px",
+                            textAlign: "center",
+                            cursor: "pointer",
+                            background: uploadedPackageFile ? "#F0FDF4" : "#FAFAFC",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
+                          <input
+                            type="file"
+                            accept={templateEditForm.formatType === "DOCX" ? ".docx" : ".zip,.tex"}
+                            style={{ display: "none" }}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setUploadedPackageFile({
+                                  name: file.name,
+                                  size: `${(file.size / 1024).toFixed(1)} KB`,
+                                  type: file.type || file.name.split(".").pop() || "",
+                                });
+                                notify.success("Paket Berkas Dipilih!", `Berkas ${file.name} siap di-package ke engine template.`);
+                              }
+                            }}
+                          />
+                          <UploadCloud size={24} color={uploadedPackageFile ? "#16A34A" : "#64748B"} />
+                          <div style={{ fontSize: 12.5, fontWeight: 600, color: "#1E293B" }}>
+                            {uploadedPackageFile ? uploadedPackageFile.name : "Klik atau seret berkas paket template ke sini"}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#64748B" }}>
+                            {uploadedPackageFile
+                              ? `Ukuran: ${uploadedPackageFile.size} • Terverifikasi & Siap Dipakai`
+                              : templateEditForm.formatType === "DOCX"
+                                ? "Mendukung berkas Microsoft Word .docx template"
+                                : "Mendukung arsip ZIP paket Overleaf/LaTeX lengkap (.tex, .cls, .sty, logo.png)"}
+                          </div>
                         </label>
-                        {!isCreatingPrompt ? (
-                          <span style={{ fontSize: 11, background: "#EFF6FF", color: "#1D4ED8", padding: "2px 8px", borderRadius: 6, fontWeight: 700, border: "1px solid #BFDBFE" }}>
-                            🔒 Terkunci (Terhubung ke Backend)
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 11, color: "#71717A" }}>
-                            Gunakan format UPPERCASE (Contoh: CUSTOM_ANALISIS_GAP)
-                          </span>
+                      </div>
+
+                      {/* 3. Variabel In-Place Template */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
+                            3. Variabel In-Place Template ({templateEditForm.variables?.length || 0} Variabel)
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {(templateEditForm.variables || [
+                            { key: "TITLE", label: "Judul", varType: "TEXT" },
+                            { key: "AUTHOR", label: "Penulis", varType: "TEXT" },
+                            { key: "NIM", label: "NIM", varType: "TEXT" },
+                            { key: "PRODI", label: "Prodi", varType: "TEXT" },
+                            { key: "FAKULTAS", label: "Fakultas", varType: "TEXT" },
+                            { key: "UNIVERSITAS", label: "Universitas", varType: "TEXT" },
+                            { key: "LOGO", label: "Logo", varType: "IMAGE" },
+                          ]).map((v: any, idx: number) => (
+                            <span
+                              key={idx}
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                padding: "3px 8px",
+                                borderRadius: 6,
+                                background: v.varType === "IMAGE" ? "#FEF3C7" : "#F1F5F9",
+                                color: v.varType === "IMAGE" ? "#B45309" : "#334155",
+                                border: "1px solid #E2E8F0",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                              }}
+                            >
+                              <code>\{v.key}</code>
+                              <span style={{ fontSize: 9.5, opacity: 0.7 }}>({v.label || v.key})</span>
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* Add Variable Quick Form */}
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <input
+                            type="text"
+                            placeholder="KEY (e.g. KOTA)"
+                            value={newVariableKey}
+                            onChange={(e) => setNewVariableKey(e.target.value.toUpperCase())}
+                            style={{ width: 110, padding: "5px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11, fontFamily: "monospace" }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Label Variabel..."
+                            value={newVariableLabel}
+                            onChange={(e) => setNewVariableLabel(e.target.value)}
+                            style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11 }}
+                          />
+                          <select
+                            value={newVariableType}
+                            onChange={(e) => setNewVariableType(e.target.value as any)}
+                            style={{ padding: "5px 6px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11 }}
+                          >
+                            <option value="TEXT">TEXT</option>
+                            <option value="IMAGE">IMAGE</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!newVariableKey.trim()) return;
+                              const newV = {
+                                key: newVariableKey.trim(),
+                                label: newVariableLabel.trim() || newVariableKey.trim(),
+                                varType: newVariableType,
+                                required: true,
+                                defaultValue: "",
+                              };
+                              const currentVars = templateEditForm.variables || [];
+                              setTemplateEditForm({
+                                ...templateEditForm,
+                                variables: [...currentVars, newV],
+                              });
+                              setNewVariableKey("");
+                              setNewVariableLabel("");
+                              notify.success("Variabel Ditambahkan", `Variabel \\${newV.key} siap digunakan.`);
+                            }}
+                            style={{ background: "#4338CA", color: "#FFFFFF", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                          >
+                            + Tambah
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 4. Format Margin & Document Class */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
+                          4. Spesifikasi Dokumen & Kaidah Margin
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          <div>
+                            <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
+                              Preset Margin Naskah:
+                            </label>
+                            <select
+                              value={templateEditForm.marginPreset || "4333"}
+                              onChange={(e) =>
+                                setTemplateEditForm({
+                                  ...templateEditForm,
+                                  marginPreset: e.target.value,
+                                  margins: e.target.value === "4433" ? { top: "4cm", bottom: "3cm", left: "4cm", right: "3cm" } : { top: "3cm", bottom: "3cm", left: "4cm", right: "3cm" },
+                                })
+                              }
+                              style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12.5 }}
+                            >
+                              <option value="4333">4-3-3-3 (Kiri 4cm, Atas 3cm, Kanan 3cm, Bawah 3cm)</option>
+                              <option value="4433">4-4-3-3 (Kiri 4cm, Atas 4cm, Kanan 3cm, Bawah 3cm)</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
+                              {templateEditForm.formatType === "DOCX" ? "Paper Standard:" : "LaTeX Document Class:"}
+                            </label>
+                            <input
+                              type="text"
+                              value={templateEditForm.documentClass || (templateEditForm.formatType === "DOCX" ? "A4 210x297mm Standard" : "\\documentclass[a4paper,12pt,oneside]{book}")}
+                              onChange={(e) => setTemplateEditForm({ ...templateEditForm, documentClass: e.target.value })}
+                              style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12, fontFamily: "monospace" }}
+                            />
+                          </div>
+                        </div>
+
+                        {(templateEditForm.formatType === "LATEX" || templateEditForm.isLatex) && (
+                          <div>
+                            <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
+                              LaTeX Preamble (Packages & Macro Definition):
+                            </label>
+                            <textarea
+                              rows={4}
+                              value={templateEditForm.preambleLatex || ""}
+                              onChange={(e) => setTemplateEditForm({ ...templateEditForm, preambleLatex: e.target.value })}
+                              style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 11.5, fontFamily: "monospace", color: "#0F172A", background: "#F8FAFC", resize: "vertical" }}
+                            />
+                          </div>
                         )}
                       </div>
-                      <input
-                        type="text"
-                        required
-                        disabled={!isCreatingPrompt}
-                        value={promptFormData.code}
-                        onChange={(e) => setPromptFormData({ ...promptFormData, code: e.target.value.toUpperCase().replace(/\s+/g, "_") })}
-                        placeholder="Contoh: SUBCHAPTER_1_1"
-                        style={{
-                          width: "100%",
-                          height: 38,
-                          padding: "0 12px",
-                          borderRadius: 8,
-                          border: "1px solid #E4E4E9",
-                          fontSize: 13,
-                          fontFamily: "monospace",
-                          fontWeight: 700,
-                          background: !isCreatingPrompt ? "#F1F5F9" : "#FFFFFF",
-                          color: !isCreatingPrompt ? "#64748B" : "#0F0F14",
-                          cursor: !isCreatingPrompt ? "not-allowed" : "text",
-                        }}
-                      />
-                    </div>
 
-                    {/* Title & Category */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 180px", gap: 14 }}>
+                      {/* 5. Struktur Bab & Section Generator */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
+                            5. Struktur Bab & Panduan Penulisan ({templateEditForm.sections?.length || 0} Bagian)
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newSec = {
+                                id: `sec-${Date.now()}`,
+                                order: (templateEditForm.sections?.length || 0) + 1,
+                                title: "Sub-Bab Baru",
+                                guidanceText: "Panduan instruksi penulisan...",
+                                latexSnippet: "\\section{Sub-Bab Baru}",
+                              };
+                              setTemplateEditForm({ ...templateEditForm, sections: [...(templateEditForm.sections || []), newSec] });
+                            }}
+                            style={{ background: "#EEEAFE", color: "#4338CA", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                          >
+                            + Tambah Bab
+                          </button>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto", paddingRight: 4 }}>
+                          {(templateEditForm.sections || []).map((sec: any, idx: number) => (
+                            <div
+                              key={sec.id || idx}
+                              style={{
+                                border: "1px solid #E2E8F0",
+                                borderRadius: 8,
+                                padding: "10px 12px",
+                                background: "#F8FAFC",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 6,
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B" }}>
+                                  #{idx + 1}
+                                </span>
+                                <input
+                                  type="text"
+                                  value={sec.title || ""}
+                                  onChange={(e) => {
+                                    const updated = [...templateEditForm.sections];
+                                    updated[idx].title = e.target.value;
+                                    setTemplateEditForm({ ...templateEditForm, sections: updated });
+                                  }}
+                                  placeholder="Judul Bagian..."
+                                  style={{ flex: 1, padding: "4px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 12, fontWeight: 600 }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = templateEditForm.sections.filter((_: any, i: number) => i !== idx);
+                                    setTemplateEditForm({ ...templateEditForm, sections: updated });
+                                  }}
+                                  style={{ background: "transparent", border: "none", color: "#EF4444", cursor: "pointer", padding: 2 }}
+                                  title="Hapus bagian ini"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+
+                              <div>
+                                <input
+                                  type="text"
+                                  value={sec.guidanceText || ""}
+                                  onChange={(e) => {
+                                    const updated = [...templateEditForm.sections];
+                                    updated[idx].guidanceText = e.target.value;
+                                    setTemplateEditForm({ ...templateEditForm, sections: updated });
+                                  }}
+                                  placeholder="Panduan penulisan untuk mahasiswa..."
+                                  style={{ width: "100%", padding: "4px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11.5, color: "#475569" }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 2: RAW LATEX CODE IN-BROWSER LIVE EDITOR */}
+                  {splitEditorTab === "RAW_LATEX" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                       <div>
-                        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
-                          Judul Skill / Sub-bab
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={promptFormData.title}
-                          onChange={(e) => setPromptFormData({ ...promptFormData, title: e.target.value })}
-                          placeholder="Contoh: BAB 1.1: Latar Belakang (Piramida Terbalik)"
-                          style={{ width: "100%", height: 38, padding: "0 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13 }}
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 6 }}>
+                          Pilih Boilerplate / Preset Cepat:
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTemplateEditForm((prev: any) => ({
+                                ...prev,
+                                rawLatex: LATEX_PRESETS.IEEE_CONFERENCE,
+                                formatType: "LATEX",
+                                isLatex: true,
+                              }));
+                              const parsed = parseLatexContent(LATEX_PRESETS.IEEE_CONFERENCE);
+                              setTemplateEditForm((prev: any) => ({
+                                ...prev,
+                                documentClass: parsed.documentClass,
+                                preambleLatex: parsed.preambleLatex,
+                                sections: parsed.sections,
+                              }));
+                              notify.success("Preset IEEE Dimuat", "Format IEEE Conference siap diedit dan disinkronkan.");
+                            }}
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #C7D2FE",
+                              background: "#EEF2FF",
+                              color: "#3730A3",
+                              fontSize: 11.5,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            ⚡ IEEE Conf (Two-Column)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTemplateEditForm((prev: any) => ({
+                                ...prev,
+                                rawLatex: LATEX_PRESETS.TELKOM_FIF,
+                                formatType: "LATEX",
+                                isLatex: true,
+                              }));
+                              const parsed = parseLatexContent(LATEX_PRESETS.TELKOM_FIF);
+                              setTemplateEditForm((prev: any) => ({
+                                ...prev,
+                                documentClass: parsed.documentClass,
+                                preambleLatex: parsed.preambleLatex,
+                                sections: parsed.sections,
+                              }));
+                              notify.success("Preset Telkom FIF Dimuat", "Format S1 Informatika FIF Telkom University siap diedit.");
+                            }}
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #E2E8F0",
+                              background: "#F8FAFC",
+                              color: "#334155",
+                              fontSize: 11.5,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            ⚡ Telkom University FIF
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTemplateEditForm((prev: any) => ({
+                                ...prev,
+                                rawLatex: LATEX_PRESETS.SKRIPSI_INDONESIA,
+                                formatType: "LATEX",
+                                isLatex: true,
+                              }));
+                              const parsed = parseLatexContent(LATEX_PRESETS.SKRIPSI_INDONESIA);
+                              setTemplateEditForm((prev: any) => ({
+                                ...prev,
+                                documentClass: parsed.documentClass,
+                                preambleLatex: parsed.preambleLatex,
+                                sections: parsed.sections,
+                              }));
+                              notify.success("Preset Skripsi Standar Dimuat", "Format standar buku skripsi Indonesia siap diedit.");
+                            }}
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #E2E8F0",
+                              background: "#F8FAFC",
+                              color: "#334155",
+                              fontSize: 11.5,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            ⚡ Format Standar Skripsi
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTemplateEditForm((prev: any) => ({
+                                ...prev,
+                                rawLatex: LATEX_PRESETS.BLANK_LATEX,
+                                formatType: "LATEX",
+                                isLatex: true,
+                              }));
+                              notify.success("Preset Kosong Dimuat", "Silakan ketik atau tempel LaTeX kustom Anda.");
+                            }}
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #E2E8F0",
+                              background: "#F8FAFC",
+                              color: "#64748B",
+                              fontSize: 11.5,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            ⚡ Template Kosong
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                          <label style={{ fontSize: 11.5, fontWeight: 700, color: "#334155" }}>
+                            Editor Kode LaTeX Mentah:
+                          </label>
+                          <span style={{ fontSize: 10.5, color: "#64748B" }}>
+                            {templateEditForm.rawLatex?.length || 0} Karakter • Live Sync Preview
+                          </span>
+                        </div>
+                        <textarea
+                          rows={16}
+                          value={templateEditForm.rawLatex || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setTemplateEditForm({
+                              ...templateEditForm,
+                              rawLatex: val,
+                            });
+                          }}
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: 8,
+                            border: "1px solid #CBD5E1",
+                            fontSize: 12,
+                            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                            color: "#0F172A",
+                            background: "#F8FAFC",
+                            lineHeight: 1.5,
+                            resize: "vertical",
+                          }}
+                          placeholder="Tulis kode LaTeX Anda di sini (\\documentclass, \\begin{document}, \\section, dll)..."
                         />
                       </div>
 
-                      <div>
-                        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
-                          Kategori
-                        </label>
-                        <select
-                          value={promptFormData.category}
-                          onChange={(e) => setPromptFormData({ ...promptFormData, category: e.target.value })}
-                          style={{ width: "100%", height: 38, padding: "0 8px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13, background: "#FFFFFF" }}
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const code = templateEditForm.rawLatex || "";
+                            if (!code.trim()) {
+                              notify.warning("Kode Kosong", "Tuliskan kode LaTeX sebelum melakukan sinkronisasi.");
+                              return;
+                            }
+                            const parsed = parseLatexContent(code);
+                            setTemplateEditForm((prev: any) => ({
+                              ...prev,
+                              documentClass: parsed.documentClass || prev.documentClass,
+                              preambleLatex: parsed.preambleLatex || prev.preambleLatex,
+                              sections: parsed.sections.length > 0 ? parsed.sections : prev.sections,
+                              name: parsed.name && !prev.name ? parsed.name : prev.name,
+                            }));
+                            notify.success(
+                              "Struktur LaTeX Disinkronkan!",
+                              `Berhasil mengekstrak ${parsed.sections.length} bagian bab dan preamble ke form.`
+                            );
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            border: "none",
+                            background: "#4338CA",
+                            color: "#FFFFFF",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 6,
+                            boxShadow: "0 1px 4px rgba(67,56,202,0.2)",
+                          }}
                         >
-                          <option value="SUBCHAPTER">Sub-bab Outline</option>
-                          <option value="OUTLINE">Blueprint Architect</option>
-                          <option value="PROPOSAL">Proposal Drafter</option>
-                          <option value="SCREENING">Screening Jurnal</option>
-                          <option value="LITERATURE">Literature Search</option>
-                          <option value="CUSTOM">Custom Skill</option>
-                        </select>
+                          <Sparkles size={14} />
+                          <span>⚡ Ekstrak ke Struktur Bab & Margin</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const code = templateEditForm.rawLatex || "";
+                            const begins = (code.match(/\\begin\{/g) || []).length;
+                            const ends = (code.match(/\\end\{/g) || []).length;
+                            if (begins === ends) {
+                              setTestCompileSuccess(true);
+                              notify.success("Uji Kompilasi Lolos", `Struktur lingkungan LaTeX seimbang (${begins} blok begin/end).`);
+                            } else {
+                              setTestCompileSuccess(false);
+                              notify.error("Peringatan Kompilasi", `Ditemukan ketidakseimbangan: ${begins} \\begin{} vs ${ends} \\end{}.`);
+                            }
+                          }}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            border: "1px solid #CBD5E1",
+                            background: "#FFFFFF",
+                            color: "#334155",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                          }}
+                        >
+                          <Check size={14} color="#059669" />
+                          <span>Uji Kompilasi</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(templateEditForm.rawLatex || "");
+                            notify.success("Kode Tersalin!", "Kode LaTeX telah disalin ke clipboard.");
+                          }}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            border: "1px solid #CBD5E1",
+                            background: "#FFFFFF",
+                            color: "#334155",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                          }}
+                        >
+                          <Copy size={13} />
+                          <span>Salin</span>
+                        </button>
                       </div>
-                    </div>
 
-                    {/* Tags & Description */}
-                    <div>
-                      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
-                        Tagging (Pisahkan dengan koma)
-                      </label>
-                      <input
-                        type="text"
-                        value={promptFormData.tags}
-                        onChange={(e) => setPromptFormData({ ...promptFormData, tags: e.target.value })}
-                        placeholder="bab1, latar_belakang, piramida_terbalik, 8_langkah, gap"
-                        style={{ width: "100%", height: 38, padding: "0 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13 }}
-                      />
+                      {testCompileSuccess !== null && (
+                        <div
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            fontSize: 11.5,
+                            fontWeight: 600,
+                            background: testCompileSuccess ? "#DCFCE7" : "#FEE2E2",
+                            color: testCompileSuccess ? "#16A34A" : "#DC2626",
+                            border: testCompileSuccess ? "1px solid #86EFAC" : "1px solid #FCA5A5",
+                          }}
+                        >
+                          {testCompileSuccess
+                            ? "✓ Kompilasi LaTeX Sintaks Valid: Tidak ditemukan error struktur blok \\begin / \\end."
+                            : "⚠️ Periksa kembali pasangan \\begin{...} dan \\end{...} pada kode naskah."}
+                        </div>
+                      )}
                     </div>
+                  )}
 
-                    <div>
-                      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
-                        Deskripsi / Tujuan Akademis
-                      </label>
-                      <textarea
-                        rows={2}
-                        value={promptFormData.description}
-                        onChange={(e) => setPromptFormData({ ...promptFormData, description: e.target.value })}
-                        placeholder="Uraian singkat tujuan instruksional dan peran akademik prompt ini..."
-                        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13, fontFamily: "inherit" }}
-                      />
-                    </div>
+                  {/* TAB 3: VARIABEL & PLACEHOLDER EXPLORER */}
+                  {splitEditorTab === "VARIABLES" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                      <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: 12 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1E293B", marginBottom: 4 }}>
+                          Kamus Variabel In-Place Template
+                        </div>
+                        <div style={{ fontSize: 11.5, color: "#64748B", lineHeight: 1.4 }}>
+                          Variabel berikut secara otomatis disubstitusi oleh engine Zetera saat mahasiswa melakukan generasi atau ekspor. Klik untuk menyalin token kode ke LaTeX atau DOCX.
+                        </div>
+                      </div>
 
-                    {/* Step-by-Step Recipe Builder */}
-                    <div>
-                      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
-                        Resep Butir Langkah Baku ({promptFormData.recipeSteps.length} Butir)
-                      </label>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8, maxHeight: 180, overflowY: "auto" }}>
-                        {promptFormData.recipeSteps.map((step, idx) => (
-                          <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8, background: "#F7F7FB", padding: "6px 10px", borderRadius: 6, border: "1px solid #E4E4E9" }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: "#4338CA", width: 20 }}>{idx + 1}.</span>
-                            <span style={{ fontSize: 12, color: "#1E293B", flex: 1 }}>{step}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPromptFormData({
-                                  ...promptFormData,
-                                  recipeSteps: promptFormData.recipeSteps.filter((_, i) => i !== idx),
-                                });
-                              }}
-                              style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer" }}
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        {(templateEditForm.variables || [
+                          { key: "TITLE", label: "Judul Proposal / Skripsi", varType: "TEXT", defaultValue: "Judul Riset" },
+                          { key: "AUTHOR", label: "Nama Lengkap Mahasiswa", varType: "TEXT", defaultValue: "Nama Mahasiswa" },
+                          { key: "NIM", label: "Nomor Induk Mahasiswa", varType: "TEXT", defaultValue: "1301220001" },
+                          { key: "PRODI", label: "Program Studi", varType: "TEXT", defaultValue: "S1 Informatika" },
+                          { key: "FAKULTAS", label: "Fakultas Institusi", varType: "TEXT", defaultValue: "Fakultas Informatika" },
+                          { key: "UNIVERSITAS", label: "Universitas / Institut", varType: "TEXT", defaultValue: "Telkom University" },
+                          { key: "LOGO", label: "Logo Resmi Kampus", varType: "IMAGE", defaultValue: null },
+                        ]).map((v: any, idx: number) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              navigator.clipboard.writeText(`\\${v.key}`);
+                              notify.success("Token Disalin!", `Token \\${v.key} tersalin ke clipboard.`);
+                            }}
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 8,
+                              border: "1px solid #E2E8F0",
+                              background: v.varType === "IMAGE" ? "#FFFBEB" : "#F8FAFC",
+                              cursor: "pointer",
+                              transition: "all 0.15s ease",
+                            }}
+                            title="Klik untuk menyalin token kode"
+                          >
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                              <code style={{ fontSize: 12, fontWeight: 700, color: v.varType === "IMAGE" ? "#B45309" : "#4338CA" }}>
+                                \{v.key}
+                              </code>
+                              <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 4, background: "#FFFFFF", border: "1px solid #CBD5E1", color: "#64748B" }}>
+                                {v.varType}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 11, color: "#334155", fontWeight: 600 }}>{v.label || v.key}</div>
+                            {v.defaultValue && (
+                              <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 2 }}>Contoh: {v.defaultValue}</div>
+                            )}
                           </div>
                         ))}
                       </div>
 
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <input
-                          type="text"
-                          value={newStepInput}
-                          onChange={(e) => setNewStepInput(e.target.value)}
-                          placeholder="Ketik butir instruksi langkah baru..."
-                          style={{ flex: 1, height: 36, padding: "0 10px", borderRadius: 6, border: "1px solid #E4E4E9", fontSize: 12.5 }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              if (newStepInput.trim()) {
-                                setPromptFormData({
-                                  ...promptFormData,
-                                  recipeSteps: [...promptFormData.recipeSteps, newStepInput.trim()],
-                                });
-                                setNewStepInput("");
-                              }
-                            }
-                          }}
-                        />
+                      {/* Quick Variable Adder */}
+                      <div style={{ borderTop: "1px solid #EFEFF3", paddingTop: 12 }}>
+                        <label style={{ fontSize: 11.5, fontWeight: 700, color: "#334155", display: "block", marginBottom: 6 }}>
+                          Tambah Variabel Kustom Baru:
+                        </label>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input
+                            type="text"
+                            placeholder="KEY (e.g. KOTA)"
+                            value={newVariableKey}
+                            onChange={(e) => setNewVariableKey(e.target.value.toUpperCase().replace(/\s+/g, "_"))}
+                            style={{ width: 110, padding: "6px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11, fontFamily: "monospace" }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Label (e.g. Kota Kampus)..."
+                            value={newVariableLabel}
+                            onChange={(e) => setNewVariableLabel(e.target.value)}
+                            style={{ flex: 1, padding: "6px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11 }}
+                          />
+                          <select
+                            value={newVariableType}
+                            onChange={(e) => setNewVariableType(e.target.value as any)}
+                            style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11 }}
+                          >
+                            <option value="TEXT">TEXT</option>
+                            <option value="IMAGE">IMAGE</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!newVariableKey.trim()) return;
+                              const newV = {
+                                key: newVariableKey.trim(),
+                                label: newVariableLabel.trim() || newVariableKey.trim(),
+                                varType: newVariableType,
+                                required: true,
+                                defaultValue: "",
+                              };
+                              const currentVars = templateEditForm.variables || [];
+                              setTemplateEditForm({
+                                ...templateEditForm,
+                                variables: [...currentVars, newV],
+                              });
+                              setNewVariableKey("");
+                              setNewVariableLabel("");
+                              notify.success("Variabel Ditambahkan", `Variabel \\${newV.key} siap digunakan.`);
+                            }}
+                            style={{ background: "#4338CA", color: "#FFFFFF", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                          >
+                            + Tambah
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bottom Action Button */}
+                  <div style={{ borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
+                    <button
+                      type="button"
+                      onClick={handleSaveCurrentTemplate}
+                      disabled={savingTemplate}
+                      style={{
+                        width: "100%",
+                        background: "#4338CA",
+                        color: "#FFFFFF",
+                        border: "none",
+                        borderRadius: 9,
+                        padding: "10px 16px",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        boxShadow: "0 2px 10px rgba(67, 56, 202, 0.25)",
+                      }}
+                    >
+                      {savingTemplate ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />}
+                      <span>{savingTemplate ? "Menyimpan ke Database..." : "Simpan Perubahan Template"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── RIGHT COLUMN: SPLIT-SCREEN PREVIEW TAMPILAN JURNAL MENDIRIK KE BAWAH ── */}
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 14, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
+                  {/* Preview Toolbar Header */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #EFEFF3", paddingBottom: 12, flexWrap: "wrap", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Eye size={18} color="#4338CA" />
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#0F0F14", lineHeight: 1.2 }}>
+                          Preview Tampilan Jurnal Mengalir
+                        </div>
+                        <div style={{ fontSize: 11, color: "#71717A" }}>
+                          Format: <span style={{ fontWeight: 700, color: "#4338CA" }}>{templateEditForm.formatType || (templateEditForm.isLatex ? "LATEX" : "DOCX")}</span> • Margin: {templateEditForm.marginPreset === "4433" ? "4-4-3-3" : "4-3-3-3"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Mode & Zoom Controls */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {/* View Mode Toggle */}
+                      <div style={{ display: "flex", background: "#F1F5F9", padding: 2, borderRadius: 7, border: "1px solid #E2E8F0" }}>
                         <button
                           type="button"
-                          onClick={() => {
-                            if (newStepInput.trim()) {
-                              setPromptFormData({
-                                ...promptFormData,
-                                recipeSteps: [...promptFormData.recipeSteps, newStepInput.trim()],
-                              });
-                              setNewStepInput("");
-                            }
-                          }}
+                          onClick={() => setTemplatePreviewMode("JOURNAL_FLOW")}
                           style={{
-                            background: "#F7F7FB",
-                            border: "1px solid #E4E4E9",
-                            padding: "6px 12px",
+                            padding: "4px 10px",
                             borderRadius: 6,
-                            fontSize: 12.5,
-                            fontWeight: 500,
-                            cursor: "pointer",
-                          }}
-                        >
-                          + Tambah Butir
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* System Prompt Box */}
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: "#3F3F46" }}>
-                          System Prompt Template (AI Instructions)
-                        </label>
-                        <span style={{ fontSize: 11, color: "#71717A" }}>
-                          Gunakan variabel: <code style={{ color: "#4338CA" }}>{"{{TOPIC}}"}</code>, <code style={{ color: "#4338CA" }}>{"{{PRODI}}"}</code>
-                        </span>
-                      </div>
-                      <textarea
-                        rows={6}
-                        required
-                        value={promptFormData.systemPrompt}
-                        onChange={(e) => setPromptFormData({ ...promptFormData, systemPrompt: e.target.value })}
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          borderRadius: 8,
-                          border: "1px solid #E4E4E9",
-                          fontSize: 12.5,
-                          fontFamily: "monospace",
-                          background: "#0F172A",
-                          color: "#F8FAFC",
-                          lineHeight: 1.45,
-                        }}
-                      />
-                    </div>
-
-                    {/* Submit Actions */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, paddingTop: 10, borderTop: "1px solid #E4E4E9" }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowPromptModal(false)}
-                        style={{
-                          background: "#F7F7FB",
-                          border: "1px solid #E4E4E9",
-                          padding: "8px 14px",
-                          borderRadius: 6,
-                          fontSize: 13,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Batal
-                      </button>
-
-                      <button
-                        type="submit"
-                        disabled={savingPrompt}
-                        style={{
-                          background: "#4338CA",
-                          color: "#FFFFFF",
-                          border: "none",
-                          padding: "8px 18px",
-                          borderRadius: 6,
-                          fontSize: 13,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {savingPrompt ? "Menyimpan ke DB..." : "Simpan Perubahan ke Database"}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════════════
-            TAB 2: HARGA & LANGGANAN
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "PRICING" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <h2 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
-                  List Paket Harga
-                </h2>
-                <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
-                  Atur harga paket, kuota koin, dan status langganan
-                </p>
-              </div>
-
-              <button
-                onClick={() => {
-                  setEditingPackageId(null);
-                  setPackageFormData({
-                    name: "",
-                    type: "ONE_TIME",
-                    creditsGranted: 100,
-                    durationDays: null as any,
-                    priceNormal: 25000,
-                    priceDiscount: 19000,
-                    badgeLabel: "HEMAT 24%",
-                    isActive: true,
-                  });
-                  setShowPackageModal(true);
-                }}
-                style={{
-                  background: "#4338CA",
-                  color: "#FFFFFF",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "8px 16px",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <Plus size={15} />
-                <span>Tambah Paket</span>
-              </button>
-            </div>
-
-            {/* List Paket Harga Table */}
-            <div
-              style={{
-                background: "#FFFFFF",
-                border: "1px solid #E4E4E9",
-                borderRadius: 12,
-                overflow: "hidden",
-              }}
-            >
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: "#F7F7FB", borderBottom: "1px solid #E4E4E9", color: "#3F3F46", fontWeight: 500 }}>
-                      <th style={{ padding: "12px 18px", width: 36 }}>
-                        <input type="checkbox" />
-                      </th>
-                      <th style={{ padding: "12px 14px" }}>Nama Paket</th>
-                      <th style={{ padding: "12px 14px" }}>Tipe Paket</th>
-                      <th style={{ padding: "12px 14px" }}>Koin</th>
-                      <th style={{ padding: "12px 14px" }}>Harga</th>
-                      <th style={{ padding: "12px 14px" }}>Status</th>
-                      <th style={{ padding: "12px 18px", textAlign: "right" }}>Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {creditPackages.map((pkg) => (
-                      <tr key={pkg.id} style={{ borderBottom: "1px solid #EFEFF3" }}>
-                        <td style={{ padding: "12px 18px" }}>
-                          <input type="checkbox" />
-                        </td>
-                        <td style={{ padding: "12px 14px", fontWeight: 600, color: "#0F0F14" }}>
-                          {pkg.name}
-                          {pkg.badgeLabel && (
-                            <span
-                              style={{
-                                marginLeft: 8,
-                                fontSize: 10,
-                                fontWeight: 500,
-                                background: "#EEEAFE",
-                                color: "#4338CA",
-                                padding: "2px 7px",
-                                borderRadius: 9999,
-                              }}
-                            >
-                              {pkg.badgeLabel}
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ padding: "12px 14px", color: "#71717A" }}>
-                          {pkg.type === "SUBSCRIPTION" ? `Langganan (${pkg.durationDays || 30} Hari)` : "ONTIME (Permanen)"}
-                        </td>
-                        <td style={{ padding: "12px 14px", fontWeight: 600, color: "#0F0F14" }}>
-                          {pkg.creditsGranted}
-                        </td>
-                        <td style={{ padding: "12px 14px" }}>
-                          {pkg.priceDiscount ? (
-                            <div>
-                              <span style={{ fontSize: 11, color: "#BE123C", textDecoration: "line-through", display: "block" }}>
-                                Rp {Number(pkg.priceNormal).toLocaleString("id-ID")}
-                              </span>
-                              <span style={{ fontWeight: 600, color: "#0F0F14" }}>
-                                Rp {Number(pkg.priceDiscount).toLocaleString("id-ID")}
-                              </span>
-                            </div>
-                          ) : (
-                            <span style={{ fontWeight: 600, color: "#0F0F14" }}>
-                              Rp {Number(pkg.priceNormal).toLocaleString("id-ID")}
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ padding: "12px 14px" }}>
-                          {pkg.isActive ? (
-                            <span
-                              style={{
-                                background: "#DCFCE7",
-                                color: "#16A34A",
-                                fontSize: 11,
-                                fontWeight: 600,
-                                padding: "3px 10px",
-                                borderRadius: 9999,
-                              }}
-                            >
-                              AKTIF
-                            </span>
-                          ) : (
-                            <span
-                              style={{
-                                background: "#F7F7FB",
-                                color: "#71717A",
-                                fontSize: 11,
-                                fontWeight: 500,
-                                padding: "3px 10px",
-                                borderRadius: 9999,
-                              }}
-                            >
-                              NONAKTIF
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ padding: "12px 18px", textAlign: "right" }}>
-                          <div style={{ display: "inline-flex", gap: 8 }}>
-                            <button
-                              onClick={() => {
-                                setEditingPackageId(pkg.id);
-                                setPackageFormData({
-                                  name: pkg.name,
-                                  type: pkg.type,
-                                  creditsGranted: pkg.creditsGranted,
-                                  durationDays: pkg.durationDays || 30,
-                                  priceNormal: pkg.priceNormal,
-                                  priceDiscount: pkg.priceDiscount || 0,
-                                  badgeLabel: pkg.badgeLabel || "",
-                                  isActive: pkg.isActive,
-                                });
-                                setShowPackageModal(true);
-                              }}
-                              style={{ background: "transparent", border: "none", cursor: "pointer", color: "#3F3F46" }}
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              onClick={() => handleDeletePackage(pkg.id, pkg.name)}
-                              style={{ background: "transparent", border: "none", cursor: "pointer", color: "#BE123C" }}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Ideal Credit & Margin Simulator */}
-            <div
-              style={{
-                background: "#FFFFFF",
-                border: "1px solid #E4E4E9",
-                borderRadius: 12,
-                padding: "20px 24px",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 8, background: "#EEEAFE", color: "#4338CA", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Sparkles size={16} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
-                    Ideal Credit & Profit Margin Simulator
-                  </h3>
-                  <p style={{ fontSize: 12.5, color: "#71717A", margin: 0 }}>
-                    Hitung rekomendasi harga jual paket & kuota koin berdasarkan modal API dan target margin laba
-                  </p>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 16 }}>
-                <div>
-                  <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 4 }}>
-                    Model AI Target
-                  </label>
-                  <select
-                    value={simModelId}
-                    onChange={(e) => setSimModelId(e.target.value)}
-                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, color: "#0F0F14" }}
-                  >
-                    {aiModels.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.routerLabel} ({m.modelName})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 4 }}>
-                    Target Margin Laba (%)
-                  </label>
-                  <select
-                    value={simTargetMargin}
-                    onChange={(e) => setSimTargetMargin(Number(e.target.value))}
-                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, color: "#0F0F14" }}
-                  >
-                    <option value={0.3}>30% Margin Laba</option>
-                    <option value={0.4}>40% Margin Laba</option>
-                    <option value={0.5}>50% Margin Laba</option>
-                    <option value={0.7}>70% Margin Laba</option>
-                    <option value={0.9}>90% (SaaS Super Profit)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 4 }}>
-                    Estimasi Generate / Bulan
-                  </label>
-                  <input
-                    type="number"
-                    value={simGenerations}
-                    onChange={(e) => setSimGenerations(Number(e.target.value) || 30)}
-                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, color: "#0F0F14" }}
-                  />
-                </div>
-
-                <div style={{ display: "flex", alignItems: "flex-end" }}>
-                  <button
-                    type="button"
-                    onClick={handleRunSimulator}
-                    style={{
-                      width: "100%",
-                      background: "#4338CA",
-                      color: "#FFFFFF",
-                      border: "none",
-                      borderRadius: 8,
-                      padding: "8px 14px",
-                      fontSize: 13,
-                      fontWeight: 500,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Kalkulasi Paket
-                  </button>
-                </div>
-              </div>
-
-              {simResult && (
-                <div
-                  style={{
-                    background: "#F7F7FB",
-                    border: "1px solid #E4E4E9",
-                    borderRadius: 8,
-                    padding: "16px 18px",
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                    gap: 14,
-                  }}
-                >
-                  <div>
-                    <span style={{ fontSize: 11, color: "#71717A" }}>Total HPP Modal API</span>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: "#0F0F14" }}>
-                      Rp {simResult.totalHppIdr.toLocaleString("id-ID")}
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 11, color: "#71717A" }}>Saran Harga Jual</span>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: "#16A34A" }}>
-                      Rp {simResult.suggestedPriceIdr.toLocaleString("id-ID")}
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 11, color: "#71717A" }}>Rekomendasi Kuota Koin</span>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: "#0F0F14" }}>
-                      {simResult.recommendedCredits} Kredit
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 11, color: "#71717A" }}>Efektivitas Margin</span>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: "#4338CA" }}>
-                      {simResult.effectiveMarginPercent}% Laba Bersih
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════════════
-            TAB 3: EXECUTIVE DASHBOARD (100% Real Database Queries)
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "DASHBOARD" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            {/* 4 Hero KPI Cards */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: 14,
-              }}
-            >
-              {/* Total Users */}
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: 8, background: "#EEEAFE", color: "#4338CA", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Users size={15} />
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: "#71717A" }}>Total Pengguna</span>
-                </div>
-                <div style={{ fontSize: 26, fontWeight: 600, color: "#0F0F14", letterSpacing: "-0.015em" }}>
-                  {Number(stats?.totalUsers || 0).toLocaleString("id-ID")}
-                </div>
-                <div style={{ fontSize: 11, color: "#16A34A", fontWeight: 500, marginTop: 4 }}>
-                  {stats?.totalProjects || 0} Proyek Riset Aktif
-                </div>
-              </div>
-
-              {/* Total Pendapatan */}
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: 8, background: "#EEEAFE", color: "#4338CA", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Coins size={15} />
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: "#71717A" }}>Total Pendapatan</span>
-                </div>
-                <div style={{ fontSize: 26, fontWeight: 600, color: "#0F0F14", letterSpacing: "-0.015em" }}>
-                  Rp {Number(stats?.billing?.totalRevenueIdr || 0).toLocaleString("id-ID")}
-                </div>
-                <div style={{ fontSize: 11, color: "#16A34A", fontWeight: 500, marginTop: 4 }}>
-                  Laba Bersih: ${stats?.billing?.netProfitUsd?.toFixed(4) || "0.00"}
-                </div>
-              </div>
-
-              {/* Pengeluaran AI */}
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: 8, background: "#EEEAFE", color: "#4338CA", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <TrendingUp size={15} />
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: "#71717A" }}>Pengeluaran Modal AI</span>
-                </div>
-                <div style={{ fontSize: 26, fontWeight: 600, color: "#0F0F14", letterSpacing: "-0.015em" }}>
-                  Rp {Number(stats?.billing?.aiExpenseIdr || 0).toLocaleString("id-ID")}
-                </div>
-                <div style={{ fontSize: 11, color: "#71717A", fontWeight: 500, marginTop: 4 }}>
-                  Modal Provider: ${stats?.billing?.aiExpenseUsd?.toFixed(4) || "0.00"}
-                </div>
-              </div>
-
-              {/* Sisa Budget AI */}
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 30, height: 30, borderRadius: 8, background: "#EEEAFE", color: "#4338CA", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Cpu size={15} />
-                    </div>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: "#71717A" }}>Sisa Budget AI</span>
-                  </div>
-                  <span
-                    style={{
-                      background: (stats?.billing?.remainingPercent ?? 100) < 20 ? "#FFF1F2" : "#DCFCE7",
-                      color: (stats?.billing?.remainingPercent ?? 100) < 20 ? "#BE123C" : "#16A34A",
-                      fontSize: 10,
-                      fontWeight: 600,
-                      padding: "2px 7px",
-                      borderRadius: 9999,
-                    }}
-                  >
-                    {stats?.billing?.remainingPercent ?? 100}% Tersedia
-                  </span>
-                </div>
-                <div style={{ fontSize: 26, fontWeight: 600, color: "#0F0F14", letterSpacing: "-0.015em" }}>
-                  ${stats?.billing?.remainingBudgetUsd?.toFixed(2) || "50.00"}
-                </div>
-                <div style={{ fontSize: 11, color: "#71717A", fontWeight: 500, marginTop: 4 }}>
-                  Total Token Terpakai: {Number(stats?.billing?.totalTokensUsed || 0).toLocaleString()}
-                </div>
-              </div>
-            </div>
-
-            {/* Charts Row */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 16 }}>
-              {/* 1. Real 7-Day Trend Chart */}
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "20px 22px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: "#0F0F14" }}>
-                    Rangkuman Pendapatan & Beban AI (7 Hari)
-                  </h3>
-                  <span style={{ fontSize: 11, color: "#71717A" }}>Live DB Telemetry</span>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", height: 160, gap: 10, paddingBottom: 8, borderBottom: "1px solid #E4E4E9" }}>
-                  {(() => {
-                    const trends = stats?.dailyTrends || [];
-                    const maxExpense = Math.max(...trends.map((t: any) => t.expenseIdr), 100);
-
-                    return (trends.length > 0 ? trends : [
-                      { label: "1 Mei", expenseIdr: 0 },
-                      { label: "2 Mei", expenseIdr: 0 },
-                      { label: "3 Mei", expenseIdr: 0 },
-                      { label: "4 Mei", expenseIdr: 0 },
-                      { label: "5 Mei", expenseIdr: 0 },
-                      { label: "6 Mei", expenseIdr: 0 },
-                      { label: "Hari ini", expenseIdr: 0 },
-                    ]).map((bar: any, idx: number) => {
-                      const heightPercent = bar.expenseIdr > 0 ? Math.max(15, Math.min(100, Math.round((bar.expenseIdr / maxExpense) * 100))) : 8;
-                      return (
-                        <div key={idx} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }}>
-                          <div
-                            title={`Rp ${Number(bar.expenseIdr || 0).toLocaleString()} (${bar.callsCount || 0} calls)`}
-                            style={{
-                              width: "100%",
-                              maxWidth: 28,
-                              height: `${heightPercent}%`,
-                              borderRadius: "4px 4px 0 0",
-                              background: bar.expenseIdr > 0 ? "#4338CA" : "#E4E4E9",
-                              transition: "height 0.3s ease",
-                            }}
-                          />
-                          <span style={{ fontSize: 9.5, color: "#71717A", marginTop: 6, textAlign: "center", whiteSpace: "nowrap" }}>
-                            {bar.label}
-                          </span>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-
-              {/* 2. Model AI Donut (Free vs Paid Real Ratio) */}
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: "#0F0F14" }}>
-                    Rasio Panggilan Model AI (Free vs Paid)
-                  </h3>
-                  <span style={{ fontSize: 11, color: "#71717A" }}>Real-Time</span>
-                </div>
-
-                {(() => {
-                  const freeCalls = stats?.billing?.totalFreeCalls || 0;
-                  const paidCalls = stats?.billing?.totalPaidCalls || 0;
-                  const totalCalls = freeCalls + paidCalls;
-                  const freePercent = totalCalls > 0 ? Math.round((freeCalls / totalCalls) * 100) : 75;
-                  const paidPercent = 100 - freePercent;
-
-                  return (
-                    <>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", position: "relative", height: 120 }}>
-                        <svg width="110" height="110" viewBox="0 0 36 36">
-                          <circle cx="18" cy="18" r="14" fill="none" stroke="#F7F7FB" strokeWidth="4" />
-                          <circle
-                            cx="18"
-                            cy="18"
-                            r="14"
-                            fill="none"
-                            stroke="#16A34A"
-                            strokeWidth="4"
-                            strokeDasharray={`${freePercent} 100`}
-                            strokeDashoffset="25"
-                          />
-                          <circle
-                            cx="18"
-                            cy="18"
-                            r="14"
-                            fill="none"
-                            stroke="#4338CA"
-                            strokeWidth="4"
-                            strokeDasharray={`${paidPercent} 100`}
-                            strokeDashoffset={`${25 + freePercent}`}
-                          />
-                        </svg>
-                        <div style={{ position: "absolute", textAlign: "center", fontSize: 11, fontWeight: 600, color: "#0F0F14" }}>
-                          {totalCalls}<br />
-                          <span style={{ fontSize: 9, color: "#71717A", fontWeight: 400 }}>Panggilan</span>
-                        </div>
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#16A34A" }} />
-                          <span style={{ color: "#0F0F14", fontWeight: 500 }}>Groq Free Tier ($0 HPP)</span>
-                          <span style={{ marginLeft: "auto", color: "#71717A" }}>{freeCalls} kali ({freePercent}%)</span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#4338CA" }} />
-                          <span style={{ color: "#0F0F14", fontWeight: 500 }}>Maia / DeepSeek Paid Tier</span>
-                          <span style={{ marginLeft: "auto", color: "#71717A" }}>{paidCalls} kali ({paidPercent}%)</span>
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-
-            {/* Bottom Row: Recent 10 Database AI Activities Table */}
-            <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, overflow: "hidden" }}>
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid #E4E4E9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: "#0F0F14" }}>
-                  Aktivitas AI & Konsumsi Kredit Terkini
-                </h3>
-                <span style={{ fontSize: 11, color: "#71717A" }}>Tabel Database ai_usage_logs</span>
-              </div>
-
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 12.5 }}>
-                  <thead>
-                    <tr style={{ background: "#F7F7FB", borderBottom: "1px solid #E4E4E9", color: "#3F3F46", fontWeight: 500 }}>
-                      <th style={{ padding: "10px 16px" }}>Timestamp</th>
-                      <th style={{ padding: "10px 14px" }}>Pengguna</th>
-                      <th style={{ padding: "10px 14px" }}>Fitur Riset</th>
-                      <th style={{ padding: "10px 14px" }}>Model</th>
-                      <th style={{ padding: "10px 14px" }}>Tokens</th>
-                      <th style={{ padding: "10px 14px" }}>Kredit</th>
-                      <th style={{ padding: "10px 16px" }}>Profit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(stats?.recentLogs || []).length === 0 ? (
-                      <tr>
-                        <td colSpan={7} style={{ textAlign: "center", padding: "24px 16px", color: "#71717A" }}>
-                          Belum ada aktivitas AI yang tercatat di database.
-                        </td>
-                      </tr>
-                    ) : (
-                      (stats?.recentLogs || []).map((log: any) => (
-                        <tr key={log.id} style={{ borderBottom: "1px solid #EFEFF3" }}>
-                          <td style={{ padding: "10px 16px", color: "#71717A", fontSize: 11.5 }}>
-                            {new Date(log.timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-                          </td>
-                          <td style={{ padding: "10px 14px", fontWeight: 500, color: "#0F0F14" }}>
-                            {log.userEmail}
-                          </td>
-                          <td style={{ padding: "10px 14px", color: "#71717A" }}>
-                            {log.featureLabel}
-                          </td>
-                          <td style={{ padding: "10px 14px", color: "#71717A" }}>
-                            {log.modelName}
-                          </td>
-                          <td style={{ padding: "10px 14px", fontFamily: "monospace", fontSize: 11.5 }}>
-                            {log.inputTokens + log.outputTokens}
-                          </td>
-                          <td style={{ padding: "10px 14px", fontWeight: 600, color: "#0F0F14" }}>
-                            {log.isFreeTier ? <span style={{ color: "#16A34A" }}>0 (Free)</span> : `${log.creditsCharged} koin`}
-                          </td>
-                          <td style={{ padding: "10px 16px" }}>
-                            <span style={{ background: "#DCFCE7", color: "#16A34A", fontSize: 10.5, fontWeight: 600, padding: "2px 6px", borderRadius: 9999 }}>
-                              +${log.profitUsd?.toFixed(5) || "0.00000"}
-                            </span>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════════════
-            TAB 4: SECRET KEYS
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "SECRETS" && (
-          <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "20px 24px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-              <div>
-                <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
-                  Database Secret Keys
-                </h3>
-                <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
-                  Semua secret terenkripsi standar AES-256 dan disinkronkan otomatis ke AiModelConfig
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCurlModal(true)}
-                style={{ background: "#F7F7FB", color: "#3F3F46", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}
-              >
-                Import cURL
-              </button>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {configs.map((c) => (
-                <div key={c.id} style={{ background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div>
-                    <div style={{ fontWeight: 600, color: "#0F0F14", fontSize: 13 }}>{c.key}</div>
-                    <div style={{ fontSize: 11.5, color: "#71717A" }}>{c.description}</div>
-                  </div>
-                  <code style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", padding: "4px 8px", borderRadius: 6, fontSize: 11.5, color: "#3F3F46" }}>
-                    {c.maskedValue}
-                  </code>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════════════
-            TAB 5: USERS
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "USERS" && (
-          <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, overflow: "hidden" }}>
-            <div style={{ padding: "18px 22px", borderBottom: "1px solid #E4E4E9" }}>
-              <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
-                Daftar Pengguna
-              </h3>
-              <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
-                Kelola hak akses role pengguna dan saldo kredit
-              </p>
-            </div>
-
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ background: "#F7F7FB", borderBottom: "1px solid #E4E4E9", color: "#3F3F46", fontWeight: 500 }}>
-                    <th style={{ padding: "12px 18px" }}>Nama</th>
-                    <th style={{ padding: "12px 14px" }}>Email</th>
-                    <th style={{ padding: "12px 14px" }}>Role</th>
-                    <th style={{ padding: "12px 14px" }}>Kredit</th>
-                    <th style={{ padding: "12px 18px", textAlign: "right" }}>Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usersList.map((u) => (
-                    <tr key={u.id} style={{ borderBottom: "1px solid #EFEFF3" }}>
-                      <td style={{ padding: "12px 18px", fontWeight: 600, color: "#0F0F14" }}>{u.name}</td>
-                      <td style={{ padding: "12px 14px", color: "#71717A" }}>{u.email}</td>
-                      <td style={{ padding: "12px 14px" }}>
-                        <span
-                          style={{
-                            background: u.role === "ADMIN" ? "#EEEAFE" : "#DCFCE7",
-                            color: u.role === "ADMIN" ? "#4338CA" : "#16A34A",
-                            fontSize: 11,
-                            fontWeight: 500,
-                            padding: "2px 7px",
-                            borderRadius: 9999,
-                          }}
-                        >
-                          {u.role}
-                        </span>
-                      </td>
-                      <td style={{ padding: "12px 14px", fontWeight: 600, color: "#0F0F14" }}>
-                        {u.totalCredits || 0}
-                      </td>
-                      <td style={{ padding: "12px 18px", textAlign: "right" }}>
-                        <button
-                          onClick={() => handleToggleUserRole(u.id, u.role)}
-                          style={{
-                            background: "#F7F7FB",
-                            border: "1px solid #E4E4E9",
-                            borderRadius: 6,
-                            padding: "4px 8px",
+                            border: "none",
                             fontSize: 11.5,
-                            fontWeight: 500,
+                            fontWeight: 700,
                             cursor: "pointer",
-                            color: "#4338CA",
+                            background: templatePreviewMode === "JOURNAL_FLOW" ? "#FFFFFF" : "transparent",
+                            color: templatePreviewMode === "JOURNAL_FLOW" ? "#4338CA" : "#64748B",
+                            boxShadow: templatePreviewMode === "JOURNAL_FLOW" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
                           }}
                         >
-                          Ubah ke {u.role === "ADMIN" ? "USER" : "ADMIN"}
+                          Naskah Mengalir (A4)
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+                        <button
+                          type="button"
+                          onClick={() => setTemplatePreviewMode("LATEX_CODE")}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: 6,
+                            border: "none",
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            background: templatePreviewMode === "LATEX_CODE" ? "#FFFFFF" : "transparent",
+                            color: templatePreviewMode === "LATEX_CODE" ? "#4338CA" : "#64748B",
+                            boxShadow: templatePreviewMode === "LATEX_CODE" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                          }}
+                        >
+                          Source .tex
+                        </button>
+                      </div>
 
-        {/* ════════════════════════════════════════════════════════════════════════
-            TAB 6: LIBRARY & LATEX TEMPLATES MANAGEMENT (WITH LIVE PREVIEW)
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "TEMPLATES_LIBRARY" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            {/* Header Section & Action Toolbar */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <FileCode size={20} color="#4338CA" />
-                  <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
-                    Library Master Template & LaTeX Engine
-                  </h2>
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 9999, background: "#EEEAFE", color: "#4338CA" }}>
-                    {templatesList.length} Template Terdaftar
-                  </span>
-                </div>
-                <p style={{ fontSize: 13, color: "#71717A", margin: "3px 0 0" }}>
-                  Kustomisasi struktur bab, konfigurasi preamble LaTeX, aturan margin, dan pantau live visual render dokumen A4 secara real-time.
-                </p>
-              </div>
+                      {/* Zoom Controls */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 2, background: "#F8FAFC", border: "1px solid #CBD5E1", borderRadius: 6, padding: "2px 6px" }}>
+                        <button
+                          type="button"
+                          onClick={() => setTemplatePreviewZoom((z) => Math.max(70, z - 10))}
+                          style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, color: "#475569" }}
+                          title="Perkecil"
+                        >
+                          <ZoomOut size={13} />
+                        </button>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#334155", minWidth: 36, textAlign: "center" }}>
+                          {templatePreviewZoom}%
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setTemplatePreviewZoom((z) => Math.min(130, z + 10))}
+                          style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, color: "#475569" }}
+                          title="Perbesar"
+                        >
+                          <ZoomIn size={13} />
+                        </button>
+                      </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  onClick={handleResetToDefaultFif}
-                  style={{
-                    background: "#F7F7FB",
-                    color: "#3F3F46",
-                    border: "1px solid #E4E4E9",
-                    borderRadius: 8,
-                    padding: "7px 12px",
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                  title="Kembalikan ke Master Standar Telkom FIF"
-                >
-                  <Undo size={13} />
-                  <span>Reset Standar FIF</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCloneCurrentTemplate}
-                  style={{
-                    background: "#F7F7FB",
-                    color: "#3F3F46",
-                    border: "1px solid #E4E4E9",
-                    borderRadius: 8,
-                    padding: "7px 12px",
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <Copy size={13} />
-                  <span>Duplikasi</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCreateNewTemplate}
-                  style={{
-                    background: "#F7F7FB",
-                    color: "#3F3F46",
-                    border: "1px solid #E4E4E9",
-                    borderRadius: 8,
-                    padding: "7px 12px",
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <Plus size={13} />
-                  <span>+ Template Baru</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSaveCurrentTemplate}
-                  disabled={savingTemplate}
-                  style={{
-                    background: "#4338CA",
-                    color: "#FFFFFF",
-                    border: "none",
-                    borderRadius: 8,
-                    padding: "7px 16px",
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    boxShadow: "0 2px 8px rgba(67, 56, 202, 0.25)",
-                  }}
-                >
-                  {savingTemplate ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
-                  <span>{savingTemplate ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Template Catalog Selector Strip */}
-            <div style={{ background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 12, padding: "14px 16px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "#0F0F14" }}>Pilih Template Aktif:</span>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    {(["ALL", "LATEX", "TELKOM", "KUANTITATIF"] as const).map((cat) => (
                       <button
-                        key={cat}
                         type="button"
-                        onClick={() => setTemplateCategoryFilter(cat)}
+                        onClick={handleDownloadTex}
                         style={{
-                          padding: "3px 9px",
+                          padding: "5px 9px",
                           borderRadius: 6,
+                          border: "1px solid #CBD5E1",
+                          background: "#FFFFFF",
                           fontSize: 11,
                           fontWeight: 600,
-                          border: templateCategoryFilter === cat ? "1px solid #4338CA" : "1px solid #E4E4E9",
-                          background: templateCategoryFilter === cat ? "#EEEAFE" : "#FFFFFF",
-                          color: templateCategoryFilter === cat ? "#4338CA" : "#71717A",
+                          color: "#334155",
                           cursor: "pointer",
-                        }}
-                      >
-                        {cat === "ALL" ? "Semua" : cat === "LATEX" ? "LaTeX Master" : cat === "TELKOM" ? "Telkom University" : "Kuantitatif"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 8, padding: "4px 10px", width: 260 }}>
-                  <Search size={13} color="#94A3B8" />
-                  <input
-                    type="text"
-                    placeholder="Cari nama template / prodi..."
-                    value={templateSearchQuery}
-                    onChange={(e) => setTemplateSearchQuery(e.target.value)}
-                    style={{ border: "none", outline: "none", fontSize: 12, width: "100%", color: "#0F0F14" }}
-                  />
-                </div>
-              </div>
-
-              {/* Template Cards Grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
-                {templatesList
-                  .filter((t) => {
-                    const matchSearch = (t.name || "").toLowerCase().includes(templateSearchQuery.toLowerCase()) || (t.sourceFaculty || "").toLowerCase().includes(templateSearchQuery.toLowerCase());
-                    if (!matchSearch) return false;
-                    if (templateCategoryFilter === "LATEX") return t.isLatex || t.documentClass;
-                    if (templateCategoryFilter === "TELKOM") return (t.university || "").includes("Telkom") || (t.name || "").includes("Telkom") || (t.sourceFaculty || "").includes("FIF");
-                    if (templateCategoryFilter === "KUANTITATIF") return (t.name || "").toLowerCase().includes("kuantitatif") || (t.code || "").includes("KUANTITATIF");
-                    return true;
-                  })
-                  .map((t) => {
-                    const isSelected = selectedTemplateId === t.id;
-                    return (
-                      <div
-                        key={t.id}
-                        onClick={() => handleSelectTemplate(t)}
-                        style={{
-                          padding: "12px 14px",
-                          borderRadius: 10,
-                          border: isSelected ? "2px solid #4338CA" : "1px solid #E4E4E9",
-                          background: isSelected ? "#FFFFFF" : "#FAFAFC",
-                          boxShadow: isSelected ? "0 4px 14px rgba(67, 56, 202, 0.12)" : "none",
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: isSelected ? "#EEEAFE" : "#F1F5F9", color: isSelected ? "#4338CA" : "#64748B" }}>
-                              {t.code || (t.isLatex ? "LATEX" : "DOCX")}
-                            </span>
-                            {t.isDefault && (
-                              <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#DCFCE7", color: "#16A34A" }}>
-                                Standar Resmi
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: "#0F0F14", lineHeight: 1.4, marginBottom: 4 }}>
-                            {t.name}
-                          </div>
-                          <div style={{ fontSize: 11.5, color: "#71717A" }}>
-                            {t.sourceFaculty || "Fakultas"} • {t.university || "Universitas"}
-                          </div>
-                        </div>
-
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, paddingTop: 8, borderTop: "1px solid #EFEFF3", fontSize: 11, color: "#94A3B8" }}>
-                          <span>{t.sections?.length || 0} Bagian / Bab</span>
-                          {isSelected && <span style={{ color: "#4338CA", fontWeight: 700 }}>● Aktif Mengedit</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-
-            {/* Master Customizer & Live Dual-Mode Split-Screen Layout */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1.1fr", gap: 20, alignItems: "start" }}>
-              {/* ── LEFT COLUMN: TEMPLATE CUSTOMIZER & LATEX/DOCX CONFIGURATOR ── */}
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 14, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 18 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #EFEFF3", paddingBottom: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <SlidersHorizontal size={16} color="#4338CA" />
-                    <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
-                      Editor Konfigurasi Template
-                    </h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteCurrentTemplate(templateEditForm.id)}
-                    style={{ background: "transparent", border: "none", color: "#EF4444", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
-                  >
-                    <Trash2 size={13} />
-                    <span>Hapus Template</span>
-                  </button>
-                </div>
-
-                {/* Sub-Tab Navigation: Form vs Tulis LaTeX Mentah vs Variabel */}
-                <div style={{ display: "flex", gap: 6, background: "#F1F5F9", padding: 4, borderRadius: 10, border: "1px solid #E2E8F0" }}>
-                  <button
-                    type="button"
-                    onClick={() => setSplitEditorTab("FORM")}
-                    style={{
-                      flex: 1,
-                      padding: "7px 10px",
-                      borderRadius: 7,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      border: "none",
-                      background: splitEditorTab === "FORM" ? "#FFFFFF" : "transparent",
-                      color: splitEditorTab === "FORM" ? "#4338CA" : "#64748B",
-                      boxShadow: splitEditorTab === "FORM" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <Sliders size={13} />
-                    <span>Form & Bab</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSplitEditorTab("RAW_LATEX");
-                      if (!templateEditForm.rawLatex) {
-                        setTemplateEditForm({
-                          ...templateEditForm,
-                          rawLatex: generateLatexFromTemplate(templateEditForm),
-                        });
-                      }
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: "7px 10px",
-                      borderRadius: 7,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      border: "none",
-                      background: splitEditorTab === "RAW_LATEX" ? "#FFFFFF" : "transparent",
-                      color: splitEditorTab === "RAW_LATEX" ? "#4338CA" : "#64748B",
-                      boxShadow: splitEditorTab === "RAW_LATEX" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <Code size={13} />
-                    <span>Tulis LaTeX Mentah</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSplitEditorTab("VARIABLES")}
-                    style={{
-                      flex: 1,
-                      padding: "7px 10px",
-                      borderRadius: 7,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      border: "none",
-                      background: splitEditorTab === "VARIABLES" ? "#FFFFFF" : "transparent",
-                      color: splitEditorTab === "VARIABLES" ? "#4338CA" : "#64748B",
-                      boxShadow: splitEditorTab === "VARIABLES" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <Layers size={13} />
-                    <span>Variabel ({templateEditForm.variables?.length || 0})</span>
-                  </button>
-                </div>
-
-                {/* TAB 1: FORMULIR & STRUKTUR BAB */}
-                {splitEditorTab === "FORM" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    {/* Format Type Selector Switcher */}
-                    <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>Format Dokumen:</div>
-                    <div style={{ fontSize: 11, color: "#64748B" }}>Tentukan mesin render dokumen template ini</div>
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setTemplateEditForm({
-                          ...templateEditForm,
-                          formatType: "LATEX",
-                          isLatex: true,
-                        })
-                      }
-                      style={{
-                        padding: "5px 12px",
-                        borderRadius: 7,
-                        fontSize: 12,
-                        fontWeight: 700,
-                        border: (templateEditForm.formatType === "LATEX" || templateEditForm.isLatex) ? "1.5px solid #4338CA" : "1px solid #CBD5E1",
-                        background: (templateEditForm.formatType === "LATEX" || templateEditForm.isLatex) ? "#EEEAFE" : "#FFFFFF",
-                        color: (templateEditForm.formatType === "LATEX" || templateEditForm.isLatex) ? "#4338CA" : "#64748B",
-                        cursor: "pointer",
-                      }}
-                    >
-                      LaTeX (.tex / .zip)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setTemplateEditForm({
-                          ...templateEditForm,
-                          formatType: "DOCX",
-                          isLatex: false,
-                        })
-                      }
-                      style={{
-                        padding: "5px 12px",
-                        borderRadius: 7,
-                        fontSize: 12,
-                        fontWeight: 700,
-                        border: templateEditForm.formatType === "DOCX" ? "1.5px solid #2563EB" : "1px solid #CBD5E1",
-                        background: templateEditForm.formatType === "DOCX" ? "#EFF6FF" : "#FFFFFF",
-                        color: templateEditForm.formatType === "DOCX" ? "#2563EB" : "#64748B",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Word (.docx)
-                    </button>
-                  </div>
-                </div>
-
-                {/* 1. Identitas & Info Kampus */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
-                    1. Identitas Template & Lembaga
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
-                      Nama Template:
-                    </label>
-                    <input
-                      type="text"
-                      value={templateEditForm.name || ""}
-                      onChange={(e) => setTemplateEditForm({ ...templateEditForm, name: e.target.value })}
-                      style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 13 }}
-                    />
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <div>
-                      <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
-                        Fakultas:
-                      </label>
-                      <input
-                        type="text"
-                        value={templateEditForm.sourceFaculty || ""}
-                        onChange={(e) => setTemplateEditForm({ ...templateEditForm, sourceFaculty: e.target.value })}
-                        style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12.5 }}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
-                        Universitas:
-                      </label>
-                      <input
-                        type="text"
-                        value={templateEditForm.university || ""}
-                        onChange={(e) => setTemplateEditForm({ ...templateEditForm, university: e.target.value })}
-                        style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12.5 }}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
-                      Deskripsi / Pedoman Singkat:
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={templateEditForm.description || ""}
-                      onChange={(e) => setTemplateEditForm({ ...templateEditForm, description: e.target.value })}
-                      style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12, resize: "vertical" }}
-                    />
-                  </div>
-                </div>
-
-                {/* 2. Upload Paket Berkas Template (.ZIP / .DOCX) */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
-                    2. Unggah Berkas Paket Template ({templateEditForm.formatType === "DOCX" ? ".DOCX" : ".ZIP LaTeX"})
-                  </div>
-                  <label
-                    style={{
-                      border: "2px dashed #CBD5E1",
-                      borderRadius: 10,
-                      padding: "16px 14px",
-                      textAlign: "center",
-                      cursor: "pointer",
-                      background: uploadedPackageFile ? "#F0FDF4" : "#FAFAFC",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <input
-                      type="file"
-                      accept={templateEditForm.formatType === "DOCX" ? ".docx" : ".zip,.tex"}
-                      style={{ display: "none" }}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setUploadedPackageFile({
-                            name: file.name,
-                            size: `${(file.size / 1024).toFixed(1)} KB`,
-                            type: file.type || file.name.split(".").pop() || "",
-                          });
-                          notify.success("Paket Berkas Dipilih!", `Berkas ${file.name} siap di-package ke engine template.`);
-                        }
-                      }}
-                    />
-                    <UploadCloud size={24} color={uploadedPackageFile ? "#16A34A" : "#64748B"} />
-                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "#1E293B" }}>
-                      {uploadedPackageFile ? uploadedPackageFile.name : "Klik atau seret berkas paket template ke sini"}
-                    </div>
-                    <div style={{ fontSize: 11, color: "#64748B" }}>
-                      {uploadedPackageFile
-                        ? `Ukuran: ${uploadedPackageFile.size} • Terverifikasi & Siap Dipakai`
-                        : templateEditForm.formatType === "DOCX"
-                        ? "Mendukung berkas Microsoft Word .docx template"
-                        : "Mendukung arsip ZIP paket Overleaf/LaTeX lengkap (.tex, .cls, .sty, logo.png)"}
-                    </div>
-                  </label>
-                </div>
-
-                {/* 3. Variabel In-Place Template */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
-                      3. Variabel In-Place Template ({templateEditForm.variables?.length || 0} Variabel)
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {(templateEditForm.variables || [
-                      { key: "TITLE", label: "Judul", varType: "TEXT" },
-                      { key: "AUTHOR", label: "Penulis", varType: "TEXT" },
-                      { key: "NIM", label: "NIM", varType: "TEXT" },
-                      { key: "PRODI", label: "Prodi", varType: "TEXT" },
-                      { key: "FAKULTAS", label: "Fakultas", varType: "TEXT" },
-                      { key: "UNIVERSITAS", label: "Universitas", varType: "TEXT" },
-                      { key: "LOGO", label: "Logo", varType: "IMAGE" },
-                    ]).map((v: any, idx: number) => (
-                      <span
-                        key={idx}
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 700,
-                          padding: "3px 8px",
-                          borderRadius: 6,
-                          background: v.varType === "IMAGE" ? "#FEF3C7" : "#F1F5F9",
-                          color: v.varType === "IMAGE" ? "#B45309" : "#334155",
-                          border: "1px solid #E2E8F0",
                           display: "inline-flex",
                           alignItems: "center",
                           gap: 4,
                         }}
+                        title="Download source berkas template"
                       >
-                        <code>\{v.key}</code>
-                        <span style={{ fontSize: 9.5, opacity: 0.7 }}>({v.label || v.key})</span>
-                      </span>
-                    ))}
+                        <Download size={12} />
+                        <span>Unduh</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Add Variable Quick Form */}
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input
-                      type="text"
-                      placeholder="KEY (e.g. KOTA)"
-                      value={newVariableKey}
-                      onChange={(e) => setNewVariableKey(e.target.value.toUpperCase())}
-                      style={{ width: 110, padding: "5px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11, fontFamily: "monospace" }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Label Variabel..."
-                      value={newVariableLabel}
-                      onChange={(e) => setNewVariableLabel(e.target.value)}
-                      style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11 }}
-                    />
-                    <select
-                      value={newVariableType}
-                      onChange={(e) => setNewVariableType(e.target.value as any)}
-                      style={{ padding: "5px 6px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11 }}
-                    >
-                      <option value="TEXT">TEXT</option>
-                      <option value="IMAGE">IMAGE</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!newVariableKey.trim()) return;
-                        const newV = {
-                          key: newVariableKey.trim(),
-                          label: newVariableLabel.trim() || newVariableKey.trim(),
-                          varType: newVariableType,
-                          required: true,
-                          defaultValue: "",
-                        };
-                        const currentVars = templateEditForm.variables || [];
-                        setTemplateEditForm({
-                          ...templateEditForm,
-                          variables: [...currentVars, newV],
-                        });
-                        setNewVariableKey("");
-                        setNewVariableLabel("");
-                        notify.success("Variabel Ditambahkan", `Variabel \\${newV.key} siap digunakan.`);
+                  {/* ── CONTINUOUS VERTICAL JOURNAL FLOW PREVIEW ── */}
+                  {templatePreviewMode === "JOURNAL_FLOW" && (
+                    <div
+                      style={{
+                        background: "#525659",
+                        borderRadius: 10,
+                        padding: "24px 16px",
+                        overflowY: "auto",
+                        maxHeight: "calc(100vh - 220px)",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 24,
                       }}
-                      style={{ background: "#4338CA", color: "#FFFFFF", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                     >
-                      + Tambah
-                    </button>
-                  </div>
-                </div>
-
-                {/* 4. Format Margin & Document Class */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
-                    4. Spesifikasi Dokumen & Kaidah Margin
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <div>
-                      <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
-                        Preset Margin Naskah:
-                      </label>
-                      <select
-                        value={templateEditForm.marginPreset || "4333"}
-                        onChange={(e) =>
-                          setTemplateEditForm({
-                            ...templateEditForm,
-                            marginPreset: e.target.value,
-                            margins: e.target.value === "4433" ? { top: "4cm", bottom: "3cm", left: "4cm", right: "3cm" } : { top: "3cm", bottom: "3cm", left: "4cm", right: "3cm" },
-                          })
-                        }
-                        style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12.5 }}
+                      <div
+                        style={{
+                          transform: `scale(${templatePreviewZoom / 100})`,
+                          transformOrigin: "top center",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 24,
+                          width: "100%",
+                          maxWidth: "185mm",
+                        }}
                       >
-                        <option value="4333">4-3-3-3 (Kiri 4cm, Atas 3cm, Kanan 3cm, Bawah 3cm)</option>
-                        <option value="4433">4-4-3-3 (Kiri 4cm, Atas 4cm, Kanan 3cm, Bawah 3cm)</option>
-                      </select>
-                    </div>
+                        {/* ══ IEEE TRANSACTIONS / CONFERENCE TWO-COLUMN PREVIEW ══ */}
+                        {(templateEditForm.documentClass?.toLowerCase().includes("ieeetran") || templateEditForm.name?.toLowerCase().includes("ieee") || templateEditForm.rawLatex?.toLowerCase().includes("ieeetran")) ? (
+                          <div
+                            style={{
+                              width: "100%",
+                              minHeight: "270mm",
+                              background: "#FFFFFF",
+                              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                              padding: "2.5cm 2cm 2.5cm 2cm",
+                              fontFamily: '"Times New Roman", Times, serif',
+                              color: "#000000",
+                              boxSizing: "border-box",
+                              position: "relative",
+                            }}
+                          >
+                            <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#4338CA", fontFamily: "sans-serif", fontWeight: 700, background: "#EEF2FF", padding: "2px 6px", borderRadius: 4 }}>
+                              ⚡ IEEEtran Two-Column Flow
+                            </div>
 
-                    <div>
-                      <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
-                        {templateEditForm.formatType === "DOCX" ? "Paper Standard:" : "LaTeX Document Class:"}
-                      </label>
-                      <input
-                        type="text"
-                        value={templateEditForm.documentClass || (templateEditForm.formatType === "DOCX" ? "A4 210x297mm Standard" : "\\documentclass[a4paper,12pt,oneside]{book}")}
-                        onChange={(e) => setTemplateEditForm({ ...templateEditForm, documentClass: e.target.value })}
-                        style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12, fontFamily: "monospace" }}
-                      />
-                    </div>
-                  </div>
+                            {/* IEEE Header Note */}
+                            <div style={{ fontSize: "8.5pt", color: "#64748B", fontStyle: "italic", borderBottom: "0.5px solid #CBD5E1", paddingBottom: 4, marginBottom: 16 }}>
+                              2026 IEEE International Conference on Academic Intelligence & Computing Systems (ICAICS)
+                            </div>
 
-                  {(templateEditForm.formatType === "LATEX" || templateEditForm.isLatex) && (
-                    <div>
-                      <label style={{ fontSize: 11.5, fontWeight: 600, color: "#334155", display: "block", marginBottom: 3 }}>
-                        LaTeX Preamble (Packages & Macro Definition):
-                      </label>
-                      <textarea
-                        rows={4}
-                        value={templateEditForm.preambleLatex || ""}
-                        onChange={(e) => setTemplateEditForm({ ...templateEditForm, preambleLatex: e.target.value })}
-                        style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 11.5, fontFamily: "monospace", color: "#0F172A", background: "#F8FAFC", resize: "vertical" }}
-                      />
+                            {/* Paper Title */}
+                            <div style={{ textAlign: "center", fontSize: "18pt", fontWeight: 700, lineHeight: 1.25, marginBottom: 14 }}>
+                              {templateEditForm.name || "DESIGN AND IMPLEMENTATION OF ACADEMIC INTELLIGENCE ENGINE"}
+                            </div>
+
+                            {/* Authors Affiliation Grid */}
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", textAlign: "center", gap: 16, marginBottom: 18, fontSize: "9.5pt" }}>
+                              <div>
+                                <div style={{ fontWeight: 700, fontSize: "10.5pt" }}>Nama Mahasiswa Peneliti</div>
+                                <div style={{ fontStyle: "italic" }}>Program Studi {templateEditForm.sourceFaculty || "Informatika"}</div>
+                                <div>{templateEditForm.university || "Telkom University"}</div>
+                                <div style={{ color: "#475569" }}>penulis@telkomuniversity.ac.id</div>
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 700, fontSize: "10.5pt" }}>Dr. Dosen Pembimbing, M.Kom.</div>
+                                <div style={{ fontStyle: "italic" }}>Fakultas {templateEditForm.sourceFaculty || "Informatika"}</div>
+                                <div>{templateEditForm.university || "Telkom University"}</div>
+                                <div style={{ color: "#475569" }}>advisor@telkomuniversity.ac.id</div>
+                              </div>
+                            </div>
+
+                            {/* Abstract Banner */}
+                            <div style={{ fontSize: "9pt", lineHeight: 1.45, textAlign: "justify", marginBottom: 16, padding: "0 10px" }}>
+                              <strong><em>Abstract</em>—{templateEditForm.description || "Makalah ini menyajikan arsitektur dan metodologi rancang bangun engine kecerdasan buatan terapan untuk sintesis akademik terstruktur. Evaluasi eksperimental menunjukkan bahwa sistem berhasil mengoptimalkan akurasi pengenalan naskah dan validasi referensi secara signifikan."}</strong>
+                              <div style={{ marginTop: 6 }}>
+                                <strong><em>Index Terms</em>—</strong><em>machine learning, software engineering, IEEEtran, academic synthesis, empirical evaluation.</em>
+                              </div>
+                            </div>
+
+                            {/* Two-Column Body Content */}
+                            <div
+                              style={{
+                                columnCount: 2,
+                                columnGap: "20px",
+                                columnRule: "0.5px solid #E2E8F0",
+                                textAlign: "justify",
+                                fontSize: "9.5pt",
+                                lineHeight: 1.45,
+                              }}
+                            >
+                              {(templateEditForm.sections || []).length > 0 ? (
+                                templateEditForm.sections.map((sec: any, sIdx: number) => {
+                                  const romanNumerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+                                  const isRef = sec.title.toLowerCase().includes("pustaka") || sec.title.toLowerCase().includes("reference");
+                                  return (
+                                    <div key={sec.id || sIdx} style={{ breakInside: "avoid-column", marginBottom: 14 }}>
+                                      <div style={{ textAlign: "center", fontWeight: 700, fontSize: "10pt", textTransform: "uppercase", letterSpacing: "0.05em", margin: "10px 0 6px" }}>
+                                        {isRef ? "REFERENCES" : `${romanNumerals[sIdx] || sIdx + 1}. ${sec.title}`}
+                                      </div>
+                                      {isRef ? (
+                                        <div style={{ fontSize: "8.5pt", display: "flex", flexDirection: "column", gap: 6 }}>
+                                          <div>[1] G. Eason, B. Noble, and I. Sneddon, "On certain integrals of Lipschitz-Hankel type," <em>Phil. Trans. Roy. Soc.</em>, 1955.</div>
+                                          <div>[2] J. Clerk Maxwell, <em>A Treatise on Electricity and Magnetism</em>, 3rd ed., Oxford: Clarendon, 1892.</div>
+                                          <div>[3] K. Elissa, "Title of paper if known," unpublished.</div>
+                                        </div>
+                                      ) : (
+                                        <div>
+                                          <p style={{ textIndent: "0.5cm", margin: "0 0 6px" }}>
+                                            {sec.guidanceText ? `${sec.guidanceText}. Pembahasan ini merumuskan metodologi komprehensif yang diuraikan secara analitik dan terintegrasi.` : "Penelitian ini diformulasikan berdasarkan telaah sistematis pada literatur terkini untuk membuktikan hipotesis empiris."}
+                                          </p>
+                                          {sIdx === 2 && (
+                                            <div style={{ border: "1px solid #CBD5E1", background: "#F8FAFC", padding: 8, margin: "8px 0", textAlign: "center", fontSize: "8.5pt" }}>
+                                              <div style={{ height: 35, display: "flex", alignItems: "center", justifyContent: "center", color: "#64748B", fontWeight: 700 }}>
+                                                [Diagram Pipeline & Arsitektur Model]
+                                              </div>
+                                              <strong>Fig. 1.</strong> Proposed End-to-End System Architecture.
+                                            </div>
+                                          )}
+                                          {sIdx === 3 && (
+                                            <div style={{ border: "1px solid #CBD5E1", margin: "8px 0", fontSize: "8pt" }}>
+                                              <div style={{ textAlign: "center", fontWeight: 700, padding: 3, background: "#F1F5F9" }}>
+                                                TABLE I: BENCHMARK ACCURACY EVALUATION
+                                              </div>
+                                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", textAlign: "center", padding: 4, borderTop: "1px solid #CBD5E1" }}>
+                                                <span><strong>Method</strong></span>
+                                                <span><strong>Precision</strong></span>
+                                                <span><strong>F1-Score</strong></span>
+                                              </div>
+                                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", textAlign: "center", padding: 3, borderTop: "0.5px solid #E2E8F0" }}>
+                                                <span>Baseline</span>
+                                                <span>87.4%</span>
+                                                <span>86.1%</span>
+                                              </div>
+                                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", textAlign: "center", padding: 3, borderTop: "0.5px solid #E2E8F0" }}>
+                                                <span><strong>Proposed</strong></span>
+                                                <span><strong>96.2%</strong></span>
+                                                <span><strong>95.8%</strong></span>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <div>Struktur bab IEEE belum dikonfigurasi.</div>
+                              )}
+                            </div>
+
+                            {/* Footer IEEE */}
+                            <div style={{ borderTop: "0.5px solid #CBD5E1", paddingTop: 8, marginTop: 24, display: "flex", justifyContent: "space-between", fontSize: "8pt", color: "#64748B" }}>
+                              <span>979-8-3503-9999-1/26/$31.00 ©2026 IEEE</span>
+                              <span>Authorized licensed use limited to Telkom University.</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {/* ══ LEMBAR 1: COVER / HALAMAN JUDUL ══ */}
+                            <div
+                              style={{
+                                width: "100%",
+                                minHeight: "260mm",
+                                background: "#FFFFFF",
+                                boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                                padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                                fontFamily: '"Times New Roman", Times, serif',
+                                color: "#000000",
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "space-between",
+                                textAlign: "center",
+                                position: "relative",
+                                boxSizing: "border-box",
+                              }}
+                            >
+                              <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                                [1 / 7] Cover
+                              </div>
+
+                              <div>
+                                <div style={{ fontSize: "14pt", fontWeight: 700, textTransform: "uppercase", lineHeight: 1.35, marginBottom: 20 }}>
+                                  {templateEditForm.name || "JUDUL PROPOSAL PENELITIAN TUGAS AKHIR"}
+                                </div>
+                                <div style={{ fontSize: "11.5pt", fontWeight: 700, color: "#334155", letterSpacing: "0.05em" }}>
+                                  PROPOSAL PENELITIAN SKRIPSI
+                                </div>
+                              </div>
+
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                                <div
+                                  style={{
+                                    width: 90,
+                                    height: 90,
+                                    border: "2px dashed #94A3B8",
+                                    borderRadius: 10,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    padding: 8,
+                                    color: "#64748B",
+                                    fontSize: 10.5,
+                                    fontWeight: 700,
+                                    textAlign: "center",
+                                    background: "#F8FAFC",
+                                  }}
+                                >
+                                  [Logo {templateEditForm.university || "Telkom"}]
+                                </div>
+                                <div style={{ fontSize: "10pt", color: "#64748B", fontStyle: "italic" }}>
+                                  \Tel-U-Logo.png / \LOGO
+                                </div>
+                              </div>
+
+                              <div>
+                                <div style={{ fontSize: "11pt", marginBottom: 6 }}>Disusun Oleh:</div>
+                                <div style={{ fontSize: "12pt", fontWeight: 700 }}>NAMA MAHASISWA</div>
+                                <div style={{ fontSize: "11pt" }}>NIM: 1301220001</div>
+                              </div>
+
+                              <div style={{ marginTop: 24, lineHeight: 1.45 }}>
+                                <div style={{ fontSize: "11pt", fontWeight: 700 }}>PROGRAM STUDI S1 INFORMATIKA</div>
+                                <div style={{ fontSize: "11pt", fontWeight: 700 }}>{templateEditForm.sourceFaculty?.toUpperCase() || "FAKULTAS INFORMATIKA"}</div>
+                                <div style={{ fontSize: "11pt", fontWeight: 700 }}>{templateEditForm.university?.toUpperCase() || "TELKOM UNIVERSITY"}</div>
+                                <div style={{ fontSize: "11pt" }}>BANDUNG</div>
+                                <div style={{ fontSize: "11pt", fontWeight: 700 }}>{new Date().getFullYear()}</div>
+                              </div>
+                            </div>
+
+                            {/* ══ LEMBAR 2: LEMBAR PENGESAHAN ══ */}
+                            <div
+                              style={{
+                                width: "100%",
+                                minHeight: "260mm",
+                                background: "#FFFFFF",
+                                boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                                padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                                fontFamily: '"Times New Roman", Times, serif',
+                                color: "#000000",
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "space-between",
+                                position: "relative",
+                                boxSizing: "border-box",
+                              }}
+                            >
+                              <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                                [2 / 7] Lembar Persetujuan
+                              </div>
+
+                              <div>
+                                <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 24 }}>
+                                  LEMBAR PENGESAHAN PROPOSAL TUGAS AKHIR
+                                </div>
+                                <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "11pt", lineHeight: 1.6 }}>
+                                  Proposal Tugas Akhir dengan judul <strong>"{templateEditForm.name}"</strong> telah disetujui dan disahkan oleh Tim Pembimbing untuk dilanjutkan ke tahap pengumpulan data dan analisis empiris.
+                                </p>
+
+                                <div style={{ marginTop: 40, display: "grid", gridTemplateColumns: "1fr 1fr", textAlign: "center", gap: 20 }}>
+                                  <div>
+                                    <div style={{ fontSize: "10.5pt" }}>Pembimbing Utama,</div>
+                                    <div style={{ height: 60 }} />
+                                    <div style={{ fontWeight: 700, fontSize: "11pt" }}>Dr. Pembimbing Utama, M.Kom.</div>
+                                    <div style={{ fontSize: "10pt" }}>NIP. 19850101201501</div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: "10.5pt" }}>Pembimbing Pendamping,</div>
+                                    <div style={{ height: 60 }} />
+                                    <div style={{ fontWeight: 700, fontSize: "11pt" }}>Co-Advisor, S.T., M.T.</div>
+                                    <div style={{ fontSize: "10pt" }}>NIP. 19900202202002</div>
+                                  </div>
+                                </div>
+
+                                <div style={{ marginTop: 40, textAlign: "center" }}>
+                                  <div style={{ fontSize: "10.5pt" }}>Mengetahui,</div>
+                                  <div style={{ fontSize: "10.5pt", fontWeight: 700 }}>Ketua Program Studi S1 Informatika</div>
+                                  <div style={{ height: 60 }} />
+                                  <div style={{ fontWeight: 700, fontSize: "11pt" }}>Dr. Erwin Budi Setiawan, S.Si., M.T.</div>
+                                  <div style={{ fontSize: "10pt" }}>NIP. 00760045</div>
+                                </div>
+                              </div>
+
+                              <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>ii</div>
+                            </div>
+
+                            {/* ══ LEMBAR 3: ABSTRAK & ABSTRACT ══ */}
+                            <div
+                              style={{
+                                width: "100%",
+                                minHeight: "260mm",
+                                background: "#FFFFFF",
+                                boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                                padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                                fontFamily: '"Times New Roman", Times, serif',
+                                color: "#000000",
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "space-between",
+                                position: "relative",
+                                boxSizing: "border-box",
+                              }}
+                            >
+                              <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                                [3 / 7] Abstrak Bilingual
+                              </div>
+
+                              <div>
+                                <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 12 }}>
+                                  ABSTRAK
+                                </div>
+                                <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.55 }}>
+                                  Penelitian ini bertujuan untuk mengkaji dan merancang solusi komprehensif berdasarkan panduan {templateEditForm.name}. Kajian diawali dengan identifikasi fenomena empiris dan penelaahan literatur terindeks untuk merumuskan kerangka pemikiran konseptual yang teruji. Data primer dikumpulkan melalui instrumen pengukuran terstruktur dan divalidasi dengan metode inferensial.
+                                </p>
+                                <div style={{ fontSize: "10pt", marginTop: 8, marginBottom: 24 }}>
+                                  <strong>Kata Kunci:</strong> <em>tugas akhir, metodologi riset, analisis data, {templateEditForm.sourceFaculty?.toLowerCase() || "informatika"}</em>
+                                </div>
+
+                                <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 12 }}>
+                                  ABSTRACT
+                                </div>
+                                <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.55, fontStyle: "italic" }}>
+                                  This research aims to investigate and design a comprehensive solution based on {templateEditForm.name} guidelines. The study begins with identifying empirical phenomena and reviewing indexed literature to establish a conceptually validated framework. Primary data is gathered using structured measurement instruments and validated through statistical inferential methods.
+                                </p>
+                                <div style={{ fontSize: "10pt", marginTop: 8 }}>
+                                  <strong>Keywords:</strong> <em>thesis, research methodology, empirical analysis, {templateEditForm.university || "telkom university"}</em>
+                                </div>
+                              </div>
+
+                              <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>iii</div>
+                            </div>
+
+                            {/* ══ LEMBAR 4: BAB I PENDAHULUAN ══ */}
+                            <div
+                              style={{
+                                width: "100%",
+                                minHeight: "260mm",
+                                background: "#FFFFFF",
+                                boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                                padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                                fontFamily: '"Times New Roman", Times, serif',
+                                color: "#000000",
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "space-between",
+                                position: "relative",
+                                boxSizing: "border-box",
+                              }}
+                            >
+                              <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                                [4 / 7] BAB I Pendahuluan
+                              </div>
+
+                              <div>
+                                <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
+                                  BAB I<br />PENDAHULUAN
+                                </div>
+
+                                <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>1.1 Latar Belakang Masalah</div>
+                                <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6, marginBottom: 12 }}>
+                                  Perkembangan teknologi komputasi dan dinamika akademik menuntut telaah riset yang memiliki landasan teoritis kokoh serta metodologi empiris teruji. Berdasarkan pedoman dari {templateEditForm.sourceFaculty || "Fakultas Informatika"}, penelitian ini memfokuskan telaah pada sintesis bukti ilmiah dari literatur primer terindeks.
+                                </p>
+
+                                <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>1.2 Rumusan Masalah</div>
+                                <ol style={{ paddingLeft: "1.27cm", margin: "0 0 12px 0", fontSize: "10.5pt", lineHeight: 1.5 }}>
+                                  <li>Bagaimana pengaruh dan signifikansi relasi antar variabel independen terhadap variabel dependen?</li>
+                                  <li>Bagaimana performa model konseptual yang dirancang bila diuji pada dataset empiris?</li>
+                                </ol>
+
+                                <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>1.3 Tujuan Penelitian</div>
+                                <ol style={{ paddingLeft: "1.27cm", margin: "0 0 12px 0", fontSize: "10.5pt", lineHeight: 1.5 }}>
+                                  <li>Menganalisis keterkaitan kausalitas antar variabel riset secara kuantitatif.</li>
+                                  <li>Menguji akurasi dan ketahanan model empiris terhadap data riil lapangan.</li>
+                                </ol>
+
+                                <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>1.4 Manfaat Penelitian</div>
+                                <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6 }}>
+                                  <strong>Manfaat Teoretis:</strong> Memperkaya khazanah keilmuan informatika. <strong>Manfaat Praktis:</strong> Sebagai acuan implementasi sistem terapan bagi praktisi di industri.
+                                </p>
+                              </div>
+
+                              <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>1</div>
+                            </div>
+
+                            {/* ══ LEMBAR 5: BAB II KAJIAN PUSTAKA ══ */}
+                            <div
+                              style={{
+                                width: "100%",
+                                minHeight: "260mm",
+                                background: "#FFFFFF",
+                                boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                                padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                                fontFamily: '"Times New Roman", Times, serif',
+                                color: "#000000",
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "space-between",
+                                position: "relative",
+                                boxSizing: "border-box",
+                              }}
+                            >
+                              <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                                [5 / 7] BAB II Kajian Pustaka & Matriks
+                              </div>
+
+                              <div>
+                                <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
+                                  BAB II<br />KAJIAN PUSTAKA DAN KERANGKA PEMIKIRAN
+                                </div>
+
+                                <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>2.1 Landasan Teori</div>
+                                <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6, marginBottom: 14 }}>
+                                  Landasan teori dibangun berdasarkan telaah literatur primer terindeks internasional (Scopus / IEEE). Teori dasar menghubungkan konsep operasional dengan variabel yang diteliti.
+                                </p>
+
+                                <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 6 }}>2.2 Matriks Penelitian Terdahulu (State-of-the-Art)</div>
+                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "9pt", marginBottom: 14 }}>
+                                  <thead>
+                                    <tr style={{ background: "#F1F5F9", borderTop: "1.5px solid #000", borderBottom: "1px solid #000" }}>
+                                      <th style={{ padding: "6px 8px", textAlign: "center" }}>No</th>
+                                      <th style={{ padding: "6px 8px", textAlign: "left" }}>Penulis & Tahun</th>
+                                      <th style={{ padding: "6px 8px", textAlign: "left" }}>Judul & Metode</th>
+                                      <th style={{ padding: "6px 8px", textAlign: "left" }}>Temuan Utama</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    <tr style={{ borderBottom: "1px solid #CBD5E1" }}>
+                                      <td style={{ padding: "6px 8px", textAlign: "center" }}>1</td>
+                                      <td style={{ padding: "6px 8px" }}>Smith et al. (2024)</td>
+                                      <td style={{ padding: "6px 8px" }}>Empirical Deep Learning</td>
+                                      <td style={{ padding: "6px 8px" }}>Akurasi klasifikasi 94.8%</td>
+                                    </tr>
+                                    <tr style={{ borderBottom: "1.5px solid #000" }}>
+                                      <td style={{ padding: "6px 8px", textAlign: "center" }}>2</td>
+                                      <td style={{ padding: "6px 8px" }}>Johnson (2023)</td>
+                                      <td style={{ padding: "6px 8px" }}>Statistical SEM-PLS</td>
+                                      <td style={{ padding: "6px 8px" }}>Hubungan kausal signifikan</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+
+                                <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>2.3 Kerangka Konseptual & Hipotesis</div>
+                                <div style={{ border: "1px solid #CBD5E1", background: "#F8FAFC", padding: 12, borderRadius: 6, textAlign: "center", fontSize: "10pt", color: "#334155" }}>
+                                  <strong>Gambar 2.1:</strong> Diagram Alur Kerangka Konseptual & Model Variabel
+                                </div>
+                              </div>
+
+                              <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>2</div>
+                            </div>
+
+                            {/* ══ LEMBAR 6: BAB III METODOLOGI PENELITIAN ══ */}
+                            <div
+                              style={{
+                                width: "100%",
+                                minHeight: "260mm",
+                                background: "#FFFFFF",
+                                boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                                padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                                fontFamily: '"Times New Roman", Times, serif',
+                                color: "#000000",
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "space-between",
+                                position: "relative",
+                                boxSizing: "border-box",
+                              }}
+                            >
+                              <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                                [6 / 7] BAB III Metodologi
+                              </div>
+
+                              <div>
+                                <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
+                                  BAB III<br />METODOLOGI PENELITIAN
+                                </div>
+
+                                <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>3.1 Desain Penelitian</div>
+                                <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6, marginBottom: 12 }}>
+                                  Penelitian ini menggunakan pendekatan kuantitatif kausal asosiatif dengan tahapan studi pustaka, formulasi hipotesis, pengembangan instrumen, dan pengujian empiris.
+                                </p>
+
+                                <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>3.2 Populasi dan Sampel</div>
+                                <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6, marginBottom: 12 }}>
+                                  Populasi sasaran mencakup pengguna sistem di lingkungan akademik dan industri, dengan teknik purposive sampling berbasis kriteria inklusi spesifik.
+                                </p>
+
+                                <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>3.3 Teknik Analisis Data</div>
+                                <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6 }}>
+                                  Analisis data dilakukan menggunakan Structural Equation Modeling (SEM) dengan evaluasi outer model (validitas konvergen, validitas diskriminan, reliabilitas komposit) dan inner model (koefisien determinasi R2 dan signifikansi uji t).
+                                </p>
+                              </div>
+
+                              <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>3</div>
+                            </div>
+
+                            {/* ══ LEMBAR 7: DAFTAR PUSTAKA ══ */}
+                            <div
+                              style={{
+                                width: "100%",
+                                minHeight: "260mm",
+                                background: "#FFFFFF",
+                                boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+                                padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
+                                fontFamily: '"Times New Roman", Times, serif',
+                                color: "#000000",
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "space-between",
+                                position: "relative",
+                                boxSizing: "border-box",
+                              }}
+                            >
+                              <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
+                                [7 / 7] Daftar Pustaka
+                              </div>
+
+                              <div>
+                                <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
+                                  DAFTAR PUSTAKA
+                                </div>
+                                <div style={{ fontSize: "10pt", lineHeight: 1.65, display: "flex", flexDirection: "column", gap: 10, textAlign: "justify" }}>
+                                  <div>[1] J. Doe and A. Smith, "Empirical Evaluation in Computing Systems," <em>IEEE Transactions on Software Engineering</em>, vol. 48, no. 2, pp. 210–225, 2024. https://doi.org/10.1109/TSE.2023.1001</div>
+                                  <div>[2] R. Johnson, "Advanced Statistical Inference with PLS-SEM," <em>Journal of Systems and Software</em>, vol. 190, pp. 111–124, 2023.</div>
+                                  <div>[3] Telkom University, <em>Buku Pedoman Pengelolaan Tugas Akhir dan Skripsi Fakultas Informatika</em>, Bandung: Telkom University Press, 2024.</div>
+                                  <div>[4] M. Hair, G. Hult, C. Ringle, and M. Sarstedt, <em>A Primer on Partial Least Squares Structural Equation Modeling (PLS-SEM)</em>, 3rd ed. Thousand Oaks: SAGE Publications, 2022.</div>
+                                </div>
+                              </div>
+
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── LATEX SOURCE CODE VIEW ── */}
+                  {templatePreviewMode === "LATEX_CODE" && (
+                    <div style={{ background: "#0F172A", borderRadius: 10, padding: 16, overflowX: "auto", maxHeight: 540, border: "1px solid #1E293B" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #334155" }}>
+                        <span style={{ fontSize: 11, color: "#94A3B8", fontFamily: "monospace" }}>
+                          main.tex & zetera-vars.tex preview
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyLatex}
+                          style={{
+                            padding: "4px 8px",
+                            borderRadius: 6,
+                            background: "#1E293B",
+                            color: "#CBD5E1",
+                            border: "1px solid #475569",
+                            fontSize: 11,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {copiedLatex ? "✓ Tersalin!" : "Salin .tex"}
+                        </button>
+                      </div>
+                      <pre style={{ margin: 0, color: "#E2E8F0", fontSize: 11.5, fontFamily: 'Consolas, Monaco, "Courier New", monospace', lineHeight: 1.55 }}>
+                        <code>{generateLatexFromTemplate(templateEditForm)}</code>
+                      </pre>
                     </div>
                   )}
                 </div>
-
-                {/* 5. Struktur Bab & Section Generator */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#64748B", letterSpacing: "0.04em" }}>
-                      5. Struktur Bab & Panduan Penulisan ({templateEditForm.sections?.length || 0} Bagian)
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newSec = {
-                          id: `sec-${Date.now()}`,
-                          order: (templateEditForm.sections?.length || 0) + 1,
-                          title: "Sub-Bab Baru",
-                          guidanceText: "Panduan instruksi penulisan...",
-                          latexSnippet: "\\section{Sub-Bab Baru}",
-                        };
-                        setTemplateEditForm({ ...templateEditForm, sections: [...(templateEditForm.sections || []), newSec] });
-                      }}
-                      style={{ background: "#EEEAFE", color: "#4338CA", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
-                    >
-                      + Tambah Bab
-                    </button>
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto", paddingRight: 4 }}>
-                    {(templateEditForm.sections || []).map((sec: any, idx: number) => (
-                      <div
-                        key={sec.id || idx}
-                        style={{
-                          border: "1px solid #E2E8F0",
-                          borderRadius: 8,
-                          padding: "10px 12px",
-                          background: "#F8FAFC",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 6,
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B" }}>
-                            #{idx + 1}
-                          </span>
-                          <input
-                            type="text"
-                            value={sec.title || ""}
-                            onChange={(e) => {
-                              const updated = [...templateEditForm.sections];
-                              updated[idx].title = e.target.value;
-                              setTemplateEditForm({ ...templateEditForm, sections: updated });
-                            }}
-                            placeholder="Judul Bagian..."
-                            style={{ flex: 1, padding: "4px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 12, fontWeight: 600 }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = templateEditForm.sections.filter((_: any, i: number) => i !== idx);
-                              setTemplateEditForm({ ...templateEditForm, sections: updated });
-                            }}
-                            style={{ background: "transparent", border: "none", color: "#EF4444", cursor: "pointer", padding: 2 }}
-                            title="Hapus bagian ini"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-
-                        <div>
-                          <input
-                            type="text"
-                            value={sec.guidanceText || ""}
-                            onChange={(e) => {
-                              const updated = [...templateEditForm.sections];
-                              updated[idx].guidanceText = e.target.value;
-                              setTemplateEditForm({ ...templateEditForm, sections: updated });
-                            }}
-                            placeholder="Panduan penulisan untuk mahasiswa..."
-                            style={{ width: "100%", padding: "4px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11.5, color: "#475569" }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
-            )}
+            </div>
+          )}
 
-                {/* TAB 2: RAW LATEX CODE IN-BROWSER LIVE EDITOR */}
-                {splitEditorTab === "RAW_LATEX" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 6 }}>
-                        Pilih Boilerplate / Preset Cepat:
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTemplateEditForm((prev: any) => ({
-                              ...prev,
-                              rawLatex: LATEX_PRESETS.IEEE_CONFERENCE,
-                              formatType: "LATEX",
-                              isLatex: true,
-                            }));
-                            const parsed = parseLatexContent(LATEX_PRESETS.IEEE_CONFERENCE);
-                            setTemplateEditForm((prev: any) => ({
-                              ...prev,
-                              documentClass: parsed.documentClass,
-                              preambleLatex: parsed.preambleLatex,
-                              sections: parsed.sections,
-                            }));
-                            notify.success("Preset IEEE Dimuat", "Format IEEE Conference siap diedit dan disinkronkan.");
-                          }}
-                          style={{
-                            padding: "8px 10px",
-                            borderRadius: 8,
-                            border: "1px solid #C7D2FE",
-                            background: "#EEF2FF",
-                            color: "#3730A3",
-                            fontSize: 11.5,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            textAlign: "left",
-                          }}
-                        >
-                          ⚡ IEEE Conf (Two-Column)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTemplateEditForm((prev: any) => ({
-                              ...prev,
-                              rawLatex: LATEX_PRESETS.TELKOM_FIF,
-                              formatType: "LATEX",
-                              isLatex: true,
-                            }));
-                            const parsed = parseLatexContent(LATEX_PRESETS.TELKOM_FIF);
-                            setTemplateEditForm((prev: any) => ({
-                              ...prev,
-                              documentClass: parsed.documentClass,
-                              preambleLatex: parsed.preambleLatex,
-                              sections: parsed.sections,
-                            }));
-                            notify.success("Preset Telkom FIF Dimuat", "Format S1 Informatika FIF Telkom University siap diedit.");
-                          }}
-                          style={{
-                            padding: "8px 10px",
-                            borderRadius: 8,
-                            border: "1px solid #E2E8F0",
-                            background: "#F8FAFC",
-                            color: "#334155",
-                            fontSize: 11.5,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            textAlign: "left",
-                          }}
-                        >
-                          ⚡ Telkom University FIF
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTemplateEditForm((prev: any) => ({
-                              ...prev,
-                              rawLatex: LATEX_PRESETS.SKRIPSI_INDONESIA,
-                              formatType: "LATEX",
-                              isLatex: true,
-                            }));
-                            const parsed = parseLatexContent(LATEX_PRESETS.SKRIPSI_INDONESIA);
-                            setTemplateEditForm((prev: any) => ({
-                              ...prev,
-                              documentClass: parsed.documentClass,
-                              preambleLatex: parsed.preambleLatex,
-                              sections: parsed.sections,
-                            }));
-                            notify.success("Preset Skripsi Standar Dimuat", "Format standar buku skripsi Indonesia siap diedit.");
-                          }}
-                          style={{
-                            padding: "8px 10px",
-                            borderRadius: 8,
-                            border: "1px solid #E2E8F0",
-                            background: "#F8FAFC",
-                            color: "#334155",
-                            fontSize: 11.5,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            textAlign: "left",
-                          }}
-                        >
-                          ⚡ Format Standar Skripsi
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTemplateEditForm((prev: any) => ({
-                              ...prev,
-                              rawLatex: LATEX_PRESETS.BLANK_LATEX,
-                              formatType: "LATEX",
-                              isLatex: true,
-                            }));
-                            notify.success("Preset Kosong Dimuat", "Silakan ketik atau tempel LaTeX kustom Anda.");
-                          }}
-                          style={{
-                            padding: "8px 10px",
-                            borderRadius: 8,
-                            border: "1px solid #E2E8F0",
-                            background: "#F8FAFC",
-                            color: "#64748B",
-                            fontSize: 11.5,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            textAlign: "left",
-                          }}
-                        >
-                          ⚡ Template Kosong
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                        <label style={{ fontSize: 11.5, fontWeight: 700, color: "#334155" }}>
-                          Editor Kode LaTeX Mentah:
-                        </label>
-                        <span style={{ fontSize: 10.5, color: "#64748B" }}>
-                          {templateEditForm.rawLatex?.length || 0} Karakter • Live Sync Preview
-                        </span>
-                      </div>
-                      <textarea
-                        rows={16}
-                        value={templateEditForm.rawLatex || ""}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setTemplateEditForm({
-                            ...templateEditForm,
-                            rawLatex: val,
-                          });
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          borderRadius: 8,
-                          border: "1px solid #CBD5E1",
-                          fontSize: 12,
-                          fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-                          color: "#0F172A",
-                          background: "#F8FAFC",
-                          lineHeight: 1.5,
-                          resize: "vertical",
-                        }}
-                        placeholder="Tulis kode LaTeX Anda di sini (\\documentclass, \\begin{document}, \\section, dll)..."
-                      />
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const code = templateEditForm.rawLatex || "";
-                          if (!code.trim()) {
-                            notify.warning("Kode Kosong", "Tuliskan kode LaTeX sebelum melakukan sinkronisasi.");
-                            return;
-                          }
-                          const parsed = parseLatexContent(code);
-                          setTemplateEditForm((prev: any) => ({
-                            ...prev,
-                            documentClass: parsed.documentClass || prev.documentClass,
-                            preambleLatex: parsed.preambleLatex || prev.preambleLatex,
-                            sections: parsed.sections.length > 0 ? parsed.sections : prev.sections,
-                            name: parsed.name && !prev.name ? parsed.name : prev.name,
-                          }));
-                          notify.success(
-                            "Struktur LaTeX Disinkronkan!",
-                            `Berhasil mengekstrak ${parsed.sections.length} bagian bab dan preamble ke form.`
-                          );
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          border: "none",
-                          background: "#4338CA",
-                          color: "#FFFFFF",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 6,
-                          boxShadow: "0 1px 4px rgba(67,56,202,0.2)",
-                        }}
-                      >
-                        <Sparkles size={14} />
-                        <span>⚡ Ekstrak ke Struktur Bab & Margin</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const code = templateEditForm.rawLatex || "";
-                          const begins = (code.match(/\\begin\{/g) || []).length;
-                          const ends = (code.match(/\\end\{/g) || []).length;
-                          if (begins === ends) {
-                            setTestCompileSuccess(true);
-                            notify.success("Uji Kompilasi Lolos", `Struktur lingkungan LaTeX seimbang (${begins} blok begin/end).`);
-                          } else {
-                            setTestCompileSuccess(false);
-                            notify.error("Peringatan Kompilasi", `Ditemukan ketidakseimbangan: ${begins} \\begin{} vs ${ends} \\end{}.`);
-                          }
-                        }}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          border: "1px solid #CBD5E1",
-                          background: "#FFFFFF",
-                          color: "#334155",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 5,
-                        }}
-                      >
-                        <Check size={14} color="#059669" />
-                        <span>Uji Kompilasi</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(templateEditForm.rawLatex || "");
-                          notify.success("Kode Tersalin!", "Kode LaTeX telah disalin ke clipboard.");
-                        }}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          border: "1px solid #CBD5E1",
-                          background: "#FFFFFF",
-                          color: "#334155",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 5,
-                        }}
-                      >
-                        <Copy size={13} />
-                        <span>Salin</span>
-                      </button>
-                    </div>
-
-                    {testCompileSuccess !== null && (
-                      <div
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          fontSize: 11.5,
-                          fontWeight: 600,
-                          background: testCompileSuccess ? "#DCFCE7" : "#FEE2E2",
-                          color: testCompileSuccess ? "#16A34A" : "#DC2626",
-                          border: testCompileSuccess ? "1px solid #86EFAC" : "1px solid #FCA5A5",
-                        }}
-                      >
-                        {testCompileSuccess
-                          ? "✓ Kompilasi LaTeX Sintaks Valid: Tidak ditemukan error struktur blok \\begin / \\end."
-                          : "⚠️ Periksa kembali pasangan \\begin{...} dan \\end{...} pada kode naskah."}
-                      </div>
-                    )}
+          {/* ════════════════════════════════════════════════════════════════════════
+            TAB 7: RESEARCH SYSTEM & CITATION EXPLORER (PROJECT & EVIDENCE BANK)
+           ════════════════════════════════════════════════════════════════════════ */}
+          {activeTab === "RESEARCH_SYSTEM" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* Header & Filter Bar */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <BookOpen size={20} color="#4338CA" />
+                    <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
+                      Sistem & Jurnal Riset (Project & Citation Explorer)
+                    </h2>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 9999, background: "#EEEAFE", color: "#4338CA" }}>
+                      {adminProjects.length} Proyek Terpantau
+                    </span>
                   </div>
-                )}
+                  <p style={{ fontSize: 13, color: "#71717A", margin: "3px 0 0" }}>
+                    Eksplorasi seluruh naskah jurnal acuan skripsi, telusuri bank bukti kutipan berpresisi halaman, dan kelola integritas sitasi mahasiswa.
+                  </p>
+                </div>
 
-                {/* TAB 3: VARIABEL & PLACEHOLDER EXPLORER */}
-                {splitEditorTab === "VARIABLES" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                    <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: 12 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1E293B", marginBottom: 4 }}>
-                        Kamus Variabel In-Place Template
-                      </div>
-                      <div style={{ fontSize: 11.5, color: "#64748B", lineHeight: 1.4 }}>
-                        Variabel berikut secara otomatis disubstitusi oleh engine Zetera saat mahasiswa melakukan generasi atau ekspor. Klik untuk menyalin token kode ke LaTeX atau DOCX.
-                      </div>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      {(templateEditForm.variables || [
-                        { key: "TITLE", label: "Judul Proposal / Skripsi", varType: "TEXT", defaultValue: "Judul Riset" },
-                        { key: "AUTHOR", label: "Nama Lengkap Mahasiswa", varType: "TEXT", defaultValue: "Nama Mahasiswa" },
-                        { key: "NIM", label: "Nomor Induk Mahasiswa", varType: "TEXT", defaultValue: "1301220001" },
-                        { key: "PRODI", label: "Program Studi", varType: "TEXT", defaultValue: "S1 Informatika" },
-                        { key: "FAKULTAS", label: "Fakultas Institusi", varType: "TEXT", defaultValue: "Fakultas Informatika" },
-                        { key: "UNIVERSITAS", label: "Universitas / Institut", varType: "TEXT", defaultValue: "Telkom University" },
-                        { key: "LOGO", label: "Logo Resmi Kampus", varType: "IMAGE", defaultValue: null },
-                      ]).map((v: any, idx: number) => (
-                        <div
-                          key={idx}
-                          onClick={() => {
-                            navigator.clipboard.writeText(`\\${v.key}`);
-                            notify.success("Token Disalin!", `Token \\${v.key} tersalin ke clipboard.`);
-                          }}
-                          style={{
-                            padding: "10px 12px",
-                            borderRadius: 8,
-                            border: "1px solid #E2E8F0",
-                            background: v.varType === "IMAGE" ? "#FFFBEB" : "#F8FAFC",
-                            cursor: "pointer",
-                            transition: "all 0.15s ease",
-                          }}
-                          title="Klik untuk menyalin token kode"
-                        >
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                            <code style={{ fontSize: 12, fontWeight: 700, color: v.varType === "IMAGE" ? "#B45309" : "#4338CA" }}>
-                              \{v.key}
-                            </code>
-                            <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 4, background: "#FFFFFF", border: "1px solid #CBD5E1", color: "#64748B" }}>
-                              {v.varType}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: 11, color: "#334155", fontWeight: 600 }}>{v.label || v.key}</div>
-                          {v.defaultValue && (
-                            <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 2 }}>Contoh: {v.defaultValue}</div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Quick Variable Adder */}
-                    <div style={{ borderTop: "1px solid #EFEFF3", paddingTop: 12 }}>
-                      <label style={{ fontSize: 11.5, fontWeight: 700, color: "#334155", display: "block", marginBottom: 6 }}>
-                        Tambah Variabel Kustom Baru:
-                      </label>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <input
-                          type="text"
-                          placeholder="KEY (e.g. KOTA)"
-                          value={newVariableKey}
-                          onChange={(e) => setNewVariableKey(e.target.value.toUpperCase().replace(/\s+/g, "_"))}
-                          style={{ width: 110, padding: "6px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11, fontFamily: "monospace" }}
-                        />
-                        <input
-                          type="text"
-                          placeholder="Label (e.g. Kota Kampus)..."
-                          value={newVariableLabel}
-                          onChange={(e) => setNewVariableLabel(e.target.value)}
-                          style={{ flex: 1, padding: "6px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11 }}
-                        />
-                        <select
-                          value={newVariableType}
-                          onChange={(e) => setNewVariableType(e.target.value as any)}
-                          style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 11 }}
-                        >
-                          <option value="TEXT">TEXT</option>
-                          <option value="IMAGE">IMAGE</option>
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!newVariableKey.trim()) return;
-                            const newV = {
-                              key: newVariableKey.trim(),
-                              label: newVariableLabel.trim() || newVariableKey.trim(),
-                              varType: newVariableType,
-                              required: true,
-                              defaultValue: "",
-                            };
-                            const currentVars = templateEditForm.variables || [];
-                            setTemplateEditForm({
-                              ...templateEditForm,
-                              variables: [...currentVars, newV],
-                            });
-                            setNewVariableKey("");
-                            setNewVariableLabel("");
-                            notify.success("Variabel Ditambahkan", `Variabel \\${newV.key} siap digunakan.`);
-                          }}
-                          style={{ background: "#4338CA", color: "#FFFFFF", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
-                        >
-                          + Tambah
-                        </button>
-                      </div>
-                    </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {/* Search Bar */}
+                  <div style={{ position: "relative", minWidth: 260 }}>
+                    <input
+                      type="text"
+                      value={projectSearchQuery}
+                      onChange={(e) => setProjectSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && fetchAdminProjects()}
+                      placeholder="Cari judul, topik, atau mahasiswa..."
+                      style={{
+                        width: "100%",
+                        padding: "7px 32px 7px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #CBD5E1",
+                        fontSize: 12.5,
+                        outline: "none",
+                        background: "#F8FAFC",
+                      }}
+                    />
+                    <Search
+                      size={14}
+                      color="#94A3B8"
+                      style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }}
+                    />
                   </div>
-                )}
 
-                {/* Bottom Action Button */}
-                <div style={{ borderTop: "1px solid #EFEFF3", paddingTop: 14 }}>
-                  <button
-                    type="button"
-                    onClick={handleSaveCurrentTemplate}
-                    disabled={savingTemplate}
+                  {/* Status Filter */}
+                  <select
+                    value={projectStatusFilter}
+                    onChange={(e) => {
+                      setProjectStatusFilter(e.target.value);
+                    }}
                     style={{
-                      width: "100%",
-                      background: "#4338CA",
-                      color: "#FFFFFF",
-                      border: "none",
-                      borderRadius: 9,
-                      padding: "10px 16px",
-                      fontSize: 13,
-                      fontWeight: 700,
+                      padding: "7px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #CBD5E1",
+                      fontSize: 12.5,
+                      background: "#FFFFFF",
+                      color: "#334155",
                       cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                      boxShadow: "0 2px 10px rgba(67, 56, 202, 0.25)",
                     }}
                   >
-                    {savingTemplate ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />}
-                    <span>{savingTemplate ? "Menyimpan ke Database..." : "Simpan Perubahan Template"}</span>
+                    <option value="ALL">Semua Status</option>
+                    <option value="ACTIVE">Aktif</option>
+                    <option value="COMPLETED">Selesai</option>
+                    <option value="ARCHIVED">Diarsipkan</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={fetchAdminProjects}
+                    disabled={loadingProjects}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "7px 14px",
+                      borderRadius: 8,
+                      background: "#4338CA",
+                      color: "#FFFFFF",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      border: "none",
+                      cursor: loadingProjects ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    <RefreshCw size={13} className={loadingProjects ? "animate-spin" : ""} />
+                    <span>{loadingProjects ? "Memuat..." : "Refresh"}</span>
                   </button>
                 </div>
               </div>
 
-              {/* ── RIGHT COLUMN: SPLIT-SCREEN PREVIEW TAMPILAN JURNAL MENDIRIK KE BAWAH ── */}
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 14, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
-                {/* Preview Toolbar Header */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #EFEFF3", paddingBottom: 12, flexWrap: "wrap", gap: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <Eye size={18} color="#4338CA" />
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#0F0F14", lineHeight: 1.2 }}>
-                        Preview Tampilan Jurnal Mengalir
-                      </div>
-                      <div style={{ fontSize: 11, color: "#71717A" }}>
-                        Format: <span style={{ fontWeight: 700, color: "#4338CA" }}>{templateEditForm.formatType || (templateEditForm.isLatex ? "LATEX" : "DOCX")}</span> • Margin: {templateEditForm.marginPreset === "4433" ? "4-4-3-3" : "4-3-3-3"}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Mode & Zoom Controls */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {/* View Mode Toggle */}
-                    <div style={{ display: "flex", background: "#F1F5F9", padding: 2, borderRadius: 7, border: "1px solid #E2E8F0" }}>
-                      <button
-                        type="button"
-                        onClick={() => setTemplatePreviewMode("JOURNAL_FLOW")}
-                        style={{
-                          padding: "4px 10px",
-                          borderRadius: 6,
-                          border: "none",
-                          fontSize: 11.5,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          background: templatePreviewMode === "JOURNAL_FLOW" ? "#FFFFFF" : "transparent",
-                          color: templatePreviewMode === "JOURNAL_FLOW" ? "#4338CA" : "#64748B",
-                          boxShadow: templatePreviewMode === "JOURNAL_FLOW" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                        }}
-                      >
-                        Naskah Mengalir (A4)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTemplatePreviewMode("LATEX_CODE")}
-                        style={{
-                          padding: "4px 10px",
-                          borderRadius: 6,
-                          border: "none",
-                          fontSize: 11.5,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          background: templatePreviewMode === "LATEX_CODE" ? "#FFFFFF" : "transparent",
-                          color: templatePreviewMode === "LATEX_CODE" ? "#4338CA" : "#64748B",
-                          boxShadow: templatePreviewMode === "LATEX_CODE" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                        }}
-                      >
-                        Source .tex
-                      </button>
-                    </div>
-
-                    {/* Zoom Controls */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 2, background: "#F8FAFC", border: "1px solid #CBD5E1", borderRadius: 6, padding: "2px 6px" }}>
-                      <button
-                        type="button"
-                        onClick={() => setTemplatePreviewZoom((z) => Math.max(70, z - 10))}
-                        style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, color: "#475569" }}
-                        title="Perkecil"
-                      >
-                        <ZoomOut size={13} />
-                      </button>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#334155", minWidth: 36, textAlign: "center" }}>
-                        {templatePreviewZoom}%
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setTemplatePreviewZoom((z) => Math.min(130, z + 10))}
-                        style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, color: "#475569" }}
-                        title="Perbesar"
-                      >
-                        <ZoomIn size={13} />
-                      </button>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleDownloadTex}
-                      style={{
-                        padding: "5px 9px",
-                        borderRadius: 6,
-                        border: "1px solid #CBD5E1",
-                        background: "#FFFFFF",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: "#334155",
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                      title="Download source berkas template"
-                    >
-                      <Download size={12} />
-                      <span>Unduh</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* ── CONTINUOUS VERTICAL JOURNAL FLOW PREVIEW ── */}
-                {templatePreviewMode === "JOURNAL_FLOW" && (
+              {/* If a project is selected, show detail inspector */}
+              {selectedAdminProject ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  {/* Back to list & Project Info Bar */}
                   <div
                     style={{
-                      background: "#525659",
-                      borderRadius: 10,
-                      padding: "24px 16px",
-                      overflowY: "auto",
-                      maxHeight: "calc(100vh - 220px)",
+                      background: "#F8FAFC",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: 12,
+                      padding: "16px 20px",
                       display: "flex",
                       flexDirection: "column",
-                      alignItems: "center",
-                      gap: 24,
+                      gap: 12,
                     }}
                   >
-                    <div
-                      style={{
-                        transform: `scale(${templatePreviewZoom / 100})`,
-                        transformOrigin: "top center",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 24,
-                        width: "100%",
-                        maxWidth: "185mm",
-                      }}
-                    >
-                      {/* ══ IEEE TRANSACTIONS / CONFERENCE TWO-COLUMN PREVIEW ══ */}
-                      {(templateEditForm.documentClass?.toLowerCase().includes("ieeetran") || templateEditForm.name?.toLowerCase().includes("ieee") || templateEditForm.rawLatex?.toLowerCase().includes("ieeetran")) ? (
-                        <div
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAdminProject(null);
+                          setSelectedProjectJournals([]);
+                          setSelectedProjectCitations([]);
+                        }}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          padding: "5px 12px",
+                          borderRadius: 6,
+                          border: "1px solid #CBD5E1",
+                          background: "#FFFFFF",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "#475569",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span>← Kembali ke Daftar Proyek</span>
+                      </button>
+
+                      <div style={{ display: "flex", gap: 3, background: "#FFFFFF", padding: 3, borderRadius: 8, border: "1px solid #E2E8F0" }}>
+                        <button
+                          type="button"
+                          onClick={() => setProjectExplorerTab("JOURNALS")}
                           style={{
-                            width: "100%",
-                            minHeight: "270mm",
-                            background: "#FFFFFF",
-                            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
-                            padding: "2.5cm 2cm 2.5cm 2cm",
-                            fontFamily: '"Times New Roman", Times, serif',
-                            color: "#000000",
-                            boxSizing: "border-box",
-                            position: "relative",
+                            padding: "5px 12px",
+                            borderRadius: 6,
+                            border: "none",
+                            fontSize: 12,
+                            fontWeight: projectExplorerTab === "JOURNALS" ? 700 : 500,
+                            background: projectExplorerTab === "JOURNALS" ? "#EEF2FF" : "transparent",
+                            color: projectExplorerTab === "JOURNALS" ? "#4338CA" : "#64748B",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
                           }}
                         >
-                          <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#4338CA", fontFamily: "sans-serif", fontWeight: 700, background: "#EEF2FF", padding: "2px 6px", borderRadius: 4 }}>
-                            ⚡ IEEEtran Two-Column Flow
-                          </div>
+                          <BookOpen size={13} />
+                          <span>Jurnal Acuan ({selectedProjectJournals.length})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProjectExplorerTab("CITATIONS")}
+                          style={{
+                            padding: "5px 12px",
+                            borderRadius: 6,
+                            border: "none",
+                            fontSize: 12,
+                            fontWeight: projectExplorerTab === "CITATIONS" ? 700 : 500,
+                            background: projectExplorerTab === "CITATIONS" ? "#EEF2FF" : "transparent",
+                            color: projectExplorerTab === "CITATIONS" ? "#4338CA" : "#64748B",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
+                          <Quote size={13} />
+                          <span>Bank Kutipan Bukti ({selectedProjectCitations.length})</span>
+                        </button>
+                      </div>
+                    </div>
 
-                          {/* IEEE Header Note */}
-                          <div style={{ fontSize: "8.5pt", color: "#64748B", fontStyle: "italic", borderBottom: "0.5px solid #CBD5E1", paddingBottom: 4, marginBottom: 16 }}>
-                            2026 IEEE International Conference on Academic Intelligence & Computing Systems (ICAICS)
-                          </div>
+                    <div>
+                      <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 4px", color: "#0F172A" }}>
+                        {selectedAdminProject.title}
+                      </h3>
+                      <div style={{ fontSize: 12, color: "#64748B", display: "flex", flexWrap: "wrap", gap: 14 }}>
+                        <span>Peneliti: <strong style={{ color: "#334155" }}>{selectedAdminProject.user?.name || selectedAdminProject.nama || "Mahasiswa"}</strong> ({selectedAdminProject.user?.email})</span>
+                        {selectedAdminProject.field && <span>Bidang: <strong style={{ color: "#334155" }}>{selectedAdminProject.field}</strong></span>}
+                        {selectedAdminProject.prodi && <span>Prodi: <strong style={{ color: "#334155" }}>{selectedAdminProject.prodi}</strong></span>}
+                        <span>Status: <strong style={{ color: "#059669" }}>{selectedAdminProject.status}</strong></span>
+                      </div>
+                    </div>
+                  </div>
 
-                          {/* Paper Title */}
-                          <div style={{ textAlign: "center", fontSize: "18pt", fontWeight: 700, lineHeight: 1.25, marginBottom: 14 }}>
-                            {templateEditForm.name || "DESIGN AND IMPLEMENTATION OF ACADEMIC INTELLIGENCE ENGINE"}
-                          </div>
-
-                          {/* Authors Affiliation Grid */}
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", textAlign: "center", gap: 16, marginBottom: 18, fontSize: "9.5pt" }}>
-                            <div>
-                              <div style={{ fontWeight: 700, fontSize: "10.5pt" }}>Nama Mahasiswa Peneliti</div>
-                              <div style={{ fontStyle: "italic" }}>Program Studi {templateEditForm.sourceFaculty || "Informatika"}</div>
-                              <div>{templateEditForm.university || "Telkom University"}</div>
-                              <div style={{ color: "#475569" }}>penulis@telkomuniversity.ac.id</div>
-                            </div>
-                            <div>
-                              <div style={{ fontWeight: 700, fontSize: "10.5pt" }}>Dr. Dosen Pembimbing, M.Kom.</div>
-                              <div style={{ fontStyle: "italic" }}>Fakultas {templateEditForm.sourceFaculty || "Informatika"}</div>
-                              <div>{templateEditForm.university || "Telkom University"}</div>
-                              <div style={{ color: "#475569" }}>advisor@telkomuniversity.ac.id</div>
-                            </div>
-                          </div>
-
-                          {/* Abstract Banner */}
-                          <div style={{ fontSize: "9pt", lineHeight: 1.45, textAlign: "justify", marginBottom: 16, padding: "0 10px" }}>
-                            <strong><em>Abstract</em>—{templateEditForm.description || "Makalah ini menyajikan arsitektur dan metodologi rancang bangun engine kecerdasan buatan terapan untuk sintesis akademik terstruktur. Evaluasi eksperimental menunjukkan bahwa sistem berhasil mengoptimalkan akurasi pengenalan naskah dan validasi referensi secara signifikan."}</strong>
-                            <div style={{ marginTop: 6 }}>
-                              <strong><em>Index Terms</em>—</strong><em>machine learning, software engineering, IEEEtran, academic synthesis, empirical evaluation.</em>
-                            </div>
-                          </div>
-
-                          {/* Two-Column Body Content */}
-                          <div
-                            style={{
-                              columnCount: 2,
-                              columnGap: "20px",
-                              columnRule: "0.5px solid #E2E8F0",
-                              textAlign: "justify",
-                              fontSize: "9.5pt",
-                              lineHeight: 1.45,
-                            }}
-                          >
-                            {(templateEditForm.sections || []).length > 0 ? (
-                              templateEditForm.sections.map((sec: any, sIdx: number) => {
-                                const romanNumerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
-                                const isRef = sec.title.toLowerCase().includes("pustaka") || sec.title.toLowerCase().includes("reference");
-                                return (
-                                  <div key={sec.id || sIdx} style={{ breakInside: "avoid-column", marginBottom: 14 }}>
-                                    <div style={{ textAlign: "center", fontWeight: 700, fontSize: "10pt", textTransform: "uppercase", letterSpacing: "0.05em", margin: "10px 0 6px" }}>
-                                      {isRef ? "REFERENCES" : `${romanNumerals[sIdx] || sIdx + 1}. ${sec.title}`}
-                                    </div>
-                                    {isRef ? (
-                                      <div style={{ fontSize: "8.5pt", display: "flex", flexDirection: "column", gap: 6 }}>
-                                        <div>[1] G. Eason, B. Noble, and I. Sneddon, "On certain integrals of Lipschitz-Hankel type," <em>Phil. Trans. Roy. Soc.</em>, 1955.</div>
-                                        <div>[2] J. Clerk Maxwell, <em>A Treatise on Electricity and Magnetism</em>, 3rd ed., Oxford: Clarendon, 1892.</div>
-                                        <div>[3] K. Elissa, "Title of paper if known," unpublished.</div>
-                                      </div>
-                                    ) : (
-                                      <div>
-                                        <p style={{ textIndent: "0.5cm", margin: "0 0 6px" }}>
-                                          {sec.guidanceText ? `${sec.guidanceText}. Pembahasan ini merumuskan metodologi komprehensif yang diuraikan secara analitik dan terintegrasi.` : "Penelitian ini diformulasikan berdasarkan telaah sistematis pada literatur terkini untuk membuktikan hipotesis empiris."}
-                                        </p>
-                                        {sIdx === 2 && (
-                                          <div style={{ border: "1px solid #CBD5E1", background: "#F8FAFC", padding: 8, margin: "8px 0", textAlign: "center", fontSize: "8.5pt" }}>
-                                            <div style={{ height: 35, display: "flex", alignItems: "center", justifyContent: "center", color: "#64748B", fontWeight: 700 }}>
-                                              [Diagram Pipeline & Arsitektur Model]
-                                            </div>
-                                            <strong>Fig. 1.</strong> Proposed End-to-End System Architecture.
-                                          </div>
-                                        )}
-                                        {sIdx === 3 && (
-                                          <div style={{ border: "1px solid #CBD5E1", margin: "8px 0", fontSize: "8pt" }}>
-                                            <div style={{ textAlign: "center", fontWeight: 700, padding: 3, background: "#F1F5F9" }}>
-                                              TABLE I: BENCHMARK ACCURACY EVALUATION
-                                            </div>
-                                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", textAlign: "center", padding: 4, borderTop: "1px solid #CBD5E1" }}>
-                                              <span><strong>Method</strong></span>
-                                              <span><strong>Precision</strong></span>
-                                              <span><strong>F1-Score</strong></span>
-                                            </div>
-                                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", textAlign: "center", padding: 3, borderTop: "0.5px solid #E2E8F0" }}>
-                                              <span>Baseline</span>
-                                              <span>87.4%</span>
-                                              <span>86.1%</span>
-                                            </div>
-                                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", textAlign: "center", padding: 3, borderTop: "0.5px solid #E2E8F0" }}>
-                                              <span><strong>Proposed</strong></span>
-                                              <span><strong>96.2%</strong></span>
-                                              <span><strong>95.8%</strong></span>
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              <div>Struktur bab IEEE belum dikonfigurasi.</div>
-                            )}
-                          </div>
-
-                          {/* Footer IEEE */}
-                          <div style={{ borderTop: "0.5px solid #CBD5E1", paddingTop: 8, marginTop: 24, display: "flex", justifyContent: "space-between", fontSize: "8pt", color: "#64748B" }}>
-                            <span>979-8-3503-9999-1/26/$31.00 ©2026 IEEE</span>
-                            <span>Authorized licensed use limited to Telkom University.</span>
-                          </div>
+                  {loadingProjectDetails ? (
+                    <div style={{ padding: 40, textAlign: "center", color: "#64748B" }}>
+                      <RefreshCw size={20} className="animate-spin" style={{ margin: "0 auto 8px" }} />
+                      <span>Memuat naskah dan bukti kutipan proyek...</span>
+                    </div>
+                  ) : projectExplorerTab === "JOURNALS" ? (
+                    /* Sub-Tab 1: Jurnal Bahan Acuan */
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {selectedProjectJournals.length === 0 ? (
+                        <div style={{ padding: 40, textAlign: "center", color: "#94A3B8", background: "#F8FAFC", borderRadius: 10, border: "1px dashed #CBD5E1" }}>
+                          Belum ada jurnal acuan yang disimpan pada proyek penelitian ini.
                         </div>
                       ) : (
-                        <>
-                          {/* ══ LEMBAR 1: COVER / HALAMAN JUDUL ══ */}
-                          <div
-                        style={{
-                          width: "100%",
-                          minHeight: "260mm",
-                          background: "#FFFFFF",
-                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
-                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
-                          fontFamily: '"Times New Roman", Times, serif',
-                          color: "#000000",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "space-between",
-                          textAlign: "center",
-                          position: "relative",
-                          boxSizing: "border-box",
-                        }}
-                      >
-                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
-                          [1 / 7] Cover
-                        </div>
+                        selectedProjectJournals.map((j) => {
+                          const citCount = selectedProjectCitations.filter((c) => c.journalId === j.id).length;
+                          return (
+                            <div
+                              key={j.id}
+                              style={{
+                                background: "#FFFFFF",
+                                border: "1px solid #E2E8F0",
+                                borderRadius: 10,
+                                padding: "14px 18px",
+                                display: "flex",
+                                alignItems: "flex-start",
+                                justifyContent: "space-between",
+                                gap: 16,
+                              }}
+                            >
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                  <span style={{ fontSize: 10.5, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: j.tier === "CORE_BENCHMARK" ? "#FEF3C7" : "#F1F5F9", color: j.tier === "CORE_BENCHMARK" ? "#B45309" : "#475569" }}>
+                                    {j.tier || "SUPPORTING"}
+                                  </span>
+                                  <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: j.status === "APPROVED" ? "#DCFCE7" : "#F1F5F9", color: j.status === "APPROVED" ? "#166534" : "#475569" }}>
+                                    {j.status || "CANDIDATE"}
+                                  </span>
+                                  {citCount > 0 && (
+                                    <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: "#EEF2FF", color: "#4338CA" }}>
+                                      ✓ {citCount} Kutipan Terverifikasi
+                                    </span>
+                                  )}
+                                </div>
+                                <h4 style={{ fontSize: 14, fontWeight: 600, color: "#0F172A", margin: "0 0 3px" }}>
+                                  {j.title}
+                                </h4>
+                                <p style={{ fontSize: 12, color: "#64748B", margin: 0 }}>
+                                  {j.authors && <span>{j.authors}</span>}
+                                  {j.year && <span> ({j.year})</span>}
+                                  {j.publication && <span> • {j.publication}</span>}
+                                  {j.doi && <span> • DOI: {j.doi}</span>}
+                                </p>
+                              </div>
 
-                        <div>
-                          <div style={{ fontSize: "14pt", fontWeight: 700, textTransform: "uppercase", lineHeight: 1.35, marginBottom: 20 }}>
-                            {templateEditForm.name || "JUDUL PROPOSAL PENELITIAN TUGAS AKHIR"}
-                          </div>
-                          <div style={{ fontSize: "11.5pt", fontWeight: 700, color: "#334155", letterSpacing: "0.05em" }}>
-                            PROPOSAL PENELITIAN SKRIPSI
-                          </div>
-                        </div>
-
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-                          <div
-                            style={{
-                              width: 90,
-                              height: 90,
-                              border: "2px dashed #94A3B8",
-                              borderRadius: 10,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              padding: 8,
-                              color: "#64748B",
-                              fontSize: 10.5,
-                              fontWeight: 700,
-                              textAlign: "center",
-                              background: "#F8FAFC",
-                            }}
-                          >
-                            [Logo {templateEditForm.university || "Telkom"}]
-                          </div>
-                          <div style={{ fontSize: "10pt", color: "#64748B", fontStyle: "italic" }}>
-                            \Tel-U-Logo.png / \LOGO
-                          </div>
-                        </div>
-
-                        <div>
-                          <div style={{ fontSize: "11pt", marginBottom: 6 }}>Disusun Oleh:</div>
-                          <div style={{ fontSize: "12pt", fontWeight: 700 }}>NAMA MAHASISWA</div>
-                          <div style={{ fontSize: "11pt" }}>NIM: 1301220001</div>
-                        </div>
-
-                        <div style={{ marginTop: 24, lineHeight: 1.45 }}>
-                          <div style={{ fontSize: "11pt", fontWeight: 700 }}>PROGRAM STUDI S1 INFORMATIKA</div>
-                          <div style={{ fontSize: "11pt", fontWeight: 700 }}>{templateEditForm.sourceFaculty?.toUpperCase() || "FAKULTAS INFORMATIKA"}</div>
-                          <div style={{ fontSize: "11pt", fontWeight: 700 }}>{templateEditForm.university?.toUpperCase() || "TELKOM UNIVERSITY"}</div>
-                          <div style={{ fontSize: "11pt" }}>BANDUNG</div>
-                          <div style={{ fontSize: "11pt", fontWeight: 700 }}>{new Date().getFullYear()}</div>
-                        </div>
-                      </div>
-
-                      {/* ══ LEMBAR 2: LEMBAR PENGESAHAN ══ */}
-                      <div
-                        style={{
-                          width: "100%",
-                          minHeight: "260mm",
-                          background: "#FFFFFF",
-                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
-                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
-                          fontFamily: '"Times New Roman", Times, serif',
-                          color: "#000000",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "space-between",
-                          position: "relative",
-                          boxSizing: "border-box",
-                        }}
-                      >
-                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
-                          [2 / 7] Lembar Persetujuan
-                        </div>
-
-                        <div>
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 24 }}>
-                            LEMBAR PENGESAHAN PROPOSAL TUGAS AKHIR
-                          </div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "11pt", lineHeight: 1.6 }}>
-                            Proposal Tugas Akhir dengan judul <strong>"{templateEditForm.name}"</strong> telah disetujui dan disahkan oleh Tim Pembimbing untuk dilanjutkan ke tahap pengumpulan data dan analisis empiris.
-                          </p>
-
-                          <div style={{ marginTop: 40, display: "grid", gridTemplateColumns: "1fr 1fr", textAlign: "center", gap: 20 }}>
-                            <div>
-                              <div style={{ fontSize: "10.5pt" }}>Pembimbing Utama,</div>
-                              <div style={{ height: 60 }} />
-                              <div style={{ fontWeight: 700, fontSize: "11pt" }}>Dr. Pembimbing Utama, M.Kom.</div>
-                              <div style={{ fontSize: "10pt" }}>NIP. 19850101201501</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingJournal(j);
+                                    setJournalFormData({
+                                      title: j.title || "",
+                                      authors: j.authors || "",
+                                      year: j.year ? String(j.year) : "",
+                                      publication: j.publication || "",
+                                      doi: j.doi || "",
+                                      url: j.url || "",
+                                      tier: j.tier || "SUPPORTING",
+                                      status: j.status || "APPROVED",
+                                    });
+                                    setShowEditJournalModal(true);
+                                  }}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    padding: "5px 10px",
+                                    borderRadius: 6,
+                                    border: "1px solid #CBD5E1",
+                                    background: "#FFFFFF",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color: "#334155",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <Pencil size={12} />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteJournal(j.id, j.title)}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    padding: "5px 10px",
+                                    borderRadius: 6,
+                                    border: "1px solid #FECDD3",
+                                    background: "#FFF1F2",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color: "#BE123C",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <Trash2 size={12} />
+                                  <span>Hapus</span>
+                                </button>
+                              </div>
                             </div>
-                            <div>
-                              <div style={{ fontSize: "10.5pt" }}>Pembimbing Pendamping,</div>
-                              <div style={{ height: 60 }} />
-                              <div style={{ fontWeight: 700, fontSize: "11pt" }}>Co-Advisor, S.T., M.T.</div>
-                              <div style={{ fontSize: "10pt" }}>NIP. 19900202202002</div>
-                            </div>
-                          </div>
-
-                          <div style={{ marginTop: 40, textAlign: "center" }}>
-                            <div style={{ fontSize: "10.5pt" }}>Mengetahui,</div>
-                            <div style={{ fontSize: "10.5pt", fontWeight: 700 }}>Ketua Program Studi S1 Informatika</div>
-                            <div style={{ height: 60 }} />
-                            <div style={{ fontWeight: 700, fontSize: "11pt" }}>Dr. Erwin Budi Setiawan, S.Si., M.T.</div>
-                            <div style={{ fontSize: "10pt" }}>NIP. 00760045</div>
-                          </div>
-                        </div>
-
-                        <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>ii</div>
-                      </div>
-
-                      {/* ══ LEMBAR 3: ABSTRAK & ABSTRACT ══ */}
-                      <div
-                        style={{
-                          width: "100%",
-                          minHeight: "260mm",
-                          background: "#FFFFFF",
-                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
-                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
-                          fontFamily: '"Times New Roman", Times, serif',
-                          color: "#000000",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "space-between",
-                          position: "relative",
-                          boxSizing: "border-box",
-                        }}
-                      >
-                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
-                          [3 / 7] Abstrak Bilingual
-                        </div>
-
-                        <div>
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 12 }}>
-                            ABSTRAK
-                          </div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.55 }}>
-                            Penelitian ini bertujuan untuk mengkaji dan merancang solusi komprehensif berdasarkan panduan {templateEditForm.name}. Kajian diawali dengan identifikasi fenomena empiris dan penelaahan literatur terindeks untuk merumuskan kerangka pemikiran konseptual yang teruji. Data primer dikumpulkan melalui instrumen pengukuran terstruktur dan divalidasi dengan metode inferensial.
-                          </p>
-                          <div style={{ fontSize: "10pt", marginTop: 8, marginBottom: 24 }}>
-                            <strong>Kata Kunci:</strong> <em>tugas akhir, metodologi riset, analisis data, {templateEditForm.sourceFaculty?.toLowerCase() || "informatika"}</em>
-                          </div>
-
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 12 }}>
-                            ABSTRACT
-                          </div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.55, fontStyle: "italic" }}>
-                            This research aims to investigate and design a comprehensive solution based on {templateEditForm.name} guidelines. The study begins with identifying empirical phenomena and reviewing indexed literature to establish a conceptually validated framework. Primary data is gathered using structured measurement instruments and validated through statistical inferential methods.
-                          </p>
-                          <div style={{ fontSize: "10pt", marginTop: 8 }}>
-                            <strong>Keywords:</strong> <em>thesis, research methodology, empirical analysis, {templateEditForm.university || "telkom university"}</em>
-                          </div>
-                        </div>
-
-                        <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>iii</div>
-                      </div>
-
-                      {/* ══ LEMBAR 4: BAB I PENDAHULUAN ══ */}
-                      <div
-                        style={{
-                          width: "100%",
-                          minHeight: "260mm",
-                          background: "#FFFFFF",
-                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
-                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
-                          fontFamily: '"Times New Roman", Times, serif',
-                          color: "#000000",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "space-between",
-                          position: "relative",
-                          boxSizing: "border-box",
-                        }}
-                      >
-                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
-                          [4 / 7] BAB I Pendahuluan
-                        </div>
-
-                        <div>
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
-                            BAB I<br />PENDAHULUAN
-                          </div>
-
-                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>1.1 Latar Belakang Masalah</div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6, marginBottom: 12 }}>
-                            Perkembangan teknologi komputasi dan dinamika akademik menuntut telaah riset yang memiliki landasan teoritis kokoh serta metodologi empiris teruji. Berdasarkan pedoman dari {templateEditForm.sourceFaculty || "Fakultas Informatika"}, penelitian ini memfokuskan telaah pada sintesis bukti ilmiah dari literatur primer terindeks.
-                          </p>
-
-                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>1.2 Rumusan Masalah</div>
-                          <ol style={{ paddingLeft: "1.27cm", margin: "0 0 12px 0", fontSize: "10.5pt", lineHeight: 1.5 }}>
-                            <li>Bagaimana pengaruh dan signifikansi relasi antar variabel independen terhadap variabel dependen?</li>
-                            <li>Bagaimana performa model konseptual yang dirancang bila diuji pada dataset empiris?</li>
-                          </ol>
-
-                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>1.3 Tujuan Penelitian</div>
-                          <ol style={{ paddingLeft: "1.27cm", margin: "0 0 12px 0", fontSize: "10.5pt", lineHeight: 1.5 }}>
-                            <li>Menganalisis keterkaitan kausalitas antar variabel riset secara kuantitatif.</li>
-                            <li>Menguji akurasi dan ketahanan model empiris terhadap data riil lapangan.</li>
-                          </ol>
-
-                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>1.4 Manfaat Penelitian</div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6 }}>
-                            <strong>Manfaat Teoretis:</strong> Memperkaya khazanah keilmuan informatika. <strong>Manfaat Praktis:</strong> Sebagai acuan implementasi sistem terapan bagi praktisi di industri.
-                          </p>
-                        </div>
-
-                        <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>1</div>
-                      </div>
-
-                      {/* ══ LEMBAR 5: BAB II KAJIAN PUSTAKA ══ */}
-                      <div
-                        style={{
-                          width: "100%",
-                          minHeight: "260mm",
-                          background: "#FFFFFF",
-                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
-                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
-                          fontFamily: '"Times New Roman", Times, serif',
-                          color: "#000000",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "space-between",
-                          position: "relative",
-                          boxSizing: "border-box",
-                        }}
-                      >
-                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
-                          [5 / 7] BAB II Kajian Pustaka & Matriks
-                        </div>
-
-                        <div>
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
-                            BAB II<br />KAJIAN PUSTAKA DAN KERANGKA PEMIKIRAN
-                          </div>
-
-                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>2.1 Landasan Teori</div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6, marginBottom: 14 }}>
-                            Landasan teori dibangun berdasarkan telaah literatur primer terindeks internasional (Scopus / IEEE). Teori dasar menghubungkan konsep operasional dengan variabel yang diteliti.
-                          </p>
-
-                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 6 }}>2.2 Matriks Penelitian Terdahulu (State-of-the-Art)</div>
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "9pt", marginBottom: 14 }}>
-                            <thead>
-                              <tr style={{ background: "#F1F5F9", borderTop: "1.5px solid #000", borderBottom: "1px solid #000" }}>
-                                <th style={{ padding: "6px 8px", textAlign: "center" }}>No</th>
-                                <th style={{ padding: "6px 8px", textAlign: "left" }}>Penulis & Tahun</th>
-                                <th style={{ padding: "6px 8px", textAlign: "left" }}>Judul & Metode</th>
-                                <th style={{ padding: "6px 8px", textAlign: "left" }}>Temuan Utama</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr style={{ borderBottom: "1px solid #CBD5E1" }}>
-                                <td style={{ padding: "6px 8px", textAlign: "center" }}>1</td>
-                                <td style={{ padding: "6px 8px" }}>Smith et al. (2024)</td>
-                                <td style={{ padding: "6px 8px" }}>Empirical Deep Learning</td>
-                                <td style={{ padding: "6px 8px" }}>Akurasi klasifikasi 94.8%</td>
-                              </tr>
-                              <tr style={{ borderBottom: "1.5px solid #000" }}>
-                                <td style={{ padding: "6px 8px", textAlign: "center" }}>2</td>
-                                <td style={{ padding: "6px 8px" }}>Johnson (2023)</td>
-                                <td style={{ padding: "6px 8px" }}>Statistical SEM-PLS</td>
-                                <td style={{ padding: "6px 8px" }}>Hubungan kausal signifikan</td>
-                              </tr>
-                            </tbody>
-                          </table>
-
-                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>2.3 Kerangka Konseptual & Hipotesis</div>
-                          <div style={{ border: "1px solid #CBD5E1", background: "#F8FAFC", padding: 12, borderRadius: 6, textAlign: "center", fontSize: "10pt", color: "#334155" }}>
-                            <strong>Gambar 2.1:</strong> Diagram Alur Kerangka Konseptual & Model Variabel
-                          </div>
-                        </div>
-
-                        <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>2</div>
-                      </div>
-
-                      {/* ══ LEMBAR 6: BAB III METODOLOGI PENELITIAN ══ */}
-                      <div
-                        style={{
-                          width: "100%",
-                          minHeight: "260mm",
-                          background: "#FFFFFF",
-                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
-                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
-                          fontFamily: '"Times New Roman", Times, serif',
-                          color: "#000000",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "space-between",
-                          position: "relative",
-                          boxSizing: "border-box",
-                        }}
-                      >
-                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
-                          [6 / 7] BAB III Metodologi
-                        </div>
-
-                        <div>
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
-                            BAB III<br />METODOLOGI PENELITIAN
-                          </div>
-
-                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>3.1 Desain Penelitian</div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6, marginBottom: 12 }}>
-                            Penelitian ini menggunakan pendekatan kuantitatif kausal asosiatif dengan tahapan studi pustaka, formulasi hipotesis, pengembangan instrumen, dan pengujian empiris.
-                          </p>
-
-                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>3.2 Populasi dan Sampel</div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6, marginBottom: 12 }}>
-                            Populasi sasaran mencakup pengguna sistem di lingkungan akademik dan industri, dengan teknik purposive sampling berbasis kriteria inklusi spesifik.
-                          </p>
-
-                          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: 4 }}>3.3 Teknik Analisis Data</div>
-                          <p style={{ textIndent: "1.27cm", textAlign: "justify", fontSize: "10.5pt", lineHeight: 1.6 }}>
-                            Analisis data dilakukan menggunakan Structural Equation Modeling (SEM) dengan evaluasi outer model (validitas konvergen, validitas diskriminan, reliabilitas komposit) dan inner model (koefisien determinasi R2 dan signifikansi uji t).
-                          </p>
-                        </div>
-
-                        <div style={{ textAlign: "right", fontSize: "10.5pt", fontWeight: 700 }}>3</div>
-                      </div>
-
-                      {/* ══ LEMBAR 7: DAFTAR PUSTAKA ══ */}
-                      <div
-                        style={{
-                          width: "100%",
-                          minHeight: "260mm",
-                          background: "#FFFFFF",
-                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
-                          padding: templateEditForm.marginPreset === "4433" ? "4cm 3cm 3cm 4cm" : "3cm 3cm 3cm 4cm",
-                          fontFamily: '"Times New Roman", Times, serif',
-                          color: "#000000",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "space-between",
-                          position: "relative",
-                          boxSizing: "border-box",
-                        }}
-                      >
-                        <div style={{ position: "absolute", top: 12, right: 14, fontSize: 10, color: "#94A3B8", fontFamily: "sans-serif", fontWeight: 600 }}>
-                          [7 / 7] Daftar Pustaka
-                        </div>
-
-                        <div>
-                          <div style={{ textAlign: "center", fontSize: "12pt", fontWeight: 700, textTransform: "uppercase", marginBottom: 20 }}>
-                            DAFTAR PUSTAKA
-                          </div>
-                          <div style={{ fontSize: "10pt", lineHeight: 1.65, display: "flex", flexDirection: "column", gap: 10, textAlign: "justify" }}>
-                            <div>[1] J. Doe and A. Smith, "Empirical Evaluation in Computing Systems," <em>IEEE Transactions on Software Engineering</em>, vol. 48, no. 2, pp. 210–225, 2024. https://doi.org/10.1109/TSE.2023.1001</div>
-                            <div>[2] R. Johnson, "Advanced Statistical Inference with PLS-SEM," <em>Journal of Systems and Software</em>, vol. 190, pp. 111–124, 2023.</div>
-                            <div>[3] Telkom University, <em>Buku Pedoman Pengelolaan Tugas Akhir dan Skripsi Fakultas Informatika</em>, Bandung: Telkom University Press, 2024.</div>
-                            <div>[4] M. Hair, G. Hult, C. Ringle, and M. Sarstedt, <em>A Primer on Partial Least Squares Structural Equation Modeling (PLS-SEM)</em>, 3rd ed. Thousand Oaks: SAGE Publications, 2022.</div>
-                          </div>
-                        </div>
-
-                        </div>
-                        </>
+                          );
+                        })
                       )}
                     </div>
-                  </div>
-                )}
-
-                {/* ── LATEX SOURCE CODE VIEW ── */}
-                {templatePreviewMode === "LATEX_CODE" && (
-                  <div style={{ background: "#0F172A", borderRadius: 10, padding: 16, overflowX: "auto", maxHeight: 540, border: "1px solid #1E293B" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #334155" }}>
-                      <span style={{ fontSize: 11, color: "#94A3B8", fontFamily: "monospace" }}>
-                        main.tex & zetera-vars.tex preview
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleCopyLatex}
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: 6,
-                          background: "#1E293B",
-                          color: "#CBD5E1",
-                          border: "1px solid #475569",
-                          fontSize: 11,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {copiedLatex ? "✓ Tersalin!" : "Salin .tex"}
-                      </button>
-                    </div>
-                    <pre style={{ margin: 0, color: "#E2E8F0", fontSize: 11.5, fontFamily: 'Consolas, Monaco, "Courier New", monospace', lineHeight: 1.55 }}>
-                      <code>{generateLatexFromTemplate(templateEditForm)}</code>
-                    </pre>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════════════
-            TAB 7: RESEARCH SYSTEM & CITATION EXPLORER (PROJECT & EVIDENCE BANK)
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "RESEARCH_SYSTEM" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            {/* Header & Filter Bar */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <BookOpen size={20} color="#4338CA" />
-                  <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "#0F0F14" }}>
-                    Sistem & Jurnal Riset (Project & Citation Explorer)
-                  </h2>
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 9999, background: "#EEEAFE", color: "#4338CA" }}>
-                    {adminProjects.length} Proyek Terpantau
-                  </span>
-                </div>
-                <p style={{ fontSize: 13, color: "#71717A", margin: "3px 0 0" }}>
-                  Eksplorasi seluruh naskah jurnal acuan skripsi, telusuri bank bukti kutipan berpresisi halaman, dan kelola integritas sitasi mahasiswa.
-                </p>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {/* Search Bar */}
-                <div style={{ position: "relative", minWidth: 260 }}>
-                  <input
-                    type="text"
-                    value={projectSearchQuery}
-                    onChange={(e) => setProjectSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && fetchAdminProjects()}
-                    placeholder="Cari judul, topik, atau mahasiswa..."
-                    style={{
-                      width: "100%",
-                      padding: "7px 32px 7px 12px",
-                      borderRadius: 8,
-                      border: "1px solid #CBD5E1",
-                      fontSize: 12.5,
-                      outline: "none",
-                      background: "#F8FAFC",
-                    }}
-                  />
-                  <Search
-                    size={14}
-                    color="#94A3B8"
-                    style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }}
-                  />
-                </div>
-
-                {/* Status Filter */}
-                <select
-                  value={projectStatusFilter}
-                  onChange={(e) => {
-                    setProjectStatusFilter(e.target.value);
-                  }}
-                  style={{
-                    padding: "7px 12px",
-                    borderRadius: 8,
-                    border: "1px solid #CBD5E1",
-                    fontSize: 12.5,
-                    background: "#FFFFFF",
-                    color: "#334155",
-                    cursor: "pointer",
-                  }}
-                >
-                  <option value="ALL">Semua Status</option>
-                  <option value="ACTIVE">Aktif</option>
-                  <option value="COMPLETED">Selesai</option>
-                  <option value="ARCHIVED">Diarsipkan</option>
-                </select>
-
-                <button
-                  type="button"
-                  onClick={fetchAdminProjects}
-                  disabled={loadingProjects}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "7px 14px",
-                    borderRadius: 8,
-                    background: "#4338CA",
-                    color: "#FFFFFF",
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    border: "none",
-                    cursor: loadingProjects ? "not-allowed" : "pointer",
-                  }}
-                >
-                  <RefreshCw size={13} className={loadingProjects ? "animate-spin" : ""} />
-                  <span>{loadingProjects ? "Memuat..." : "Refresh"}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* If a project is selected, show detail inspector */}
-            {selectedAdminProject ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* Back to list & Project Info Bar */}
-                <div
-                  style={{
-                    background: "#F8FAFC",
-                    border: "1px solid #E2E8F0",
-                    borderRadius: 12,
-                    padding: "16px 20px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 12,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedAdminProject(null);
-                        setSelectedProjectJournals([]);
-                        setSelectedProjectCitations([]);
-                      }}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                        padding: "5px 12px",
-                        borderRadius: 6,
-                        border: "1px solid #CBD5E1",
-                        background: "#FFFFFF",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "#475569",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <span>← Kembali ke Daftar Proyek</span>
-                    </button>
-
-                    <div style={{ display: "flex", gap: 3, background: "#FFFFFF", padding: 3, borderRadius: 8, border: "1px solid #E2E8F0" }}>
-                      <button
-                        type="button"
-                        onClick={() => setProjectExplorerTab("JOURNALS")}
-                        style={{
-                          padding: "5px 12px",
-                          borderRadius: 6,
-                          border: "none",
-                          fontSize: 12,
-                          fontWeight: projectExplorerTab === "JOURNALS" ? 700 : 500,
-                          background: projectExplorerTab === "JOURNALS" ? "#EEF2FF" : "transparent",
-                          color: projectExplorerTab === "JOURNALS" ? "#4338CA" : "#64748B",
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                        }}
-                      >
-                        <BookOpen size={13} />
-                        <span>Jurnal Acuan ({selectedProjectJournals.length})</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setProjectExplorerTab("CITATIONS")}
-                        style={{
-                          padding: "5px 12px",
-                          borderRadius: 6,
-                          border: "none",
-                          fontSize: 12,
-                          fontWeight: projectExplorerTab === "CITATIONS" ? 700 : 500,
-                          background: projectExplorerTab === "CITATIONS" ? "#EEF2FF" : "transparent",
-                          color: projectExplorerTab === "CITATIONS" ? "#4338CA" : "#64748B",
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                        }}
-                      >
-                        <Quote size={13} />
-                        <span>Bank Kutipan Bukti ({selectedProjectCitations.length})</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 4px", color: "#0F172A" }}>
-                      {selectedAdminProject.title}
-                    </h3>
-                    <div style={{ fontSize: 12, color: "#64748B", display: "flex", flexWrap: "wrap", gap: 14 }}>
-                      <span>Peneliti: <strong style={{ color: "#334155" }}>{selectedAdminProject.user?.name || selectedAdminProject.nama || "Mahasiswa"}</strong> ({selectedAdminProject.user?.email})</span>
-                      {selectedAdminProject.field && <span>Bidang: <strong style={{ color: "#334155" }}>{selectedAdminProject.field}</strong></span>}
-                      {selectedAdminProject.prodi && <span>Prodi: <strong style={{ color: "#334155" }}>{selectedAdminProject.prodi}</strong></span>}
-                      <span>Status: <strong style={{ color: "#059669" }}>{selectedAdminProject.status}</strong></span>
-                    </div>
-                  </div>
-                </div>
-
-                {loadingProjectDetails ? (
-                  <div style={{ padding: 40, textAlign: "center", color: "#64748B" }}>
-                    <RefreshCw size={20} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-                    <span>Memuat naskah dan bukti kutipan proyek...</span>
-                  </div>
-                ) : projectExplorerTab === "JOURNALS" ? (
-                  /* Sub-Tab 1: Jurnal Bahan Acuan */
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {selectedProjectJournals.length === 0 ? (
-                      <div style={{ padding: 40, textAlign: "center", color: "#94A3B8", background: "#F8FAFC", borderRadius: 10, border: "1px dashed #CBD5E1" }}>
-                        Belum ada jurnal acuan yang disimpan pada proyek penelitian ini.
-                      </div>
-                    ) : (
-                      selectedProjectJournals.map((j) => {
-                        const citCount = selectedProjectCitations.filter((c) => c.journalId === j.id).length;
-                        return (
+                  ) : (
+                    /* Sub-Tab 2: Bank Kutipan Bukti */
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {selectedProjectCitations.length === 0 ? (
+                        <div style={{ padding: 40, textAlign: "center", color: "#94A3B8", background: "#F8FAFC", borderRadius: 10, border: "1px dashed #CBD5E1" }}>
+                          Belum ada kutipan bukti yang diekstrak untuk proyek ini.
+                        </div>
+                      ) : (
+                        selectedProjectCitations.map((cit) => (
                           <div
-                            key={j.id}
+                            key={cit.id}
                             style={{
                               background: "#FFFFFF",
                               border: "1px solid #E2E8F0",
                               borderRadius: 10,
                               padding: "14px 18px",
                               display: "flex",
-                              alignItems: "flex-start",
-                              justifyContent: "space-between",
-                              gap: 16,
+                              flexDirection: "column",
+                              gap: 8,
                             }}
                           >
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                                <span style={{ fontSize: 10.5, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: j.tier === "CORE_BENCHMARK" ? "#FEF3C7" : "#F1F5F9", color: j.tier === "CORE_BENCHMARK" ? "#B45309" : "#475569" }}>
-                                  {j.tier || "SUPPORTING"}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#ECFDF5", color: "#065F46" }}>
+                                  📍 Hal. {cit.pageNumber}
                                 </span>
-                                <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: j.status === "APPROVED" ? "#DCFCE7" : "#F1F5F9", color: j.status === "APPROVED" ? "#166534" : "#475569" }}>
-                                  {j.status || "CANDIDATE"}
+                                <span style={{ fontSize: 11, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: "#F1F5F9", color: "#334155" }}>
+                                  {cit.citationCategory}
                                 </span>
-                                {citCount > 0 && (
-                                  <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: "#EEF2FF", color: "#4338CA" }}>
-                                    ✓ {citCount} Kutipan Terverifikasi
+                                {cit.sectionHeading && (
+                                  <span style={{ fontSize: 11, color: "#64748B", fontStyle: "italic" }}>
+                                    ({cit.sectionHeading})
                                   </span>
                                 )}
-                              </div>
-                              <h4 style={{ fontSize: 14, fontWeight: 600, color: "#0F172A", margin: "0 0 3px" }}>
-                                {j.title}
-                              </h4>
-                              <p style={{ fontSize: 12, color: "#64748B", margin: 0 }}>
-                                {j.authors && <span>{j.authors}</span>}
-                                {j.year && <span> ({j.year})</span>}
-                                {j.publication && <span> • {j.publication}</span>}
-                                {j.doi && <span> • DOI: {j.doi}</span>}
-                              </p>
-                            </div>
-
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingJournal(j);
-                                  setJournalFormData({
-                                    title: j.title || "",
-                                    authors: j.authors || "",
-                                    year: j.year ? String(j.year) : "",
-                                    publication: j.publication || "",
-                                    doi: j.doi || "",
-                                    url: j.url || "",
-                                    tier: j.tier || "SUPPORTING",
-                                    status: j.status || "APPROVED",
-                                  });
-                                  setShowEditJournalModal(true);
-                                }}
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                  padding: "5px 10px",
-                                  borderRadius: 6,
-                                  border: "1px solid #CBD5E1",
-                                  background: "#FFFFFF",
-                                  fontSize: 12,
-                                  fontWeight: 600,
-                                  color: "#334155",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                <Pencil size={12} />
-                                <span>Edit</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteJournal(j.id, j.title)}
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                  padding: "5px 10px",
-                                  borderRadius: 6,
-                                  border: "1px solid #FECDD3",
-                                  background: "#FFF1F2",
-                                  fontSize: 12,
-                                  fontWeight: 600,
-                                  color: "#BE123C",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                <Trash2 size={12} />
-                                <span>Hapus</span>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                ) : (
-                  /* Sub-Tab 2: Bank Kutipan Bukti */
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {selectedProjectCitations.length === 0 ? (
-                      <div style={{ padding: 40, textAlign: "center", color: "#94A3B8", background: "#F8FAFC", borderRadius: 10, border: "1px dashed #CBD5E1" }}>
-                        Belum ada kutipan bukti yang diekstrak untuk proyek ini.
-                      </div>
-                    ) : (
-                      selectedProjectCitations.map((cit) => (
-                        <div
-                          key={cit.id}
-                          style={{
-                            background: "#FFFFFF",
-                            border: "1px solid #E2E8F0",
-                            borderRadius: 10,
-                            padding: "14px 18px",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 8,
-                          }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#ECFDF5", color: "#065F46" }}>
-                                📍 Hal. {cit.pageNumber}
-                              </span>
-                              <span style={{ fontSize: 11, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: "#F1F5F9", color: "#334155" }}>
-                                {cit.citationCategory}
-                              </span>
-                              {cit.sectionHeading && (
-                                <span style={{ fontSize: 11, color: "#64748B", fontStyle: "italic" }}>
-                                  ({cit.sectionHeading})
+                                <span style={{ fontSize: 11, color: "#94A3B8" }}>
+                                  • Sumber: {cit.paperTitle?.slice(0, 50)}...
                                 </span>
-                              )}
-                              <span style={{ fontSize: 11, color: "#94A3B8" }}>
-                                • Sumber: {cit.paperTitle?.slice(0, 50)}...
-                              </span>
+                              </div>
+
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingCitation(cit);
+                                    setCitationFormData({
+                                      pageNumber: cit.pageNumber || 1,
+                                      sectionHeading: cit.sectionHeading || "",
+                                      verbatimQuote: cit.verbatimQuote || "",
+                                      paraphrasedQuote: cit.paraphrasedQuote || "",
+                                      topicRelevance: cit.topicRelevance || "",
+                                      citationCategory: cit.citationCategory || "LANDASAN_TEORI",
+                                      isApproved: cit.isApproved !== false,
+                                    });
+                                    setShowEditCitationModal(true);
+                                  }}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    padding: "3px 8px",
+                                    borderRadius: 5,
+                                    border: "1px solid #CBD5E1",
+                                    background: "#FFFFFF",
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    color: "#334155",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <Pencil size={11} />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCitation(cit.id)}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    padding: "3px 8px",
+                                    borderRadius: 5,
+                                    border: "1px solid #FECDD3",
+                                    background: "#FFF1F2",
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    color: "#BE123C",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <Trash2 size={11} />
+                                  <span>Hapus</span>
+                                </button>
+                              </div>
                             </div>
 
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingCitation(cit);
-                                  setCitationFormData({
-                                    pageNumber: cit.pageNumber || 1,
-                                    sectionHeading: cit.sectionHeading || "",
-                                    verbatimQuote: cit.verbatimQuote || "",
-                                    paraphrasedQuote: cit.paraphrasedQuote || "",
-                                    topicRelevance: cit.topicRelevance || "",
-                                    citationCategory: cit.citationCategory || "LANDASAN_TEORI",
-                                    isApproved: cit.isApproved !== false,
-                                  });
-                                  setShowEditCitationModal(true);
-                                }}
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                  padding: "3px 8px",
-                                  borderRadius: 5,
-                                  border: "1px solid #CBD5E1",
-                                  background: "#FFFFFF",
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  color: "#334155",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                <Pencil size={11} />
-                                <span>Edit</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteCitation(cit.id)}
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                  padding: "3px 8px",
-                                  borderRadius: 5,
-                                  border: "1px solid #FECDD3",
-                                  background: "#FFF1F2",
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  color: "#BE123C",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                <Trash2 size={11} />
-                                <span>Hapus</span>
-                              </button>
+                            {/* Verbatim Quote Box */}
+                            <div style={{ background: "#F8FAFC", borderLeft: "3px solid #059669", padding: "6px 10px", borderRadius: "0 6px 6px 0", fontSize: 12, color: "#0F172A", fontStyle: "italic", lineHeight: 1.5 }}>
+                              "{cit.verbatimQuote}"
                             </div>
-                          </div>
 
-                          {/* Verbatim Quote Box */}
-                          <div style={{ background: "#F8FAFC", borderLeft: "3px solid #059669", padding: "6px 10px", borderRadius: "0 6px 6px 0", fontSize: 12, color: "#0F172A", fontStyle: "italic", lineHeight: 1.5 }}>
-                            "{cit.verbatimQuote}"
-                          </div>
-
-                          {/* Paraphrased Quote */}
-                          <div style={{ fontSize: 12, color: "#1E293B", lineHeight: 1.5 }}>
-                            <strong style={{ color: "#4F46E5" }}>Parafrase: </strong>
-                            {cit.paraphrasedQuote}
-                          </div>
-
-                          {/* Topic Relevance */}
-                          {cit.topicRelevance && (
-                            <div style={{ fontSize: 11.5, color: "#64748B" }}>
-                              <strong>Relevansi: </strong> {cit.topicRelevance}
+                            {/* Paraphrased Quote */}
+                            <div style={{ fontSize: 12, color: "#1E293B", lineHeight: 1.5 }}>
+                              <strong style={{ color: "#4F46E5" }}>Parafrase: </strong>
+                              {cit.paraphrasedQuote}
                             </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* Projects Table List */
-              <div style={{ background: "#FFFFFF", borderRadius: 12, border: "1px solid #E2E8F0", overflow: "hidden" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 12.5 }}>
-                  <thead>
-                    <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0", color: "#475569", fontWeight: 600 }}>
-                      <th style={{ padding: "12px 16px" }}>Judul Proyek & Topik</th>
-                      <th style={{ padding: "12px 16px" }}>Peneliti / User</th>
-                      <th style={{ padding: "12px 16px" }}>Jurnal Acuan</th>
-                      <th style={{ padding: "12px 16px" }}>Bank Kutipan</th>
-                      <th style={{ padding: "12px 16px" }}>Status</th>
-                      <th style={{ padding: "12px 16px" }}>Terakhir Update</th>
-                      <th style={{ padding: "12px 16px", textAlign: "right" }}>Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {adminProjects.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} style={{ padding: "40px 16px", textAlign: "center", color: "#94A3B8" }}>
-                          {loadingProjects ? "Memuat data proyek penelitian..." : "Tidak ada proyek riset yang ditemukan."}
-                        </td>
+
+                            {/* Topic Relevance */}
+                            {cit.topicRelevance && (
+                              <div style={{ fontSize: 11.5, color: "#64748B" }}>
+                                <strong>Relevansi: </strong> {cit.topicRelevance}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Projects Table List */
+                <div style={{ background: "#FFFFFF", borderRadius: 12, border: "1px solid #E2E8F0", overflow: "hidden" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 12.5 }}>
+                    <thead>
+                      <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0", color: "#475569", fontWeight: 600 }}>
+                        <th style={{ padding: "12px 16px" }}>Judul Proyek & Topik</th>
+                        <th style={{ padding: "12px 16px" }}>Peneliti / User</th>
+                        <th style={{ padding: "12px 16px" }}>Jurnal Acuan</th>
+                        <th style={{ padding: "12px 16px" }}>Bank Kutipan</th>
+                        <th style={{ padding: "12px 16px" }}>Status</th>
+                        <th style={{ padding: "12px 16px" }}>Terakhir Update</th>
+                        <th style={{ padding: "12px 16px", textAlign: "right" }}>Aksi</th>
                       </tr>
-                    ) : (
-                      adminProjects.map((proj) => (
-                        <tr
-                          key={proj.id}
-                          style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.1s ease" }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "#FBFDFF")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                        >
-                          <td style={{ padding: "14px 16px", maxWidth: 280 }}>
-                            <div style={{ fontWeight: 600, color: "#0F172A", marginBottom: 2 }}>
-                              {proj.title}
-                            </div>
-                            <div style={{ fontSize: 11.5, color: "#64748B" }}>
-                              {proj.field || "Umum"} {proj.prodi ? `• ${proj.prodi}` : ""}
-                            </div>
-                          </td>
-                          <td style={{ padding: "14px 16px" }}>
-                            <div style={{ fontWeight: 500, color: "#1E293B" }}>
-                              {proj.user?.name || proj.nama || "Mahasiswa"}
-                            </div>
-                            <div style={{ fontSize: 11.5, color: "#64748B" }}>
-                              {proj.user?.email || "-"}
-                            </div>
-                          </td>
-                          <td style={{ padding: "14px 16px" }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 999, background: "#F1F5F9", color: "#334155", fontWeight: 600, fontSize: 11.5 }}>
-                              <BookOpen size={12} color="#059669" />
-                              <span>{proj._count?.journals || 0} Jurnal</span>
-                            </span>
-                          </td>
-                          <td style={{ padding: "14px 16px" }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 999, background: "#EEF2FF", color: "#4338CA", fontWeight: 600, fontSize: 11.5 }}>
-                              <Quote size={12} color="#4F46E5" />
-                              <span>{proj._count?.citationEvidences || 0} Kutipan</span>
-                            </span>
-                          </td>
-                          <td style={{ padding: "14px 16px" }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 7px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: proj.status === "ACTIVE" ? "#DCFCE7" : "#F1F5F9", color: proj.status === "ACTIVE" ? "#166534" : "#475569" }}>
-                              {proj.status}
-                            </span>
-                          </td>
-                          <td style={{ padding: "14px 16px", color: "#64748B", fontSize: 12 }}>
-                            {new Date(proj.updatedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
-                          </td>
-                          <td style={{ padding: "14px 16px", textAlign: "right" }}>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenProjectDetails(proj)}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                                padding: "6px 12px",
-                                borderRadius: 6,
-                                background: "#4338CA",
-                                color: "#FFFFFF",
-                                border: "none",
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: "pointer",
-                              }}
-                            >
-                              <Eye size={12} />
-                              <span>Buka Naskah & Sitasi</span>
-                            </button>
+                    </thead>
+                    <tbody>
+                      {adminProjects.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} style={{ padding: "40px 16px", textAlign: "center", color: "#94A3B8" }}>
+                            {loadingProjects ? "Memuat data proyek penelitian..." : "Tidak ada proyek riset yang ditemukan."}
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-      </main>
+                      ) : (
+                        adminProjects.map((proj) => (
+                          <tr
+                            key={proj.id}
+                            style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.1s ease" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "#FBFDFF")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          >
+                            <td style={{ padding: "14px 16px", maxWidth: 280 }}>
+                              <div style={{ fontWeight: 600, color: "#0F172A", marginBottom: 2 }}>
+                                {proj.title}
+                              </div>
+                              <div style={{ fontSize: 11.5, color: "#64748B" }}>
+                                {proj.field || "Umum"} {proj.prodi ? `• ${proj.prodi}` : ""}
+                              </div>
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ fontWeight: 500, color: "#1E293B" }}>
+                                {proj.user?.name || proj.nama || "Mahasiswa"}
+                              </div>
+                              <div style={{ fontSize: 11.5, color: "#64748B" }}>
+                                {proj.user?.email || "-"}
+                              </div>
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 999, background: "#F1F5F9", color: "#334155", fontWeight: 600, fontSize: 11.5 }}>
+                                <BookOpen size={12} color="#059669" />
+                                <span>{proj._count?.journals || 0} Jurnal</span>
+                              </span>
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 999, background: "#EEF2FF", color: "#4338CA", fontWeight: 600, fontSize: 11.5 }}>
+                                <Quote size={12} color="#4F46E5" />
+                                <span>{proj._count?.citationEvidences || 0} Kutipan</span>
+                              </span>
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 7px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: proj.status === "ACTIVE" ? "#DCFCE7" : "#F1F5F9", color: proj.status === "ACTIVE" ? "#166534" : "#475569" }}>
+                                {proj.status}
+                              </span>
+                            </td>
+                            <td style={{ padding: "14px 16px", color: "#64748B", fontSize: 12 }}>
+                              {new Date(proj.updatedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                            </td>
+                            <td style={{ padding: "14px 16px", textAlign: "right" }}>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenProjectDetails(proj)}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  padding: "6px 12px",
+                                  borderRadius: 6,
+                                  background: "#4338CA",
+                                  color: "#FFFFFF",
+                                  border: "none",
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <Eye size={12} />
+                                <span>Buka Naskah & Sitasi</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </main>
       </div>
 
       {/* MODAL TAMBAH TEMPLATE BARU (3 METODE: UPLOAD LATEX MULTI/SINGLE, UPLOAD DOCX, TULIS MANUAL LATEX) */}
@@ -6972,16 +7616,28 @@ const response = await executeAiCompletion({
               </div>
 
               <div>
-                <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
-                  API Key Bearer Token
-                </label>
-                <input
-                  type="password"
-                  placeholder={editingModelId ? "(Kosongkan bila tidak diubah)" : "sk-..."}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+                  <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A" }}>
+                    API Key Bearer Token (Mendukung Multi-Key Pool)
+                  </label>
+                  {modelFormData.apiKey && (
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#16A34A" }}>
+                      {modelFormData.apiKey.split(/[\n,;]+/).filter((k) => k.trim().length > 5).length > 1
+                        ? `✨ Pool ${modelFormData.apiKey.split(/[\n,;]+/).filter((k) => k.trim().length > 5).length} Keys Terdeteksi`
+                        : "1 Key Terdeteksi"}
+                    </span>
+                  )}
+                </div>
+                <textarea
+                  rows={2}
+                  placeholder={editingModelId ? "(Kosongkan bila tidak diubah) atau masukkan key baru (pisahkan baris baru untuk multi-key pool)" : "gsk_... (bisa lebih dari 1 key, pisahkan baris baru)"}
                   value={modelFormData.apiKey}
                   onChange={(e) => setModelFormData({ ...modelFormData, apiKey: e.target.value })}
-                  style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, color: "#0F0F14" }}
+                  style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12, color: "#0F0F14", resize: "vertical", fontFamily: "monospace" }}
                 />
+                <div style={{ fontSize: 10.5, color: "#71717A", marginTop: 3 }}>
+                  💡 Khusus Groq Free Tier: Masukkan 2 atau lebih API Key (satu per baris) untuk rotasi otomatis & failover saat limit rate 30 RPM.
+                </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -7568,3 +8224,29 @@ const response = await executeAiCompletion({
     </div>
   );
 }
+
+export default function AdminDashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div
+          style={{
+            minHeight: "100vh",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "#FAFAFA",
+            color: "#64748B",
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          Memuat Zetera Admin...
+        </div>
+      }
+    >
+      <AdminDashboardPageContent />
+    </Suspense>
+  );
+}
+

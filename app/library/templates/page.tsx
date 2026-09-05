@@ -131,7 +131,7 @@ export default function TemplateLibraryPage() {
               Proposal Templates ({templates.length})
             </div>
             <Link
-              href="/prompts"
+              href="/admin-only/dashboard?tab=prompts"
               style={{
                 padding: "5px 12px",
                 fontSize: 12,
