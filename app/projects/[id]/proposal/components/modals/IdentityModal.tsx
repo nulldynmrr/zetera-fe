@@ -228,7 +228,7 @@ export function IdentityModal({
                 border: "1px solid #CBD5E1",
                 fontSize: 13,
               }}
-              placeholder="Contoh: Universitas Telkom"
+              placeholder="Contoh: Universitas Terakreditasi"
             />
           </div>
 

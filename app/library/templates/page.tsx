@@ -183,7 +183,7 @@ export default function TemplateLibraryPage() {
             </h2>
           </div>
           <p style={{ fontSize: 13.5, color: "#64748b", margin: 0, lineHeight: 1.5, maxWidth: 760 }}>
-            Pilih dan sesuaikan struktur bab proposal skripsi Anda. Template bawaan disusun berdasarkan panduan resmi penulisan Tugas Akhir Fakultas Informatika (FIF) Telkom University.
+            Pilih dan sesuaikan struktur bab proposal skripsi Anda. Template bawaan disusun berdasarkan panduan resmi penulisan Tugas Akhir Fakultas Ilmu Komputer & Informatika Standar Nasional.
           </p>
         </div>
 

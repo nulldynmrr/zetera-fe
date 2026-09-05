@@ -7,7 +7,7 @@ export interface UniversityItem {
 
 export const INDONESIAN_UNIVERSITIES: UniversityItem[] = [
   // Jawa Barat & Banten
-  { name: "Telkom University", city: "Bandung", province: "Jawa Barat" },
+  { name: "Universitas Terakreditasi", city: "Bandung", province: "Jawa Barat" },
   { name: "Institut Teknologi Bandung (ITB)", city: "Bandung", province: "Jawa Barat" },
   { name: "Universitas Padjadjaran (UNPAD)", city: "Sumedang", province: "Jawa Barat" },
   { name: "Universitas Pendidikan Indonesia (UPI)", city: "Bandung", province: "Jawa Barat" },

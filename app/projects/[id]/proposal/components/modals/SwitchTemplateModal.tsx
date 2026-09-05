@@ -225,7 +225,7 @@ export const SwitchTemplateModal: React.FC<SwitchTemplateModalProps> = ({
                 Template Aktif Saat Ini
               </span>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: "#1E293B", marginTop: 2 }}>
-                {activeTemplate?.name || "Proposal Tugas Akhir — Informatika FIF Telkom University"}
+                {activeTemplate?.name || "Proposal Tugas Akhir — Format Standar Nasional (LaTeX)"}
               </div>
             </div>
             <span

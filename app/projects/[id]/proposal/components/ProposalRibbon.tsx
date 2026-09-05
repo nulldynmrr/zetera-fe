@@ -228,7 +228,7 @@ export function ProposalRibbon({
                 ? activeTemplate.name.length > 22
                   ? activeTemplate.name.slice(0, 22) + "..."
                   : activeTemplate.name
-                : "Template: Telkom FIF"}
+                : "Template: Standar Nasional"}
             </span>
             <span
               style={{

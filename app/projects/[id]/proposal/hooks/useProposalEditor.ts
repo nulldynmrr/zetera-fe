@@ -172,7 +172,7 @@ export function useProposalEditor(projectId: string) {
           nim: res.data.profile?.nim || "1301220001",
           prodi: res.data.profile?.programStudi || res.data.project?.prodi || "S1 Teknik Informatika",
           fakultas: res.data.profile?.fakultas || "Fakultas Informatika",
-          universitas: res.data.profile?.universitas || "Universitas Telkom",
+          universitas: res.data.profile?.universitas || "Universitas Terakreditasi",
           kota: res.data.profile?.kota || "Bandung",
           year: `${new Date().getFullYear()}`,
         });
