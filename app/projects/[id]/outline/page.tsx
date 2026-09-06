@@ -3621,9 +3621,9 @@ export default function OutlinePage() {
                             </p>
                           </div>
 
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
                             {lastSavedTime && (
-                              <span style={{ fontSize: 11, color: "#059669", fontWeight: 600 }}>
+                              <span style={{ fontSize: 11, color: "#059669", fontWeight: 600, whiteSpace: "nowrap" }}>
                                 ✓ Tersimpan {lastSavedTime}
                               </span>
                             )}
@@ -3633,21 +3633,21 @@ export default function OutlinePage() {
                               onClick={() => handleCombineBulletsToDraft(false)}
                               title="Tarik kembali tulisan asli Anda dari 8 butir poin di tab Instruksi Riset"
                               style={{
-                                padding: "6px 12px",
+                                padding: "6px 11px",
                                 borderRadius: 7,
                                 background: "#ecfdf5",
                                 border: "1.5px solid #10b981",
                                 color: "#047857",
                                 fontSize: 11.5,
-                                fontWeight: 800,
+                                fontWeight: 700,
                                 cursor: "pointer",
                                 display: "inline-flex",
                                 alignItems: "center",
                                 gap: 5,
-                                boxShadow: "0 1px 3px rgba(16, 185, 129, 0.15)",
+                                whiteSpace: "nowrap",
                               }}
                             >
-                              <RefreshCw size={12} /> 🔄 Pulihkan dari Poin Instruksi
+                              <RefreshCw size={12} /> Pulihkan dari Poin
                             </button>
 
                             <button
@@ -3656,7 +3656,7 @@ export default function OutlinePage() {
                               disabled={polishingDraft}
                               title="Tingkatkan gaya bahasa, tata bahasa akademik, dan kepadatan argumen sebelum membangun proposal"
                               style={{
-                                padding: "6px 13px",
+                                padding: "6px 12px",
                                 borderRadius: 7,
                                 background: "#f8fafc",
                                 border: "1.5px solid #cbd5e1",
@@ -3669,31 +3669,11 @@ export default function OutlinePage() {
                                 gap: 5,
                                 opacity: polishingDraft ? 0.7 : 1,
                                 transition: "all 0.15s ease",
+                                whiteSpace: "nowrap",
                               }}
                             >
                               <Sparkles size={13} color="#4338CA" />
-                              <span>{polishingDraft ? "Sedang Memoles AI..." : "✨ Parafrasekan / Bagusin"}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleCombineBulletsToDraft(true)}
-                              style={{
-                                padding: "6px 14px",
-                                borderRadius: 7,
-                                background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
-                                color: "#ffffff",
-                                border: "none",
-                                fontSize: 11.5,
-                                fontWeight: 700,
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                                boxShadow: "0 2px 6px rgba(37, 99, 235, 0.25)",
-                              }}
-                            >
-                              <span>🚀 Bangun &amp; Buka Proposal ➔</span>
+                              <span>{polishingDraft ? "Memoles AI..." : "Parafrasekan"}</span>
                             </button>
 
                             <Button
@@ -3701,6 +3681,7 @@ export default function OutlinePage() {
                               disabled={savingNotes}
                               variant="primary"
                               size="sm"
+                              style={{ whiteSpace: "nowrap" }}
                             >
                               {savingNotes ? "Menyimpan..." : "Simpan Draf"}
                             </Button>
@@ -3727,6 +3708,42 @@ export default function OutlinePage() {
                             fontFamily: "inherit",
                           }}
                         />
+
+                        {/* POJOK KANAN BAWAH: Bangun & Buka Proposal */}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            marginTop: 10,
+                          }}
+                        >
+                          <span style={{ fontSize: 12, color: "#64748b" }}>
+                            {writingContent ? `${writingContent.trim().split(/\s+/).filter(Boolean).length} kata` : "0 kata"}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCombineBulletsToDraft(true)}
+                            style={{
+                              padding: "9px 22px",
+                              borderRadius: 8,
+                              background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                              color: "#ffffff",
+                              border: "none",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 7,
+                              boxShadow: "0 2px 8px rgba(37, 99, 235, 0.28)",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            <span>🚀 Bangun &amp; Buka Proposal ➔</span>
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
