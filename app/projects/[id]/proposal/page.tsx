@@ -35,6 +35,7 @@ import { CitationPickerModal } from "./components/modals/CitationPickerModal";
 import { PdfExportModal } from "./components/modals/PdfExportModal";
 import { TypoTooltip } from "./components/modals/TypoTooltip";
 import { SwitchTemplateModal } from "./components/modals/SwitchTemplateModal";
+import { sanitizeAcademicText } from "./types";
 
 export default function ProposalPage() {
   const params = useParams();
@@ -55,12 +56,17 @@ export default function ProposalPage() {
 
   // Insert AI draft to active document chapter
   const handleInsertAiDraftToDocument = (text: string) => {
+    const cleanText = sanitizeAcademicText(text);
+    if (!cleanText) {
+      alert("AI tidak menghasilkan teks draf naskah yang valid untuk disisipkan.");
+      return;
+    }
     if (editor.activeTab === "bab2") {
       editor.setProposalData((prev: any) => ({
         ...prev,
         bab2: {
           ...prev?.bab2,
-          landasanTeori: prev?.bab2?.landasanTeori ? `${prev.bab2.landasanTeori}\n\n${text}` : text,
+          landasanTeori: prev?.bab2?.landasanTeori ? `${prev.bab2.landasanTeori}\n\n${cleanText}` : cleanText,
         },
       }));
     } else if (editor.activeTab === "bab3") {
@@ -68,20 +74,20 @@ export default function ProposalPage() {
         ...prev,
         bab3: {
           ...prev?.bab3,
-          desainPenelitian: prev?.bab3?.desainPenelitian ? `${prev.bab3.desainPenelitian}\n\n${text}` : text,
+          desainPenelitian: prev?.bab3?.desainPenelitian ? `${prev.bab3.desainPenelitian}\n\n${cleanText}` : cleanText,
         },
       }));
     } else if (editor.activeTab === "abstract") {
       editor.setAbstractData((prev) => ({
         ...prev,
-        indo: prev.indo ? `${prev.indo}\n\n${text}` : text,
+        indo: prev.indo ? `${prev.indo}\n\n${cleanText}` : cleanText,
       }));
     } else {
       editor.setProposalData((prev: any) => ({
         ...prev,
         bab1: {
           ...prev?.bab1,
-          latarBelakang: prev?.bab1?.latarBelakang ? `${prev.bab1.latarBelakang}\n\n${text}` : text,
+          latarBelakang: prev?.bab1?.latarBelakang ? `${prev.bab1.latarBelakang}\n\n${cleanText}` : cleanText,
         },
       }));
     }
@@ -215,7 +221,8 @@ export default function ProposalPage() {
 
   // Render text with typographical highlights, interactive citations, and indent styling
   const renderAcademicParagraphs = (rawText?: string, placeholder?: string) => {
-    if (!rawText || !rawText.trim()) {
+    const cleanText = sanitizeAcademicText(rawText);
+    if (!cleanText || !cleanText.trim()) {
       if (placeholder) {
         return (
           <p
@@ -234,7 +241,7 @@ export default function ProposalPage() {
       return null;
     }
 
-    const paragraphs = rawText.split(/\n+/).map((p) => p.trim()).filter(Boolean);
+    const paragraphs = cleanText.split(/\n+/).map((p) => p.trim()).filter(Boolean);
 
     return (
       <div>

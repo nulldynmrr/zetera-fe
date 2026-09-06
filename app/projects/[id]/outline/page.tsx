@@ -507,8 +507,11 @@ export default function OutlinePage() {
       });
 
       if (res.success && res.revisedContent) {
-        setWritingContent(res.revisedContent);
-        await handleSaveWriting(res.revisedContent);
+        const clean = res.revisedContent.replace(/\{[\s\r\n]*"(?:revisedContent|explanation|usedCitations)"[\s\S]*?\}/gi, "").trim();
+        if (clean && !clean.startsWith("{")) {
+          setWritingContent(clean);
+          await handleSaveWriting(clean);
+        }
       }
     } catch (err: any) {
       console.error("AI Draft generation error:", err);

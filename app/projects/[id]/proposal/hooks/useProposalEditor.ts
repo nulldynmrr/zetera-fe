@@ -14,6 +14,7 @@ import {
   AppendixData,
   PdfPageSelection,
   AiChatMessage,
+  sanitizeAcademicText,
 } from "../types";
 
 export function useProposalEditor(projectId: string) {
@@ -255,7 +256,28 @@ export function useProposalEditor(projectId: string) {
         // RESTORE SAVED DRAFT FROM DATABASE IF AVAILABLE
         if (res.data.savedDraft) {
           const draft = res.data.savedDraft;
-          if (draft.proposalData) setProposalData(draft.proposalData);
+          if (draft.proposalData) {
+            setProposalData({
+              ...draft.proposalData,
+              bab1: {
+                ...draft.proposalData?.bab1,
+                latarBelakang: sanitizeAcademicText(draft.proposalData?.bab1?.latarBelakang),
+              },
+              bab2: {
+                ...draft.proposalData?.bab2,
+                landasanTeori: sanitizeAcademicText(draft.proposalData?.bab2?.landasanTeori),
+                penelitianTerdahulu: sanitizeAcademicText(draft.proposalData?.bab2?.penelitianTerdahulu),
+                kerangkaKonseptual: sanitizeAcademicText(draft.proposalData?.bab2?.kerangkaKonseptual),
+              },
+              bab3: {
+                ...draft.proposalData?.bab3,
+                desainPenelitian: sanitizeAcademicText(draft.proposalData?.bab3?.desainPenelitian),
+                populasiSampel: sanitizeAcademicText(draft.proposalData?.bab3?.populasiSampel),
+                teknikPengumpulanData: sanitizeAcademicText(draft.proposalData?.bab3?.teknikPengumpulanData),
+                teknikAnalisisData: sanitizeAcademicText(draft.proposalData?.bab3?.teknikAnalisisData),
+              },
+            });
+          }
           if (draft.coverData) setCoverData(draft.coverData);
           if (draft.approvalData) setApprovalData(draft.approvalData);
           if (draft.abstractData) setAbstractData(draft.abstractData);
@@ -747,9 +769,10 @@ export function useProposalEditor(projectId: string) {
         })),
       });
 
+      const cleanRevisedContent = sanitizeAcademicText(res?.revisedContent);
       const replyText =
         res?.explanation ||
-        res?.revisedContent ||
+        cleanRevisedContent ||
         "Maaf, saya tidak dapat merumuskan respons untuk saat ini.";
 
       setAiChatMessages((prev) => [
@@ -758,7 +781,7 @@ export function useProposalEditor(projectId: string) {
           sender: "ai",
           text: replyText,
           time: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
-          revisedContent: res?.revisedContent,
+          revisedContent: cleanRevisedContent || undefined,
           explanation: res?.explanation,
           usedCitations: res?.usedCitations,
         },
@@ -935,7 +958,7 @@ export function useProposalEditor(projectId: string) {
         .filter(Boolean)
         .join(" ");
 
-      const rawLatar = proposalData?.bab1?.latarBelakang || "";
+      const rawLatar = sanitizeAcademicText(proposalData?.bab1?.latarBelakang || "");
       const paras = rawLatar.split(/\n+/).map((p: string) => p.trim()).filter(Boolean);
       const total = paras.length;
 

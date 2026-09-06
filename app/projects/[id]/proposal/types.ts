@@ -241,3 +241,37 @@ export interface TypoSuggestion {
   reason: string;
   position: { x: number; y: number };
 }
+
+/**
+ * Membersihkan naskah dari blok JSON AI metadata / prompt leaks yang tidak sengaja tersisip
+ */
+export function sanitizeAcademicText(rawText?: string | null): string {
+  if (!rawText || typeof rawText !== "string") return "";
+  let text = rawText;
+
+  // 1. Hapus blok JSON AI metadata seperti { "revisedContent": ..., "explanation": ..., "usedCitations": ... }
+  text = text.replace(/\{[\s\r\n]*"(?:revisedContent|explanation|usedCitations|content)"[\s\S]*?\}/gi, "");
+
+  // 2. Hapus blok JSON apapun yang mengandung kata kunci revisedContent/explanation/usedCitations
+  text = text.replace(/\{[\s\r\n]*"[^"]+"\s*:[\s\S]*?\}/g, (match) => {
+    if (
+      match.includes("revisedContent") ||
+      match.includes("explanation") ||
+      match.includes("usedCitations")
+    ) {
+      return "";
+    }
+    return match;
+  });
+
+  // 3. Hapus kurung kurawal JSON kosong sisa pembersihan
+  text = text.replace(/\{[\s\r\n]*\}/g, "");
+
+  // 4. Hapus markdown codeblock ```json ... ```
+  text = text.replace(/```(?:json)?[\s\S]*?```/gi, "");
+
+  // 5. Rapikan spasi dan newline berlebih
+  text = text.replace(/\n{3,}/g, "\n\n").trim();
+
+  return text;
+}
