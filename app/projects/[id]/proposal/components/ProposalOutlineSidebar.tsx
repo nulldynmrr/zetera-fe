@@ -1,5 +1,5 @@
 import React from "react";
-import { FileText, Plus, Sparkles } from "lucide-react";
+import { FileText, Plus, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
 import { TabKey, CustomSubChapterItem, ReferenceItem } from "../types";
 
 interface ProposalOutlineSidebarProps {
@@ -19,7 +19,12 @@ export function ProposalOutlineSidebar({
   setShowAddSubChapterModal,
   handleGenerateProposal,
 }: ProposalOutlineSidebarProps) {
+  const [expandedChapters, setExpandedChapters] = React.useState<Set<string>>(new Set([activeTab]));
   const activeRefsCount = references.filter((r) => r.selected).length;
+
+  React.useEffect(() => {
+    setExpandedChapters((prev) => new Set([...prev, activeTab]));
+  }, [activeTab]);
 
   const chapters = [
     { id: "cover" as TabKey, label: "Halaman Sampul / Cover", subs: [] },
@@ -164,11 +169,16 @@ export function ProposalOutlineSidebar({
           const chapterCustomSubs = customSubChapters.filter(
             (c) => c.chapter === item.id && !c.hidden
           );
+          const hasChildren = item.subs.length > 0 || chapterCustomSubs.length > 0;
+          const isExpanded = expandedChapters.has(item.id);
 
           return (
             <div key={item.id} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <div
-                onClick={() => handleNavigateToSection(item.id, `section_${item.id}`)}
+                onClick={() => {
+                  handleNavigateToSection(item.id, `section_${item.id}`);
+                  setExpandedChapters((prev) => new Set([...prev, item.id]));
+                }}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -196,10 +206,37 @@ export function ProposalOutlineSidebar({
                   <FileText size={14} color={isActive ? "#4338CA" : "#94A3B8"} />
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>
                 </div>
+
+                {hasChildren && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedChapters((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(item.id)) next.delete(item.id);
+                        else next.add(item.id);
+                        return next;
+                      });
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 2,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      color: isActive ? "#4338CA" : "#94A3B8",
+                    }}
+                    title={isExpanded ? "Sembunyikan sub-bab" : "Tampilkan sub-bab"}
+                  >
+                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </button>
+                )}
               </div>
 
-              {/* Sub-chapters list */}
-              {(item.subs.length > 0 || chapterCustomSubs.length > 0) && (
+              {/* Sub-chapters list (bisa di-hide / unhide per chapter) */}
+              {hasChildren && isExpanded && (
                 <div
                   style={{
                     display: "flex",

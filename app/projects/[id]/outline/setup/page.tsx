@@ -661,7 +661,7 @@ export default function CustomBabSetupPage() {
                                 }}
                               >
                                 <Plus size={12} />
-                                + Anakan
+                                Anakan
                               </button>
                             )}
                             <button

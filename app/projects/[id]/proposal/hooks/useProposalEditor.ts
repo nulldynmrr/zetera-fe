@@ -318,10 +318,10 @@ export function useProposalEditor(projectId: string) {
           const extraItems = items.filter((i) => !standardIds.has(i.itemId));
           if (extraItems.length > 0) {
             setCustomSubChapters((prevSubs) => {
-              const existingIds = new Set(prevSubs.map((s) => s.id));
               const newSubs: CustomSubChapterItem[] = [...prevSubs];
               extraItems.forEach((item) => {
-                if (!existingIds.has(item.itemId)) {
+                const existingIdx = newSubs.findIndex((s) => s.id === item.itemId);
+                if (existingIdx === -1) {
                   newSubs.push({
                     id: item.itemId,
                     chapter: item.bab === 1 ? "bab1" : item.bab === 2 ? "bab2" : "bab3",
@@ -330,6 +330,15 @@ export function useProposalEditor(projectId: string) {
                     title: `${item.itemId} ${item.title}`,
                     content: item.userNotes || "",
                   });
+                } else {
+                  // Jika ada catatan baru dari outline yang belum tersimpan di custom sub-chapter, sinkronkan
+                  if (item.userNotes && (!newSubs[existingIdx].content || newSubs[existingIdx].content.trim().length === 0)) {
+                    newSubs[existingIdx] = {
+                      ...newSubs[existingIdx],
+                      title: `${item.itemId} ${item.title}`,
+                      content: item.userNotes,
+                    };
+                  }
                 }
               });
               return newSubs;

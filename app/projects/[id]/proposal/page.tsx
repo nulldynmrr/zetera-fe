@@ -51,6 +51,7 @@ export default function ProposalPage() {
   );
 
   const [showAddSubChapterModal, setShowAddSubChapterModal] = React.useState(false);
+  const [focusActiveChapter, setFocusActiveChapter] = React.useState<boolean>(true);
 
   // Insert AI draft to active document chapter
   const handleInsertAiDraftToDocument = (text: string) => {
@@ -228,6 +229,82 @@ export default function ProposalPage() {
             background: "#E2E8F0",
           }}
         >
+          {/* View Mode Bar: Fokus BAB Aktif (Sembunyikan BAB lain) vs Tampilkan Semua BAB */}
+          <div
+            className="no-print"
+            style={{
+              width: "100%",
+              maxWidth: "210mm",
+              marginBottom: 10,
+              padding: "6px 12px",
+              background: "#ffffff",
+              borderRadius: 8,
+              border: "1px solid #cbd5e1",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#334155" }}>Mode Tampilan:</span>
+              <button
+                type="button"
+                onClick={() => setFocusActiveChapter(true)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontWeight: focusActiveChapter ? 700 : 500,
+                  background: focusActiveChapter ? "#059669" : "#f1f5f9",
+                  color: focusActiveChapter ? "#ffffff" : "#475569",
+                  border: "1px solid",
+                  borderColor: focusActiveChapter ? "#059669" : "#cbd5e1",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+                title="Hanya tampilkan BAB yang sedang aktif, sembunyikan BAB lainnya"
+              >
+                <span>🎯 Fokus BAB Aktif ({editor.activeTab.toUpperCase()})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFocusActiveChapter(false)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontWeight: !focusActiveChapter ? 700 : 500,
+                  background: !focusActiveChapter ? "#0284c7" : "#f1f5f9",
+                  color: !focusActiveChapter ? "#ffffff" : "#475569",
+                  border: "1px solid",
+                  borderColor: !focusActiveChapter ? "#0284c7" : "#cbd5e1",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+                title="Tampilkan seluruh lembar skripsi dan semua BAB secara bersambung"
+              >
+                <span>📑 Tampilkan Semua BAB (Full Dokumen)</span>
+              </button>
+            </div>
+
+            {focusActiveChapter ? (
+              <span style={{ fontSize: 10.5, color: "#059669", fontWeight: 700 }}>
+                ✓ BAB lain disembunyikan agar Anda fokus pada {editor.activeTab.toUpperCase()}
+              </span>
+            ) : (
+              <span style={{ fontSize: 10.5, color: "#64748b" }}>
+                Menampilkan seluruh halaman dokumen
+              </span>
+            )}
+          </div>
+
           {/* Centimeter Ruler */}
           <div
             id="centimeter_ruler"
@@ -352,105 +429,121 @@ export default function ProposalPage() {
             style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}
           >
             {/* Sheet 1: Cover */}
-            <CoverSheet
-              coverData={editor.coverData}
-              profile={editor.profile}
-              project={editor.project}
-              isEditMode={editor.isEditMode}
-              triggerAutoSave={editor.triggerAutoSave}
-              pdfPageSelection={editor.pdfPageSelection}
-              pageNumberPos={editor.pageNumberPos}
-              marginPreset={editor.marginPreset}
-              logoLoadError={editor.logoLoadError}
-              setLogoLoadError={editor.setLogoLoadError}
-            />
+            {(!focusActiveChapter || editor.activeTab === "cover") && (
+              <CoverSheet
+                coverData={editor.coverData}
+                profile={editor.profile}
+                project={editor.project}
+                isEditMode={editor.isEditMode}
+                triggerAutoSave={editor.triggerAutoSave}
+                pdfPageSelection={editor.pdfPageSelection}
+                pageNumberPos={editor.pageNumberPos}
+                marginPreset={editor.marginPreset}
+                logoLoadError={editor.logoLoadError}
+                setLogoLoadError={editor.setLogoLoadError}
+              />
+            )}
 
             {/* Sheet 2: Lembar Persetujuan */}
-            <ApprovalSheet
-              coverData={editor.coverData}
-              approvalData={editor.approvalData}
-              profile={editor.profile}
-              project={editor.project}
-              isEditMode={editor.isEditMode}
-              triggerAutoSave={editor.triggerAutoSave}
-              pdfPageSelection={editor.pdfPageSelection}
-              pageNumberPos={editor.pageNumberPos}
-              marginPreset={editor.marginPreset}
-            />
+            {(!focusActiveChapter || editor.activeTab === "approval") && (
+              <ApprovalSheet
+                coverData={editor.coverData}
+                approvalData={editor.approvalData}
+                profile={editor.profile}
+                project={editor.project}
+                isEditMode={editor.isEditMode}
+                triggerAutoSave={editor.triggerAutoSave}
+                pdfPageSelection={editor.pdfPageSelection}
+                pageNumberPos={editor.pageNumberPos}
+                marginPreset={editor.marginPreset}
+              />
+            )}
 
             {/* Sheet 3: Abstrak */}
-            <AbstractSheet
-              abstractData={editor.abstractData}
-              isEditMode={editor.isEditMode}
-              triggerAutoSave={editor.triggerAutoSave}
-              pdfPageSelection={editor.pdfPageSelection}
-              pageNumberPos={editor.pageNumberPos}
-              marginPreset={editor.marginPreset}
-              renderAcademicParagraphs={renderAcademicParagraphs}
-            />
+            {(!focusActiveChapter || editor.activeTab === "abstract") && (
+              <AbstractSheet
+                abstractData={editor.abstractData}
+                isEditMode={editor.isEditMode}
+                triggerAutoSave={editor.triggerAutoSave}
+                pdfPageSelection={editor.pdfPageSelection}
+                pageNumberPos={editor.pageNumberPos}
+                marginPreset={editor.marginPreset}
+                renderAcademicParagraphs={renderAcademicParagraphs}
+              />
+            )}
 
             {/* Sheet 4: Bab I Pendahuluan */}
-            <Chapter1Sheet
-              proposalData={editor.proposalData}
-              customSubChapters={editor.customSubChapters}
-              isEditMode={editor.isEditMode}
-              triggerAutoSave={editor.triggerAutoSave}
-              pdfPageSelection={editor.pdfPageSelection}
-              pageNumberPos={editor.pageNumberPos}
-              marginPreset={editor.marginPreset}
-              paragraphStyle={editor.paragraphStyle}
-              renderAcademicParagraphs={renderAcademicParagraphs}
-              latarPage1={editor.latarPage1}
-              latarPage2={editor.latarPage2}
-              latarPage3={editor.latarPage3}
-            />
+            {(!focusActiveChapter || editor.activeTab === "bab1") && (
+              <Chapter1Sheet
+                proposalData={editor.proposalData}
+                customSubChapters={editor.customSubChapters}
+                isEditMode={editor.isEditMode}
+                triggerAutoSave={editor.triggerAutoSave}
+                pdfPageSelection={editor.pdfPageSelection}
+                pageNumberPos={editor.pageNumberPos}
+                marginPreset={editor.marginPreset}
+                paragraphStyle={editor.paragraphStyle}
+                renderAcademicParagraphs={renderAcademicParagraphs}
+                latarPage1={editor.latarPage1}
+                latarPage2={editor.latarPage2}
+                latarPage3={editor.latarPage3}
+              />
+            )}
 
             {/* Sheet 5: Bab II Tinjauan Pustaka & Matriks */}
-            <Chapter2Sheet
-              proposalData={editor.proposalData}
-              references={editor.references}
-              customSubChapters={editor.customSubChapters}
-              isEditMode={editor.isEditMode}
-              triggerAutoSave={editor.triggerAutoSave}
-              pdfPageSelection={editor.pdfPageSelection}
-              pageNumberPos={editor.pageNumberPos}
-              marginPreset={editor.marginPreset}
-              renderAcademicParagraphs={renderAcademicParagraphs}
-            />
+            {(!focusActiveChapter || editor.activeTab === "bab2") && (
+              <Chapter2Sheet
+                proposalData={editor.proposalData}
+                references={editor.references}
+                customSubChapters={editor.customSubChapters}
+                isEditMode={editor.isEditMode}
+                triggerAutoSave={editor.triggerAutoSave}
+                pdfPageSelection={editor.pdfPageSelection}
+                pageNumberPos={editor.pageNumberPos}
+                marginPreset={editor.marginPreset}
+                renderAcademicParagraphs={renderAcademicParagraphs}
+              />
+            )}
 
             {/* Sheet 6: Bab III Metodologi */}
-            <Chapter3Sheet
-              proposalData={editor.proposalData}
-              customSubChapters={editor.customSubChapters}
-              isEditMode={editor.isEditMode}
-              triggerAutoSave={editor.triggerAutoSave}
-              pdfPageSelection={editor.pdfPageSelection}
-              pageNumberPos={editor.pageNumberPos}
-              marginPreset={editor.marginPreset}
-              renderAcademicParagraphs={renderAcademicParagraphs}
-            />
+            {(!focusActiveChapter || editor.activeTab === "bab3") && (
+              <Chapter3Sheet
+                proposalData={editor.proposalData}
+                customSubChapters={editor.customSubChapters}
+                isEditMode={editor.isEditMode}
+                triggerAutoSave={editor.triggerAutoSave}
+                pdfPageSelection={editor.pdfPageSelection}
+                pageNumberPos={editor.pageNumberPos}
+                marginPreset={editor.marginPreset}
+                renderAcademicParagraphs={renderAcademicParagraphs}
+              />
+            )}
 
             {/* Sheet 7: Daftar Pustaka */}
-            <ReferencesSheet
-              citedReferencesList={editor.citedReferencesList}
-              citationStyle={editor.citationStyle}
-              isEditMode={editor.isEditMode}
-              triggerAutoSave={editor.triggerAutoSave}
-              pdfPageSelection={editor.pdfPageSelection}
-              pageNumberPos={editor.pageNumberPos}
-              marginPreset={editor.marginPreset}
-              handleJumpToCitationInText={editor.handleJumpToCitationInText}
-            />
+            {(!focusActiveChapter || editor.activeTab === "references") && (
+              <ReferencesSheet
+                citedReferencesList={editor.citedReferencesList}
+                citationStyle={editor.citationStyle}
+                isEditMode={editor.isEditMode}
+                triggerAutoSave={editor.triggerAutoSave}
+                pdfPageSelection={editor.pdfPageSelection}
+                pageNumberPos={editor.pageNumberPos}
+                marginPreset={editor.marginPreset}
+                handleJumpToCitationInText={editor.handleJumpToCitationInText}
+              />
+            )}
 
             {/* Sheet 8: Lampiran */}
-            <AppendixSheet
-              appendixData={editor.appendixData}
-              isEditMode={editor.isEditMode}
-              triggerAutoSave={editor.triggerAutoSave}
-              pdfPageSelection={editor.pdfPageSelection}
-              pageNumberPos={editor.pageNumberPos}
-              marginPreset={editor.marginPreset}
-            />
+            {(!focusActiveChapter || editor.activeTab === "appendix") && (
+              <AppendixSheet
+                appendixData={editor.appendixData}
+                isEditMode={editor.isEditMode}
+                triggerAutoSave={editor.triggerAutoSave}
+                pdfPageSelection={editor.pdfPageSelection}
+                pageNumberPos={editor.pageNumberPos}
+                marginPreset={editor.marginPreset}
+              />
+            )}
           </div>
 
           {/* Canvas Bottom Info Bar */}

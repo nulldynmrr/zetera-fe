@@ -105,7 +105,8 @@ export default function OutlinePage() {
   const [items, setItems] = useState<ResearchOutlineItem[]>([]);
   const [project, setProject] = useState<any>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [expandedBabs, setExpandedBabs] = useState<Set<number>>(new Set([1, 2, 3]));
+  const [expandedBabs, setExpandedBabs] = useState<Set<number>>(new Set([1]));
+  const [focusActiveBabOnly, setFocusActiveBabOnly] = useState<boolean>(true);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(true);
@@ -738,6 +739,7 @@ export default function OutlinePage() {
       itemId: newItemId,
       title: title.trim(),
       tag: tag || null,
+      isCustom: true,
       bab: babNum,
       depth: 2,
       order: insertOrder,
@@ -759,6 +761,7 @@ export default function OutlinePage() {
 
     setItems(newItems);
     setSelectedItemId(newItemId);
+    setExpandedBabs((prev) => new Set([...prev, babNum]));
     setInsertSlot(null);
     setInsertForm({ title: "", tag: "" });
     await syncItemsToBackend(newItems);
@@ -1021,6 +1024,8 @@ export default function OutlinePage() {
         itemId: it.itemId,
         title: it.title,
         depth: it.depth || 2,
+        tag: it.tag || null,
+        isCustom: it.isCustom !== undefined ? it.isCustom : (it.itemId.split(".").length > 2 || !BAB_TAG_OPTIONS[bNum]?.some(t => t.tag === it.tag)),
       });
     });
 
@@ -1478,21 +1483,98 @@ export default function OutlinePage() {
               {/* Left Panel Header */}
               <div
                 style={{
-                  padding: "16px 20px",
+                  padding: "14px 16px",
                   borderBottom: "1px solid #f1f5f9",
                   background: "#f8fafc",
                   display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
+                  flexDirection: "column",
+                  gap: 8,
                 }}
               >
-                <div>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
-                    Struktur Outline ({items.length} Sub-bab)
-                  </span>
-                  <p style={{ fontSize: 11.5, color: "#64748b", margin: "2px 0 0" }}>
-                    Pilih sub-bab untuk buka studio riset &amp; naskah
-                  </p>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>
+                      Struktur Outline ({items.length} Sub-bab)
+                    </span>
+                    <p style={{ fontSize: 11, color: "#64748b", margin: "1px 0 0" }}>
+                      Pilih sub-bab untuk studio riset &amp; naskah
+                    </p>
+                  </div>
+                </div>
+
+                {/* Kontrol Hide / Unhide & Fokus BAB Aktif */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, paddingTop: 4, borderTop: "1px dashed #e2e8f0" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !focusActiveBabOnly;
+                      setFocusActiveBabOnly(next);
+                      if (next && selectedItem?.bab) {
+                        setExpandedBabs(new Set([selectedItem.bab]));
+                      }
+                    }}
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      padding: "3px 8px",
+                      borderRadius: 5,
+                      background: focusActiveBabOnly ? "#ecfdf5" : "#ffffff",
+                      color: focusActiveBabOnly ? "#059669" : "#64748b",
+                      border: "1px solid",
+                      borderColor: focusActiveBabOnly ? "#a7f3d0" : "#cbd5e1",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                    title="Saat aktif: Sembunyikan BAB lain otomatis agar fokus mengerjakan 1 BAB"
+                  >
+                    <Target size={11} />
+                    <span>{focusActiveBabOnly ? "🎯 Fokus 1 BAB" : "Bebas BAB"}</span>
+                  </button>
+
+                  <div style={{ display: "flex", gap: 3 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFocusActiveBabOnly(false);
+                        setExpandedBabs(new Set([1, 2, 3]));
+                      }}
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        background: "#ffffff",
+                        color: "#475569",
+                        border: "1px solid #cbd5e1",
+                        cursor: "pointer",
+                      }}
+                      title="Tampilkan seluruh BAB"
+                    >
+                      Buka Semua
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFocusActiveBabOnly(false);
+                        setExpandedBabs(new Set([]));
+                      }}
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        background: "#ffffff",
+                        color: "#64748b",
+                        border: "1px solid #cbd5e1",
+                        cursor: "pointer",
+                      }}
+                      title="Sembunyikan seluruh BAB"
+                    >
+                      Tutup Semua
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1505,7 +1587,7 @@ export default function OutlinePage() {
 
                   return (
                     <div key={babNum} style={{ marginBottom: 6 }}>
-                      {/* BAB Header Accordion */}
+                      {/* BAB Header Accordion with Hide/Unhide Indicator */}
                       <div
                         onClick={() => {
                           setExpandedBabs((prev) => {
@@ -1517,7 +1599,7 @@ export default function OutlinePage() {
                         }}
                         style={{
                           padding: "10px 18px",
-                          background: "#f1f5f9",
+                          background: isBabExpanded ? "#f1f5f9" : "#f8fafc",
                           borderTop: "1px solid #e2e8f0",
                           borderBottom: "1px solid #e2e8f0",
                           display: "flex",
@@ -1527,14 +1609,28 @@ export default function OutlinePage() {
                           userSelect: "none",
                         }}
                       >
-                        <span style={{ fontSize: 12, fontWeight: 800, color: "#334155", letterSpacing: "0.02em" }}>
-                          {BAB_LABELS[babNum] || `BAB ${babNum}`}
-                        </span>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: "#334155", letterSpacing: "0.02em" }}>
+                            {BAB_LABELS[babNum] || `BAB ${babNum}`}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span
+                            style={{
+                              fontSize: 9.5,
+                              fontWeight: 700,
+                              color: isBabExpanded ? "#059669" : "#64748b",
+                              background: isBabExpanded ? "#ecfdf5" : "#e2e8f0",
+                              padding: "1px 5px",
+                              borderRadius: 4,
+                            }}
+                          >
+                            {isBabExpanded ? "Tampil" : "Sembunyi"}
+                          </span>
                           <span style={{ fontSize: 11, fontWeight: 700, color: completedCount === babItems.length ? "#059669" : "#64748b" }}>
                             {completedCount}/{babItems.length}
                           </span>
-                          {isBabExpanded ? <ChevronUp size={14} color="#64748b" /> : <ChevronDown size={14} color="#64748b" />}
+                          {isBabExpanded ? <ChevronUp size={14} color="#059669" /> : <ChevronDown size={14} color="#64748b" />}
                         </div>
                       </div>
 
@@ -1556,6 +1652,9 @@ export default function OutlinePage() {
                                   onClick={() => {
                                   if (!isEditing) {
                                     setSelectedItemId(item.itemId);
+                                    if (focusActiveBabOnly) {
+                                      setExpandedBabs(new Set([babNum]));
+                                    }
                                     setOpenMenuId(null);
                                   }
                                 }}
