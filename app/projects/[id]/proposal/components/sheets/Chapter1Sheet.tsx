@@ -33,6 +33,22 @@ export function Chapter1Sheet({
 }: Chapter1SheetProps) {
   const bab1Subs = customSubChapters.filter((s) => s.chapter === "bab1" && !s.hidden);
 
+  const normalizeList = (val: any): string[] => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val.filter((x): x is string => typeof x === "string");
+    if (typeof val === "string" && val.trim()) {
+      return val.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+    }
+    if (typeof val === "object") {
+      return Object.values(val).filter((x): x is string => typeof x === "string");
+    }
+    return [];
+  };
+
+  const identifikasiItems = normalizeList(proposalData?.bab1?.identifikasiMasalah);
+  const rumusanItems = normalizeList(proposalData?.bab1?.rumusanMasalah);
+  const tujuanItems = normalizeList(proposalData?.bab1?.tujuanPenelitian);
+
   return (
     <>
       {/* ── PAGE 4: BAB I PENDAHULUAN (HALAMAN 1) ── */}
@@ -136,10 +152,9 @@ export function Chapter1Sheet({
           <div id="sub_1_2" style={{ fontWeight: 700, marginBottom: 6, marginTop: 0 }}>
             1.2 Identifikasi Masalah
           </div>
-          {proposalData?.bab1?.identifikasiMasalah &&
-          proposalData.bab1.identifikasiMasalah.length > 0 ? (
+          {identifikasiItems.length > 0 ? (
             <div style={{ paddingLeft: "1.27cm", marginBottom: 10, lineHeight: 1.75 }}>
-              {proposalData.bab1.identifikasiMasalah.map((im: string, idx: number) => (
+              {identifikasiItems.map((im: string, idx: number) => (
                 <div
                   key={idx}
                   style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 3 }}
@@ -154,9 +169,9 @@ export function Chapter1Sheet({
           <div id="sub_1_3" style={{ fontWeight: 700, marginBottom: 6, marginTop: 10 }}>
             1.3 Rumusan Masalah
           </div>
-          {proposalData?.bab1?.rumusanMasalah && proposalData.bab1.rumusanMasalah.length > 0 ? (
+          {rumusanItems.length > 0 ? (
             <div style={{ paddingLeft: "1.27cm", marginBottom: 10, lineHeight: 1.75 }}>
-              {proposalData.bab1.rumusanMasalah.map((r: string, idx: number) => (
+              {rumusanItems.map((r: string, idx: number) => (
                 <div
                   key={idx}
                   style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 3 }}
@@ -171,9 +186,9 @@ export function Chapter1Sheet({
           <div id="sub_1_4" style={{ fontWeight: 700, marginBottom: 6, marginTop: 10 }}>
             1.4 Tujuan Penelitian
           </div>
-          {proposalData?.bab1?.tujuanPenelitian && proposalData.bab1.tujuanPenelitian.length > 0 ? (
+          {tujuanItems.length > 0 ? (
             <div style={{ paddingLeft: "1.27cm", marginBottom: 10, lineHeight: 1.75 }}>
-              {proposalData.bab1.tujuanPenelitian.map((t: string, idx: number) => (
+              {tujuanItems.map((t: string, idx: number) => (
                 <div
                   key={idx}
                   style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 3 }}

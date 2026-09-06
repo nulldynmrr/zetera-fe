@@ -727,23 +727,33 @@ export function useProposalEditor(projectId: string) {
       }
     },
     ...(() => {
+      const normalizeList = (val: any): string[] => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val.filter((x): x is string => typeof x === "string");
+        if (typeof val === "string") return [val];
+        if (typeof val === "object") {
+          return Object.values(val).filter((x): x is string => typeof x === "string");
+        }
+        return [];
+      };
+
       const docText = [
         abstractData.indo,
         abstractData.eng,
         proposalData?.bab1?.latarBelakang,
         proposalData?.bab1?.manfaatPenelitian?.teoretis,
         proposalData?.bab1?.manfaatPenelitian?.praktis,
-        ...(proposalData?.bab1?.identifikasiMasalah || []),
-        ...(proposalData?.bab1?.rumusanMasalah || []),
-        ...(proposalData?.bab1?.tujuanPenelitian || []),
+        ...normalizeList(proposalData?.bab1?.identifikasiMasalah),
+        ...normalizeList(proposalData?.bab1?.rumusanMasalah),
+        ...normalizeList(proposalData?.bab1?.tujuanPenelitian),
         proposalData?.bab2?.landasanTeori,
         proposalData?.bab2?.kerangkaKonseptual,
-        ...(proposalData?.bab2?.hipotesis || []),
+        ...normalizeList(proposalData?.bab2?.hipotesis),
         proposalData?.bab3?.desainPenelitian,
         proposalData?.bab3?.populasiSampel,
         proposalData?.bab3?.teknikPengumpulanData,
         proposalData?.bab3?.teknikAnalisisData,
-        ...(customSubChapters || []).map((c) => c.content),
+        ...(customSubChapters || []).map((c) => c?.content || ""),
       ]
         .filter(Boolean)
         .join(" ");
@@ -795,8 +805,11 @@ export function useProposalEditor(projectId: string) {
         for (const auth of authorsList) {
           const surname = auth.replace(/et\s+al/i, "").trim().split(/\s+/).pop();
           if (surname && surname.length > 2) {
-            const reg = new RegExp(`\\b${surname}\\b`, "i");
-            if (reg.test(docText)) return true;
+            try {
+              const escapedSurname = surname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const reg = new RegExp(`\\b${escapedSurname}\\b`, "i");
+              if (reg.test(docText)) return true;
+            } catch (_) {}
           }
         }
         return false;

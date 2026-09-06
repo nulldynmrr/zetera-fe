@@ -206,21 +206,32 @@ export function Chapter2Sheet({
           <div id="sub_2_3" style={{ fontWeight: 700, marginBottom: 8, marginTop: 16 }}>
             2.4 Hipotesis Penelitian
           </div>
-          {proposalData?.bab2?.hipotesis && proposalData.bab2.hipotesis.length > 0 ? (
-            <div style={{ paddingLeft: "1.27cm", marginBottom: 14, lineHeight: 1.8 }}>
-              {proposalData.bab2.hipotesis.map((h: string, idx: number) => (
-                <div
-                  key={idx}
-                  style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 4 }}
-                >
-                  <span style={{ minWidth: 28, fontWeight: 600 }}>
-                    {h.match(/^H\d+:/) ? "" : `${idx + 1}.`}
-                  </span>
-                  <span style={{ flex: 1, textAlign: "justify" }}>{h}</span>
+          {(() => {
+            const hipotesisList = Array.isArray(proposalData?.bab2?.hipotesis)
+              ? proposalData.bab2.hipotesis.filter((x: any) => typeof x === "string")
+              : typeof proposalData?.bab2?.hipotesis === "string" && proposalData.bab2.hipotesis.trim()
+              ? proposalData.bab2.hipotesis.split(/\n+/).map((s: string) => s.trim()).filter(Boolean)
+              : [];
+
+            if (hipotesisList.length > 0) {
+              return (
+                <div style={{ paddingLeft: "1.27cm", marginBottom: 14, lineHeight: 1.8 }}>
+                  {hipotesisList.map((h: string, idx: number) => (
+                    <div
+                      key={idx}
+                      style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 4 }}
+                    >
+                      <span style={{ minWidth: 28, fontWeight: 600 }}>
+                        {h.match(/^H\d+:/) ? "" : `${idx + 1}.`}
+                      </span>
+                      <span style={{ flex: 1, textAlign: "justify" }}>{h}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : (
+              );
+            }
+
+            return (
             <div style={{ paddingLeft: "1.27cm", marginBottom: 14, lineHeight: 1.8 }}>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
                 <span style={{ minWidth: 28, fontWeight: 600 }}>H1:</span>
@@ -236,7 +247,8 @@ export function Chapter2Sheet({
                 </span>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* Custom sub-chapters for BAB 2 */}
           {bab2Subs.map((s) => (
