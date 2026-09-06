@@ -107,6 +107,7 @@ export default function OutlinePage() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [expandedBabs, setExpandedBabs] = useState<Set<number>>(new Set([1]));
   const [focusActiveBabOnly, setFocusActiveBabOnly] = useState<boolean>(true);
+  const [showAdvancedBabs, setShowAdvancedBabs] = useState<boolean>(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(true);
@@ -1320,6 +1321,7 @@ export default function OutlinePage() {
   // ── Group items by bab ────────────────────────────────
   const itemsByBab: Record<number, ResearchOutlineItem[]> = {};
   for (const item of items) {
+    if (!showAdvancedBabs && item.bab > 3) continue;
     if (!itemsByBab[item.bab]) itemsByBab[item.bab] = [];
     itemsByBab[item.bab].push(item);
   }
@@ -2015,6 +2017,33 @@ export default function OutlinePage() {
                     </div>
                   );
                 })}
+
+                {items.some((i) => i.bab > 3) && (
+                  <div style={{ padding: "8px 12px", borderTop: "1px dashed #cbd5e1", marginTop: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedBabs((prev) => !prev)}
+                      style={{
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: "#475569",
+                        background: "#f8fafc",
+                        border: "1px solid #e2e8f0",
+                        padding: "6px 8px",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Lock size={12} color="#64748b" />
+                      <span>{showAdvancedBabs ? "Sembunyikan BAB IV & V" : "Buka BAB IV & V (Tahap 2)"}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -530,6 +530,7 @@ export default function ProposalPage() {
                 pageNumberPos={editor.pageNumberPos}
                 marginPreset={editor.marginPreset}
                 handleJumpToCitationInText={editor.handleJumpToCitationInText}
+                onReorderReferences={editor.handleReorderReferences}
               />
             )}
 

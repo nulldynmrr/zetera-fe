@@ -598,6 +598,14 @@ export function useProposalEditor(projectId: string) {
     }
   };
 
+  const handleReorderReferences = useCallback(
+    (newOrder: ReferenceItem[]) => {
+      setReferences(newOrder);
+      triggerAutoSave();
+    },
+    [triggerAutoSave]
+  );
+
   const handleJumpToCitationInText = (refIndex: number, authors?: string, doi?: string, e?: React.MouseEvent) => {
     if (e) {
       e.preventDefault();
@@ -787,6 +795,7 @@ export function useProposalEditor(projectId: string) {
     handleDownloadLatexZip,
     handleToggleRef,
     handleDeleteRef,
+    handleReorderReferences,
     handleNavigateToSection,
     handleJumpToRef,
     handleJumpToCitationInText,

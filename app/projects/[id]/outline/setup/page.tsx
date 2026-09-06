@@ -17,6 +17,10 @@ import {
   Info,
   Layers,
   ArrowLeft,
+  GripVertical,
+  Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ProjectSidebar } from "@/components/ui/ProjectSidebar";
@@ -225,8 +229,69 @@ export default function CustomBabSetupPage() {
     loadOutlineSetup();
   }, [loadOutlineSetup]);
 
+  const [showLaterStages, setShowLaterStages] = useState(false);
+  const [draggedSub, setDraggedSub] = useState<{ babNum: number; index: number } | null>(null);
+  const [dragOverSub, setDragOverSub] = useState<{ babNum: number; index: number } | null>(null);
+
   const toggleBab = (babNum: number) => {
     setExpandedBabs((prev) => ({ ...prev, [babNum]: !prev[babNum] }));
+  };
+
+  const handleSubDragStart = (e: React.DragEvent, babNum: number, index: number) => {
+    setDraggedSub({ babNum, index });
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleSubDragOver = (e: React.DragEvent, babNum: number, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (!dragOverSub || dragOverSub.babNum !== babNum || dragOverSub.index !== index) {
+      setDragOverSub({ babNum, index });
+    }
+  };
+
+  const handleSubDrop = (e: React.DragEvent, targetBabNum: number, targetIndex: number) => {
+    e.preventDefault();
+    if (!draggedSub) return;
+    if (draggedSub.babNum !== targetBabNum || draggedSub.index === targetIndex) {
+      setDraggedSub(null);
+      setDragOverSub(null);
+      return;
+    }
+
+    setBabs((prev) =>
+      prev.map((b) => {
+        if (b.babNumber !== targetBabNum) return b;
+        const currentSubs = [...(b.subChapters || [])];
+        const [movedItem] = currentSubs.splice(draggedSub.index, 1);
+        currentSubs.splice(targetIndex, 0, movedItem);
+
+        // Auto-reindex item numbering (1.1, 1.2 or 1.1.1, 1.1.2)
+        let topCounter = 1;
+        let currentParentPrefix = `${targetBabNum}.1`;
+        let childCounter = 1;
+
+        const reindexed = currentSubs.map((sub) => {
+          const isChild = sub.depth === 3 || sub.itemId.split(".").length > 2;
+          if (!isChild) {
+            const newId = `${targetBabNum}.${topCounter}`;
+            currentParentPrefix = newId;
+            topCounter++;
+            childCounter = 1;
+            return { ...sub, id: newId, itemId: newId };
+          } else {
+            const newId = `${currentParentPrefix}.${childCounter}`;
+            childCounter++;
+            return { ...sub, id: newId, itemId: newId };
+          }
+        });
+
+        return { ...b, subChapters: reindexed };
+      })
+    );
+
+    setDraggedSub(null);
+    setDragOverSub(null);
   };
 
   const handleSubChapterChange = (babNum: number, subIndex: number, newTitle: string) => {
@@ -535,7 +600,7 @@ export default function CustomBabSetupPage() {
 
         {/* Tree Editor List of Babs */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {babs.map((bab) => {
+          {(showLaterStages ? babs : babs.filter((b) => b.babNumber <= 3)).map((bab) => {
             const isExpanded = expandedBabs[bab.babNumber] !== false;
             const isSuggesting = suggestingBab === bab.babNumber;
 
@@ -594,20 +659,49 @@ export default function CustomBabSetupPage() {
                 {/* Sub-Chapters Input Fields */}
                 {isExpanded && (
                   <div style={{ padding: "18px 20px" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {(bab.subChapters || []).map((sub, idx) => {
                         const isSubSub = sub.depth === 3 || sub.itemId.split(".").length > 2;
+                        const isDraggingThis = draggedSub?.babNum === bab.babNumber && draggedSub?.index === idx;
+                        const isOverThis = dragOverSub?.babNum === bab.babNumber && dragOverSub?.index === idx;
 
                         return (
                           <div
                             key={sub.id || idx}
+                            draggable
+                            onDragStart={(e) => handleSubDragStart(e, bab.babNumber, idx)}
+                            onDragOver={(e) => handleSubDragOver(e, bab.babNumber, idx)}
+                            onDrop={(e) => handleSubDrop(e, bab.babNumber, idx)}
+                            onDragEnd={() => {
+                              setDraggedSub(null);
+                              setDragOverSub(null);
+                            }}
                             style={{
                               display: "flex",
                               alignItems: "center",
-                              gap: 10,
+                              gap: 8,
                               marginLeft: isSubSub ? 28 : 0,
+                              padding: "4px 8px",
+                              borderRadius: 8,
+                              background: isOverThis ? "#ecfdf5" : isDraggingThis ? "#f1f5f9" : "transparent",
+                              border: isOverThis ? "1.5px dashed #10b981" : "1.5px solid transparent",
+                              opacity: isDraggingThis ? 0.4 : 1,
+                              transition: "all 0.15s ease",
                             }}
                           >
+                            <div
+                              title="Tahan & geser untuk mengatur urutan (Drag & Drop)"
+                              style={{
+                                cursor: "grab",
+                                display: "flex",
+                                alignItems: "center",
+                                color: "#94a3b8",
+                                padding: "4px 2px",
+                              }}
+                            >
+                              <GripVertical size={15} />
+                            </div>
+
                             <span
                               style={{
                                 fontSize: 12,
@@ -769,6 +863,82 @@ export default function CustomBabSetupPage() {
               </div>
             );
           })}
+        </div>
+
+        {/* Tahap 1 Proposal Notice & Stage 2 Toggle Banner */}
+        <div
+          style={{
+            marginTop: 16,
+            padding: "16px 20px",
+            borderRadius: 14,
+            background: "#ffffff",
+            border: "1.5px dashed #cbd5e1",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            boxShadow: "0 1px 4px rgba(0,0,0,0.02)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                background: "#f1f5f9",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Lock size={18} color="#64748b" />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: 8 }}>
+                <span>Tahap 1: Proposal Skripsi (Fokus BAB I s.d. BAB III)</span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    background: "#ecfdf5",
+                    color: "#059669",
+                    padding: "2px 8px",
+                    borderRadius: 6,
+                  }}
+                >
+                  Fokus Aktif
+                </span>
+              </div>
+              <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 0" }}>
+                BAB IV (Hasil &amp; Pembahasan) dan BAB V (Kesimpulan) adalah langkah kedua (Sidang Akhir) dan disembunyikan secara default agar alur proposal tetap fokus dan rapi.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowLaterStages((prev) => !prev)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: showLaterStages ? "#0f172a" : "#475569",
+              background: showLaterStages ? "#f1f5f9" : "#ffffff",
+              border: "1px solid #cbd5e1",
+              padding: "7px 14px",
+              borderRadius: 8,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              transition: "all 0.15s",
+            }}
+          >
+            {showLaterStages ? <EyeOff size={14} /> : <Eye size={14} />}
+            <span>{showLaterStages ? "Sembunyikan BAB IV & V" : "Tampilkan BAB IV & V"}</span>
+          </button>
         </div>
 
         {/* Bottom Floating Save Bar */}
