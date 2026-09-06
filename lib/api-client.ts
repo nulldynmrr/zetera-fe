@@ -447,7 +447,11 @@ export interface ResearchOutlineItem {
   evidence: OutlineEvidence[];
   userNotes: string | null;
   isLocked: boolean;
-  dependsOn: string[];
+  dependsOn?: string[];
+  tag?: string | null;
+  isCustom?: boolean;
+  needsReview?: boolean;
+  recipeId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -620,6 +624,16 @@ export const api = {
         http.delete<{ success: boolean; data: ResearchOutlineItem }>(`/api/projects/${projectId}/outline/${itemId}/evidence/${evidenceId}`),
       getPoolJournals: (projectId: string, itemId: string) =>
         http.get<{ success: boolean; data: (Journal & { isAttached: boolean })[] }>(`/api/projects/${projectId}/outline/${itemId}/pool-journals`),
+      matchPool: (projectId: string, pointText: string) =>
+        http.post<{
+          success: boolean;
+          data: {
+            matches: (Journal & { pointScore: number; matchJustification?: string; matchedKeywords?: string[] })[];
+            topMatches: (Journal & { pointScore: number; matchJustification?: string; matchedKeywords?: string[] })[];
+            highestScore: number;
+            needsExternalSearch: boolean;
+          };
+        }>(`/api/projects/${projectId}/outline/match-pool`, { pointText }),
       search: (projectId: string, query: string, limit?: number) => {
         const qs = new URLSearchParams({ query, ...(limit ? { limit: String(limit) } : {}) });
         return http.get<{ success: boolean; data: Partial<OutlineEvidence>[] }>(`/api/projects/${projectId}/outline/search?${qs}`);
@@ -886,6 +900,41 @@ export const api = {
       http.get<{ success: boolean; data: any }>(`/api/projects/${projectId}/memory`),
     updateToc: (projectId: string, tocItems: any[]) =>
       http.put<{ success: boolean; data: any }>(`/api/projects/${projectId}/memory/toc`, { tocItems }),
+  },
+
+  // Academic Skills Layer (§6 & §5)
+  skills: {
+    run: (body: {
+      projectId: string;
+      tag: string;
+      skill: "proofread" | "ai_spellcheck" | "plagiarism_check" | "paraphrase" | "citation_generator";
+      targetText?: string;
+      citationStyle?: "APA7" | "IEEE";
+    }) =>
+      http.post<{
+        success: boolean;
+        data: {
+          ok: boolean;
+          output: any;
+          sourceDraftVersion: number;
+          message?: string;
+        };
+      }>("/api/skills/run", body),
+
+    parseIntent: (body: { text: string; projectId: string }) =>
+      http.post<{
+        success: boolean;
+        data: { skill: string | null; tag: string; confidence: number };
+      }>("/api/skills/intent", body),
+
+    getDraft: (projectId: string, tag: string) =>
+      http.get<{
+        success: boolean;
+        data: { content: string; version: number; itemId: string | null; tag: string };
+      }>(`/api/skills/draft/${projectId}/${tag}`),
+
+    saveDraft: (projectId: string, tag: string, body: { content: string; itemId?: string }) =>
+      http.post<{ success: boolean; data: any }>(`/api/skills/draft/${projectId}/${tag}`, body),
   },
 
   // File & Image Uploads
