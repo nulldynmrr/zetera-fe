@@ -638,6 +638,15 @@ export const api = {
         const qs = new URLSearchParams({ query, ...(limit ? { limit: String(limit) } : {}) });
         return http.get<{ success: boolean; data: Partial<OutlineEvidence>[] }>(`/api/projects/${projectId}/outline/search?${qs}`);
       },
+      synthesizePoints: (projectId: string, itemId: string) =>
+        http.post<{
+          success: boolean;
+          data: {
+            pointAnswers: { index: number; text: string; citedJournals: number[] }[];
+            combinedDraft: string;
+            totalPoints: number;
+          };
+        }>(`/api/projects/${projectId}/outline/${itemId}/synthesize-points`, {}),
     },
   },
 

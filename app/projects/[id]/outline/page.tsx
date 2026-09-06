@@ -50,6 +50,8 @@ import {
   ZoomOut,
   Download,
   Copy,
+  Zap,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
@@ -198,6 +200,12 @@ export default function OutlinePage() {
   // Outline Hover Insert-line State (§4)
   const [insertSlot, setInsertSlot] = useState<{ bab: number; index: number } | null>(null);
   const [insertForm, setInsertForm] = useState<{ title: string; tag: string }>({ title: "", tag: "" });
+
+  // AI Synthesize All Outline Points State & Typing Animation
+  const [isSynthesizingPoints, setIsSynthesizingPoints] = useState<boolean>(false);
+  const [synthesizeProgress, setSynthesizeProgress] = useState<string>("");
+  const [showSynthesizeSuccessModal, setShowSynthesizeSuccessModal] = useState<boolean>(false);
+  const [synthesizedTotalCount, setSynthesizedTotalCount] = useState<number>(0);
 
   // ── Load Bullet Drafts from localStorage on Project Init ──
   useEffect(() => {
@@ -741,6 +749,101 @@ export default function OutlinePage() {
       router.push(`/projects/${projectId}/proposal?tab=${dest.tab}&section=${encodeURIComponent(dest.section)}`);
     } else {
       notify.success("✨ Berhasil memulihkan & menggabungkan seluruh poin instruksi ke Naskah Draf Sub-bab!");
+    }
+  };
+
+  // ── AI Synthesize All Points with DOI Verified Journals (§New Feature) ──
+  const handleSynthesizeAllPoints = async () => {
+    if (!projectId || !selectedItemId || !selectedItem) return;
+
+    // Cek jika butir instruksi sudah terisi
+    const currentSubMap = bulletDrafts[selectedItemId] || {};
+    const hasFilledBullets = Object.values(currentSubMap).some((v) => (v || "").trim().length > 20);
+
+    if (hasFilledBullets) {
+      const confirmRun = await notify.confirm({
+        title: "⚡ AI Sintesis Semua Poin",
+        description: "Beberapa butir instruksi sudah terisi teks. Menjalankan sintesis otomatis akan menimpa draf butir instruksi saat ini dengan kajian ilmiah mendalam berbasis jurnal terverifikasi DOI. Lanjutkan?",
+        confirmLabel: "Ya, Sintesis Ulang",
+        cancelLabel: "Batal",
+      });
+      if (!confirmRun) return;
+    }
+
+    setIsSynthesizingPoints(true);
+    setSynthesizeProgress("Menghubungi AI & Menganalisis Pool Jurnal DOI...");
+
+    try {
+      const res = await api.projects.outline.synthesizePoints(projectId, selectedItemId);
+      if (!res.success || !res.data) {
+        throw new Error((res as any).error || "Gagal memperoleh sintesis poin dari AI");
+      }
+
+      const { pointAnswers, combinedDraft, totalPoints } = res.data;
+      setSynthesizedTotalCount(totalPoints || pointAnswers.length);
+
+      // Jalankan animasi ketik progresif (live progressive typing animation)
+      for (let i = 0; i < pointAnswers.length; i++) {
+        const answer = pointAnswers[i];
+        const pIdx = answer.index;
+        const targetText = answer.text;
+
+        setActiveBulletIndex(pIdx);
+        setSynthesizeProgress(`Mengetik Poin ${i + 1}/${pointAnswers.length}...`);
+
+        const textLength = targetText.length;
+        const stepSize = Math.max(10, Math.floor(textLength / 16));
+        let typedLength = 0;
+
+        while (typedLength < textLength) {
+          typedLength = Math.min(textLength, typedLength + stepSize);
+          const partial = targetText.slice(0, typedLength);
+          updateBulletText(selectedItemId, pIdx, partial);
+          await new Promise((r) => setTimeout(r, 20));
+        }
+
+        // Pastikan teks lengkap tersimpan
+        updateBulletText(selectedItemId, pIdx, targetText);
+        await new Promise((r) => setTimeout(r, 60));
+      }
+
+      // Update naskah draf gabungan
+      setWritingContent(combinedDraft);
+
+      // Simpan ganda ke Database (ResearchOutlineItem & Proposal savedDraft)
+      await handleSaveWriting(combinedDraft);
+      try {
+        const dest = getProposalDestination(selectedItem);
+        const babKey = dest.tab as "bab1" | "bab2" | "bab3";
+        let fieldKey = "latarBelakang";
+        if (dest.section === "sub_1_2") fieldKey = "identifikasiMasalah";
+        else if (dest.section === "sub_1_3") fieldKey = "rumusanMasalah";
+        else if (dest.section === "sub_1_4") fieldKey = "tujuanPenelitian";
+        else if (dest.section === "sub_1_5") fieldKey = "manfaatPenelitian";
+        else if (dest.section === "sub_2_1") fieldKey = "landasanTeori";
+        else if (dest.section === "sub_2_2") fieldKey = "kerangkaPemikiran";
+        else if (dest.section === "sub_3_1") fieldKey = "desainPenelitian";
+        else if (dest.section === "sub_3_2") fieldKey = "populasiSampel";
+        else if (dest.section === "sub_3_3") fieldKey = "teknikPengumpulanData";
+        else if (dest.section === "sub_3_4") fieldKey = "teknikAnalisisData";
+
+        await api.proposal.save(projectId, {
+          proposalData: {
+            [babKey]: {
+              [fieldKey]: combinedDraft,
+            },
+          },
+        }).catch(() => {});
+      } catch (e) {}
+
+      notify.success(`✨ Berhasil menjawab ${pointAnswers.length} butir instruksi dengan sitasi jurnal DOI!`);
+      setShowSynthesizeSuccessModal(true);
+    } catch (err: any) {
+      console.error("Sintesis poin error:", err);
+      notify.error("Gagal melakukan sintesis AI: " + (err.message || err));
+    } finally {
+      setIsSynthesizingPoints(false);
+      setSynthesizeProgress("");
     }
   };
 
@@ -2366,7 +2469,42 @@ export default function OutlinePage() {
                                     </p>
                                   </div>
 
-                                  <div style={{ display: "flex", gap: 6 }}>
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSynthesizeAllPoints()}
+                                      disabled={isSynthesizingPoints}
+                                      style={{
+                                        padding: "6px 13px",
+                                        borderRadius: 7,
+                                        background: isSynthesizingPoints
+                                          ? "#64748b"
+                                          : "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
+                                        color: "#ffffff",
+                                        border: "none",
+                                        fontSize: 11.5,
+                                        fontWeight: 700,
+                                        cursor: isSynthesizingPoints ? "not-allowed" : "pointer",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 6,
+                                        boxShadow: "0 2px 8px rgba(124, 58, 237, 0.35)",
+                                        transition: "all 0.15s ease",
+                                      }}
+                                      title="Jawab otomatis seluruh butir instruksi riset menggunakan jurnal DOI terverifikasi pool proyek"
+                                    >
+                                      {isSynthesizingPoints ? (
+                                        <Loader2 size={13} className="animate-spin" />
+                                      ) : (
+                                        <Zap size={13} color="#fef08a" />
+                                      )}
+                                      <span>
+                                        {isSynthesizingPoints
+                                          ? (synthesizeProgress || "Sedang Mengetik...")
+                                          : "⚡ AI Sintesis Semua Poin (Jurnal DOI)"}
+                                      </span>
+                                    </button>
+
                                     <button
                                       type="button"
                                       onClick={() => handleCombineBulletsToDraft(false)}
@@ -2575,7 +2713,7 @@ export default function OutlinePage() {
                                               minHeight: "140px",
                                               padding: "10px 12px",
                                               borderRadius: 8,
-                                              border: isCurrentActive ? "1.5px solid #00C988" : "1px solid #cbd5e1",
+                                              border: isCurrentActive ? (isSynthesizingPoints ? "1.5px solid #7c3aed" : "1.5px solid #00C988") : "1px solid #cbd5e1",
                                               fontSize: 13,
                                               lineHeight: 1.6,
                                               color: "#0f172a",
@@ -2584,14 +2722,21 @@ export default function OutlinePage() {
                                               boxSizing: "border-box",
                                               resize: "vertical",
                                               fontFamily: "inherit",
-                                              boxShadow: isCurrentActive ? "0 0 0 3px rgba(0, 201, 136, 0.1)" : "none",
+                                              boxShadow: isCurrentActive ? (isSynthesizingPoints ? "0 0 0 3px rgba(124, 58, 237, 0.15)" : "0 0 0 3px rgba(0, 201, 136, 0.1)") : "none",
                                             }}
                                           />
                                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11, color: "#64748b" }}>
                                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                              <span style={{ fontWeight: 600, color: currentText ? "#0f172a" : "#94a3b8" }}>
-                                                {currentText ? `${currentText.split(/\s+/).filter(Boolean).length} kata` : "Belum diisi"}
-                                              </span>
+                                              {isCurrentActive && isSynthesizingPoints ? (
+                                                <span style={{ fontSize: 10.5, fontWeight: 700, color: "#7c3aed", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                                  <Loader2 size={11} className="animate-spin" />
+                                                  ✍️ AI sedang mengetik draf &amp; sitasi DOI...
+                                                </span>
+                                              ) : (
+                                                <span style={{ fontSize: 10.5, fontWeight: isCurrentActive ? 700 : 500, color: isCurrentActive ? "#059669" : "#64748b" }}>
+                                                  {isCurrentActive ? "● Poin Aktif (Siap Menerima Sitasi)" : "Klik untuk aktifkan sitasi"}
+                                                </span>
+                                              )}
                                               {currentText && (
                                                 <span style={{ fontSize: 10.5, color: "#059669", display: "inline-flex", alignItems: "center", gap: 3 }}>
                                                   ✓ Tersimpan otomatis
@@ -4508,6 +4653,156 @@ export default function OutlinePage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* AI Synthesis Success Modal */}
+      {showSynthesizeSuccessModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.65)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 20,
+              width: "100%",
+              maxWidth: 520,
+              boxShadow: "0 25px 60px -15px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 201, 136, 0.2)",
+              padding: "32px 28px",
+              textAlign: "center",
+              position: "relative",
+              animation: "fadeIn 0.25s ease-out",
+            }}
+          >
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowSynthesizeSuccessModal(false)}
+              style={{
+                position: "absolute",
+                top: 16,
+                right: 16,
+                background: "#f1f5f9",
+                border: "none",
+                borderRadius: "50%",
+                width: 32,
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#64748b",
+                cursor: "pointer",
+              }}
+            >
+              <X size={16} />
+            </button>
+
+            {/* Icon & Glow */}
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 24,
+                background: "linear-gradient(135deg, #00C988 0%, #10b981 50%, #059669 100%)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#ffffff",
+                boxShadow: "0 12px 28px -6px rgba(0, 201, 136, 0.45)",
+                marginBottom: 20,
+              }}
+            >
+              <Sparkles size={36} />
+            </div>
+
+            <h3 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginBottom: 8, letterSpacing: "-0.02em" }}>
+              🎉 Sintesis AI Berhasil Selesai!
+            </h3>
+            <p style={{ fontSize: 13.5, color: "#475569", lineHeight: 1.6, marginBottom: 20, padding: "0 12px" }}>
+              Sebanyak <strong>{synthesizedTotalCount} poin</strong> pertanyaan riset pada sub-bab ini telah berhasil dijawab & dirangkai menjadi draf naskah akademis lengkap dengan nomor sitasi DOI <strong>[1], [2], dst.</strong>
+            </p>
+
+            <div
+              style={{
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: 12,
+                padding: "12px 16px",
+                marginBottom: 24,
+                textAlign: "left",
+                fontSize: 12.5,
+                color: "#334155",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <CheckCircle2 size={16} color="#00C988" />
+                <span>Otomatis tersimpan ke database & terintegrasi dengan Naskah Proposal.</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <BookOpen size={16} color="#3b82f6" />
+                <span>Sitasi [1], [2] pada naskah dapat diklik bolak-balik ke Daftar Pustaka.</span>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+              <button
+                type="button"
+                onClick={() => setShowSynthesizeSuccessModal(false)}
+                style={{
+                  flex: 1,
+                  padding: "11px 16px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  background: "#ffffff",
+                  color: "#475569",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Tinjau di Halaman Ini
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSynthesizeSuccessModal(false);
+                  router.push(`/projects/${projectId}/proposal`);
+                }}
+                style={{
+                  flex: 1.3,
+                  padding: "11px 18px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: "linear-gradient(135deg, #00C988 0%, #059669 100%)",
+                  color: "#ffffff",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  boxShadow: "0 4px 14px rgba(0, 201, 136, 0.35)",
+                }}
+              >
+                <span>Buka Naskah Proposal</span>
+                <ArrowRight size={15} />
+              </button>
+            </div>
           </div>
         </div>
       )}
