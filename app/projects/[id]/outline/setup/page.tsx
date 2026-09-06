@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -21,6 +21,7 @@ import {
   Lock,
   Eye,
   EyeOff,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ProjectSidebar } from "@/components/ui/ProjectSidebar";
@@ -201,6 +202,17 @@ export default function CustomBabSetupPage() {
         setProject(pRes.data);
       }
 
+      let localCachedOutline: any = null;
+      try {
+        const stored = localStorage.getItem(`zetera_custom_outline_${projectId}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            localCachedOutline = parsed;
+          }
+        }
+      } catch (e) {}
+
       const res = await api.projects.customOutline.get(projectId);
       if (res.success && res.data?.customOutline && Array.isArray(res.data.customOutline) && res.data.customOutline.length > 0) {
         const normalized = res.data.customOutline.map((b: any) => ({
@@ -208,6 +220,9 @@ export default function CustomBabSetupPage() {
           subChapters: Array.isArray(b.subChapters) ? b.subChapters : [],
         }));
         setBabs(normalized);
+        setIsCustomEnabled(true);
+      } else if (localCachedOutline) {
+        setBabs(localCachedOutline);
         setIsCustomEnabled(true);
       } else {
         const defaultList = getApproachBasedBabs(fetchedProject?.approachType || undefined, fetchedProject?.title || undefined);
@@ -228,6 +243,69 @@ export default function CustomBabSetupPage() {
   useEffect(() => {
     loadOutlineSetup();
   }, [loadOutlineSetup]);
+
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
+  const isInitialMount = useRef(true);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounced Auto-Save to Backend & Instant LocalStorage Backup
+  useEffect(() => {
+    if (loading) return;
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+
+    // Instantly persist to localStorage as emergency safety net against accidental refresh
+    try {
+      localStorage.setItem(`zetera_custom_outline_${projectId}`, JSON.stringify(babs));
+    } catch (e) {}
+
+    setAutoSaveStatus("unsaved");
+
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = setTimeout(async () => {
+      setAutoSaveStatus("saving");
+      try {
+        const sanitized = babs.map((b) => ({
+          ...b,
+          subChapters: Array.isArray(b.subChapters) ? b.subChapters : [],
+        }));
+        const res = await api.projects.customOutline.save(projectId, sanitized);
+        if (res.success) {
+          setAutoSaveStatus("saved");
+          const now = new Date();
+          setLastSavedTime(
+            `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`
+          );
+        } else {
+          setAutoSaveStatus("unsaved");
+        }
+      } catch (err) {
+        console.error("Auto-save outline failed:", err);
+        setAutoSaveStatus("unsaved");
+      }
+    }, 1200);
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [babs, projectId, loading]);
+
+  // Window beforeunload safety net
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      try {
+        localStorage.setItem(`zetera_custom_outline_${projectId}`, JSON.stringify(babs));
+      } catch (e) {}
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [babs, projectId]);
 
   const [showLaterStages, setShowLaterStages] = useState(false);
   const [draggedSub, setDraggedSub] = useState<{ babNum: number; index: number } | null>(null);
@@ -533,7 +611,42 @@ export default function CustomBabSetupPage() {
             </div>
 
             {/* Actions: Back & Save */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {/* Auto-Save Status Indicator */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  background: autoSaveStatus === "saving" ? "#ecfdf5" : autoSaveStatus === "saved" ? "#f8fafc" : "#fffbeb",
+                  border: "1px solid",
+                  borderColor: autoSaveStatus === "saving" ? "#a7f3d0" : autoSaveStatus === "saved" ? "#e2e8f0" : "#fde68a",
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {autoSaveStatus === "saving" ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                    <span style={{ color: "#059669" }}>Menyimpan otomatis...</span>
+                  </>
+                ) : autoSaveStatus === "saved" ? (
+                  <>
+                    <CheckCircle2 size={14} color="#059669" />
+                    <span style={{ color: "#059669" }}>
+                      Tersimpan {lastSavedTime ? `(${lastSavedTime})` : ""}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Clock size={14} color="#d97706" />
+                    <span style={{ color: "#b45309" }}>Menunggu jeda ketik...</span>
+                  </>
+                )}
+              </div>
+
               <Link href={`/projects/${projectId}/outline`} style={{ textDecoration: "none" }}>
                 <Button variant="secondary" size="md" style={{ gap: 6 }}>
                   <ArrowLeft size={15} /> Batal
@@ -546,7 +659,7 @@ export default function CustomBabSetupPage() {
                 size="md"
                 style={{ gap: 8, padding: "9px 20px" }}
               >
-                {saving ? "Menyimpan..." : "✓ Simpan & Buka Outline"}
+                {saving ? "Menyimpan..." : "Lanjut ke Outline"}
                 <ArrowRight size={15} />
               </Button>
             </div>
@@ -962,15 +1075,35 @@ export default function CustomBabSetupPage() {
             </span>
           </div>
 
-          <Button
-            onClick={handleSaveAndProceed}
-            disabled={saving}
-            variant="primary"
-            size="lg"
-            style={{ gap: 8 }}
-          >
-            {saving ? "Menyimpan..." : "Simpan & Masuk ke Research Outline →"}
-          </Button>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              {autoSaveStatus === "saving" ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                  <span style={{ color: "#059669", fontWeight: 600 }}>Menyimpan otomatis...</span>
+                </>
+              ) : autoSaveStatus === "saved" ? (
+                <>
+                  <CheckCircle2 size={15} color="#059669" />
+                  <span style={{ color: "#059669", fontWeight: 600 }}>
+                    Tersimpan {lastSavedTime ? `(${lastSavedTime})` : ""}
+                  </span>
+                </>
+              ) : (
+                <span style={{ color: "#94a3b8" }}>Menunggu jeda ketik...</span>
+              )}
+            </div>
+
+            <Button
+              onClick={handleSaveAndProceed}
+              disabled={saving}
+              variant="primary"
+              size="lg"
+              style={{ gap: 8 }}
+            >
+              {saving ? "Menyimpan..." : "Lanjut ke Research Outline →"}
+            </Button>
+          </div>
         </div>
       </main>
     </div>
