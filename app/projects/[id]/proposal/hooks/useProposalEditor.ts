@@ -305,21 +305,24 @@ export function useProposalEditor(projectId: string) {
           const notesPengumpulan = findNotes("3.3", "pengumpulan");
           const notesAnalisis = findNotes("3.4", "analisis");
 
+          // Cek apakah user bernavigasi langsung dari Outline (?section=...)
+          const isFromOutline = typeof window !== "undefined" && (window.location.search.includes("section=") || window.location.search.includes("tab="));
+
           setProposalData((prev: any) => ({
             ...(prev || {}),
             bab1: {
               ...(prev?.bab1 || {}),
-              ...(notesLatar && !prev?.bab1?.latarBelakang ? { latarBelakang: notesLatar } : {}),
-              ...(notesIdentifikasi && (!prev?.bab1?.identifikasiMasalah || prev.bab1.identifikasiMasalah.length === 0)
+              latarBelakang: (isFromOutline && notesLatar) ? notesLatar : (prev?.bab1?.latarBelakang || notesLatar || ""),
+              ...(notesIdentifikasi && (isFromOutline || !prev?.bab1?.identifikasiMasalah || prev.bab1.identifikasiMasalah.length === 0)
                 ? { identifikasiMasalah: parseList(notesIdentifikasi) }
                 : {}),
-              ...(notesRumusan && (!prev?.bab1?.rumusanMasalah || prev.bab1.rumusanMasalah.length === 0)
+              ...(notesRumusan && (isFromOutline || !prev?.bab1?.rumusanMasalah || prev.bab1.rumusanMasalah.length === 0)
                 ? { rumusanMasalah: parseList(notesRumusan) }
                 : {}),
-              ...(notesTujuan && (!prev?.bab1?.tujuanPenelitian || prev.bab1.tujuanPenelitian.length === 0)
+              ...(notesTujuan && (isFromOutline || !prev?.bab1?.tujuanPenelitian || prev.bab1.tujuanPenelitian.length === 0)
                 ? { tujuanPenelitian: parseList(notesTujuan) }
                 : {}),
-              ...(notesManfaat && !prev?.bab1?.manfaatPenelitian?.teoretis
+              ...(notesManfaat && (isFromOutline || !prev?.bab1?.manfaatPenelitian?.teoretis)
                 ? {
                     manfaatPenelitian: {
                       teoretis: notesManfaat,
@@ -330,19 +333,19 @@ export function useProposalEditor(projectId: string) {
             },
             bab2: {
               ...(prev?.bab2 || {}),
-              ...(notesTeori && !prev?.bab2?.landasanTeori ? { landasanTeori: notesTeori } : {}),
-              ...(notesTerdahulu && !prev?.bab2?.penelitianTerdahulu ? { penelitianTerdahulu: notesTerdahulu } : {}),
-              ...(notesKerangka && !prev?.bab2?.kerangkaKonseptual ? { kerangkaKonseptual: notesKerangka } : {}),
-              ...(notesHipotesis && (!prev?.bab2?.hipotesis || prev.bab2.hipotesis.length === 0)
+              landasanTeori: (isFromOutline && notesTeori) ? notesTeori : (prev?.bab2?.landasanTeori || notesTeori || ""),
+              penelitianTerdahulu: (isFromOutline && notesTerdahulu) ? notesTerdahulu : (prev?.bab2?.penelitianTerdahulu || notesTerdahulu || ""),
+              kerangkaKonseptual: (isFromOutline && notesKerangka) ? notesKerangka : (prev?.bab2?.kerangkaKonseptual || notesKerangka || ""),
+              ...(notesHipotesis && (isFromOutline || !prev?.bab2?.hipotesis || prev.bab2.hipotesis.length === 0)
                 ? { hipotesis: parseList(notesHipotesis) }
                 : {}),
             },
             bab3: {
               ...(prev?.bab3 || {}),
-              ...(notesDesain && !prev?.bab3?.desainPenelitian ? { desainPenelitian: notesDesain } : {}),
-              ...(notesPopulasi && !prev?.bab3?.populasiSampel ? { populasiSampel: notesPopulasi } : {}),
-              ...(notesPengumpulan && !prev?.bab3?.teknikPengumpulanData ? { teknikPengumpulanData: notesPengumpulan } : {}),
-              ...(notesAnalisis && !prev?.bab3?.teknikAnalisisData ? { teknikAnalisisData: notesAnalisis } : {}),
+              desainPenelitian: (isFromOutline && notesDesain) ? notesDesain : (prev?.bab3?.desainPenelitian || notesDesain || ""),
+              populasiSampel: (isFromOutline && notesPopulasi) ? notesPopulasi : (prev?.bab3?.populasiSampel || notesPopulasi || ""),
+              teknikPengumpulanData: (isFromOutline && notesPengumpulan) ? notesPengumpulan : (prev?.bab3?.teknikPengumpulanData || notesPengumpulan || ""),
+              teknikAnalisisData: (isFromOutline && notesAnalisis) ? notesAnalisis : (prev?.bab3?.teknikAnalisisData || notesAnalisis || ""),
             },
           }));
 
@@ -639,7 +642,13 @@ export function useProposalEditor(projectId: string) {
     [triggerAutoSave]
   );
 
-  const handleJumpToCitationInText = (refIndex: number, authors?: string, doi?: string, e?: React.MouseEvent) => {
+  const handleJumpToCitationInText = (
+    refIndex: number,
+    authors?: string,
+    doi?: string,
+    e?: React.MouseEvent,
+    seqIndex?: number
+  ) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -651,16 +660,51 @@ export function useProposalEditor(projectId: string) {
       ?.split(/\s+/)[0]
       ?.toLowerCase();
 
-    const matchingElements = Array.from(
-      document.querySelectorAll(`[data-cite-ref="${refIndex}"], [data-cite-auth*="${firstAuthorWord || "___"}"]`)
+    const selectors = [
+      `[data-cite-ref="${refIndex}"]`,
+      seqIndex ? `[data-cite-ref="${seqIndex}"]` : "",
+      firstAuthorWord ? `[data-cite-auth*="${firstAuthorWord}"]` : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    let matchingElements = Array.from(
+      document.querySelectorAll(selectors)
     ) as HTMLElement[];
+
+    // Jika belum ada di viewport (misal user sedang di tab references saat focusActiveChapter), alihkan tab ke bab1
+    if (matchingElements.length === 0 && activeTab !== "bab1") {
+      setActiveTab("bab1");
+      setTimeout(() => {
+        const reCheck = Array.from(document.querySelectorAll(selectors)) as HTMLElement[];
+        if (reCheck.length > 0) {
+          reCheck[0].scrollIntoView({ behavior: "smooth", block: "center" });
+          reCheck.forEach((el) => {
+            el.style.transition = "all 0.3s ease";
+            el.style.backgroundColor = "#FEF08A";
+            el.style.boxShadow = "0 0 0 5px #FDE047";
+            el.style.borderRadius = "4px";
+          });
+          setTimeout(() => {
+            reCheck.forEach((el) => {
+              el.style.backgroundColor = "transparent";
+              el.style.boxShadow = "none";
+            });
+          }, 2500);
+        } else {
+          const bab1 = document.getElementById("section_bab1");
+          if (bab1) bab1.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 150);
+      return;
+    }
 
     if (matchingElements.length > 0) {
       matchingElements[0].scrollIntoView({ behavior: "smooth", block: "center" });
       matchingElements.forEach((el) => {
         el.style.transition = "all 0.3s ease";
         el.style.backgroundColor = "#FEF08A";
-        el.style.boxShadow = "0 0 0 4px #FDE047";
+        el.style.boxShadow = "0 0 0 5px #FDE047";
         el.style.borderRadius = "4px";
       });
 

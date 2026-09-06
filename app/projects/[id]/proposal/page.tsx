@@ -88,7 +88,132 @@ export default function ProposalPage() {
     editor.triggerAutoSave();
   };
 
-  // Render text with typographical highlights and indent styling
+  // Navigasi instan & sorot rujukan di Daftar Pustaka
+  const jumpToDaftarPustaka = (refNumber: number | string, authorText?: string) => {
+    const selector = `[data-ref-seq="${refNumber}"], [data-ref-orig="${refNumber}"], #ref-${refNumber}, #ref-seq-${refNumber}`;
+    let el = document.querySelector(selector) as HTMLElement | null;
+
+    if (!el && authorText) {
+      const cleanAuth = authorText.replace(/[^a-zA-Z]/g, "").toLowerCase();
+      const allRefs = Array.from(document.querySelectorAll("[data-ref-seq]")) as HTMLElement[];
+      el = allRefs.find((r) => r.textContent?.toLowerCase().includes(cleanAuth)) || null;
+    }
+
+    if (!el) {
+      el = document.getElementById("section_references");
+    }
+
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      const originalBg = el.style.backgroundColor;
+      const originalShadow = el.style.boxShadow;
+      el.style.transition = "all 0.3s ease";
+      el.style.backgroundColor = "#FEF08A";
+      el.style.boxShadow = "0 0 0 5px #FDE047";
+      el.style.borderRadius = "4px";
+
+      setTimeout(() => {
+        el!.style.backgroundColor = originalBg || "transparent";
+        el!.style.boxShadow = originalShadow || "none";
+      }, 2500);
+    }
+  };
+
+  const renderTextWithClickableCitations = (text: string) => {
+    if (!text) return text;
+    // Deteksi sitasi IEEE [1], [1, 2], [1-3] atau APA/Harvard (Penulis, 2024)
+    const CITE_PATTERN = /(\[(?:\d+(?:\s*,\s*\d+)*|\d+\s*-\s*\d+)\]|\([A-Z][a-zA-Z\s\.,&]+(?:et\s+al\.?)?,\s*\d{4}[a-z]?\))/g;
+    const parts = text.split(CITE_PATTERN);
+
+    if (parts.length <= 1) {
+      return typo.renderTextWithTypoHighlights(text) || text;
+    }
+
+    return parts.map((part, pIdx) => {
+      if (!part) return null;
+
+      // Sitasi format IEEE [1], [1, 2], [1-3]
+      if (part.startsWith("[") && part.endsWith("]")) {
+        const inner = part.slice(1, -1).trim();
+        const numMatches = inner.match(/\d+/g);
+
+        if (numMatches && numMatches.length > 0) {
+          return (
+            <span key={pIdx} className="citation-group inline-flex items-baseline" style={{ margin: "0 1px" }}>
+              [
+              {numMatches.map((n, nIdx) => (
+                <React.Fragment key={nIdx}>
+                  {nIdx > 0 && ", "}
+                  <span
+                    className="citation-interactive-badge"
+                    data-cite-ref={n}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      jumpToDaftarPustaka(n);
+                    }}
+                    style={{
+                      color: "#1D4ED8",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      padding: "1px 3px",
+                      borderRadius: 3,
+                      backgroundColor: "rgba(37, 99, 235, 0.08)",
+                      border: "1px solid rgba(37, 99, 235, 0.25)",
+                      textDecoration: "underline dotted",
+                      transition: "all 0.15s ease",
+                      userSelect: "none",
+                    }}
+                    title={`Klik untuk melompat ke rujukan [${n}] di Daftar Pustaka`}
+                  >
+                    {n}
+                  </span>
+                </React.Fragment>
+              ))}
+              ]
+            </span>
+          );
+        }
+      }
+
+      // Sitasi format Author-Year (Santoso, 2023)
+      if (part.startsWith("(") && part.endsWith(")")) {
+        const inner = part.slice(1, -1).trim();
+        const authorPart = inner.split(",")[0]?.trim() || "";
+        const firstAuthorWord = authorPart.split(/\s+/)[0]?.toLowerCase() || "";
+
+        return (
+          <span
+            key={pIdx}
+            className="citation-interactive-badge"
+            data-cite-auth={firstAuthorWord}
+            onClick={(e) => {
+              e.stopPropagation();
+              jumpToDaftarPustaka(0, firstAuthorWord);
+            }}
+            style={{
+              color: "#1D4ED8",
+              fontWeight: 600,
+              cursor: "pointer",
+              padding: "1px 4px",
+              borderRadius: 3,
+              backgroundColor: "rgba(37, 99, 235, 0.08)",
+              border: "1px solid rgba(37, 99, 235, 0.25)",
+              textDecoration: "underline dotted",
+              transition: "all 0.15s ease",
+              userSelect: "none",
+            }}
+            title={`Klik untuk melompat ke rujukan ${part} di Daftar Pustaka`}
+          >
+            {part}
+          </span>
+        );
+      }
+
+      return <React.Fragment key={pIdx}>{typo.renderTextWithTypoHighlights(part) || part}</React.Fragment>;
+    });
+  };
+
+  // Render text with typographical highlights, interactive citations, and indent styling
   const renderAcademicParagraphs = (rawText?: string, placeholder?: string) => {
     if (!rawText || !rawText.trim()) {
       if (placeholder) {
@@ -123,7 +248,7 @@ export default function ProposalPage() {
               textAlign: "justify",
             }}
           >
-            {typo.renderTextWithTypoHighlights(para) || para}
+            {renderTextWithClickableCitations(para)}
           </p>
         ))}
       </div>
@@ -297,11 +422,11 @@ export default function ProposalPage() {
 
             {focusActiveChapter ? (
               <span style={{ fontSize: 10.5, color: "#059669", fontWeight: 700 }}>
-                ✓ BAB lain disembunyikan agar Anda fokus pada {editor.activeTab.toUpperCase()}
+                ✓ Cover & Daftar Pustaka selalu tampil. BAB lain disembunyikan agar Anda fokus pada {editor.activeTab.toUpperCase()}
               </span>
             ) : (
               <span style={{ fontSize: 10.5, color: "#64748b" }}>
-                Menampilkan seluruh halaman dokumen
+                Menampilkan seluruh lembar dan semua BAB dokumen
               </span>
             )}
           </div>
@@ -429,21 +554,19 @@ export default function ProposalPage() {
             id="proposal-print-area"
             style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}
           >
-            {/* Sheet 1: Cover */}
-            {(!focusActiveChapter || editor.activeTab === "cover") && (
-              <CoverSheet
-                coverData={editor.coverData}
-                profile={editor.profile}
-                project={editor.project}
-                isEditMode={editor.isEditMode}
-                triggerAutoSave={editor.triggerAutoSave}
-                pdfPageSelection={editor.pdfPageSelection}
-                pageNumberPos={editor.pageNumberPos}
-                marginPreset={editor.marginPreset}
-                logoLoadError={editor.logoLoadError}
-                setLogoLoadError={editor.setLogoLoadError}
-              />
-            )}
+            {/* Sheet 1: Cover (Selalu Tampil) */}
+            <CoverSheet
+              coverData={editor.coverData}
+              profile={editor.profile}
+              project={editor.project}
+              isEditMode={editor.isEditMode}
+              triggerAutoSave={editor.triggerAutoSave}
+              pdfPageSelection={editor.pdfPageSelection}
+              pageNumberPos={editor.pageNumberPos}
+              marginPreset={editor.marginPreset}
+              logoLoadError={editor.logoLoadError}
+              setLogoLoadError={editor.setLogoLoadError}
+            />
 
             {/* Sheet 2: Lembar Persetujuan */}
             {(!focusActiveChapter || editor.activeTab === "approval") && (
@@ -523,20 +646,18 @@ export default function ProposalPage() {
               />
             )}
 
-            {/* Sheet 7: Daftar Pustaka */}
-            {(!focusActiveChapter || editor.activeTab === "references") && (
-              <ReferencesSheet
-                citedReferencesList={editor.citedReferencesList}
-                citationStyle={editor.citationStyle}
-                isEditMode={editor.isEditMode}
-                triggerAutoSave={editor.triggerAutoSave}
-                pdfPageSelection={editor.pdfPageSelection}
-                pageNumberPos={editor.pageNumberPos}
-                marginPreset={editor.marginPreset}
-                handleJumpToCitationInText={editor.handleJumpToCitationInText}
-                onReorderReferences={editor.handleReorderReferences}
-              />
-            )}
+            {/* Sheet 7: Daftar Pustaka (Selalu Tampil) */}
+            <ReferencesSheet
+              citedReferencesList={editor.citedReferencesList}
+              citationStyle={editor.citationStyle}
+              isEditMode={editor.isEditMode}
+              triggerAutoSave={editor.triggerAutoSave}
+              pdfPageSelection={editor.pdfPageSelection}
+              pageNumberPos={editor.pageNumberPos}
+              marginPreset={editor.marginPreset}
+              handleJumpToCitationInText={editor.handleJumpToCitationInText}
+              onReorderReferences={editor.handleReorderReferences}
+            />
 
             {/* Sheet 8: Lampiran */}
             {(!focusActiveChapter || editor.activeTab === "appendix") && (
@@ -947,6 +1068,13 @@ export default function ProposalPage() {
             box-shadow: none !important;
             text-decoration: none !important;
             background: transparent !important;
+          }
+          .citation-interactive-badge {
+            color: #000000 !important;
+            background: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            text-decoration: none !important;
           }
           table {
             border-collapse: collapse !important;

@@ -683,16 +683,20 @@ export default function OutlinePage() {
 
   const handleCombineBulletsToDraft = async (redirectToProposal: boolean = false) => {
     if (!selectedItemId) return;
-    const currentSubMap = bulletDrafts[selectedItemId] || {};
-    const bulletEntries = Object.entries(currentSubMap)
-      .map(([k, v]) => ({ index: parseInt(k, 10), text: v.trim() }))
-      .filter((b) => b.text.length > 0)
-      .sort((a, b) => a.index - b.index);
-
     let textToSave = writingContent.trim();
-    if (bulletEntries.length > 0) {
-      textToSave = bulletEntries.map((b) => b.text).join("\n\n");
-      setWritingContent(textToSave);
+
+    // Only rebuild from bullets if explicitly restoring ("Pulihkan dari Poin") or if writingContent is still empty
+    if (!redirectToProposal || !textToSave) {
+      const currentSubMap = bulletDrafts[selectedItemId] || {};
+      const bulletEntries = Object.entries(currentSubMap)
+        .map(([k, v]) => ({ index: parseInt(k, 10), text: v.trim() }))
+        .filter((b) => b.text.length > 0)
+        .sort((a, b) => a.index - b.index);
+
+      if (bulletEntries.length > 0) {
+        textToSave = bulletEntries.map((b) => b.text).join("\n\n");
+        setWritingContent(textToSave);
+      }
     }
 
     if (!textToSave) {
@@ -705,6 +709,32 @@ export default function OutlinePage() {
 
     if (redirectToProposal) {
       const dest = getProposalDestination(selectedItem);
+      // Sinkronkan juga draft langsung ke database proposal agar naskah hasil parafrase langsung termuat
+      try {
+        const babKey = dest.tab as "bab1" | "bab2" | "bab3";
+        let fieldKey = "latarBelakang";
+        if (dest.section === "sub_1_2") fieldKey = "identifikasiMasalah";
+        else if (dest.section === "sub_1_3") fieldKey = "rumusanMasalah";
+        else if (dest.section === "sub_1_4") fieldKey = "tujuanPenelitian";
+        else if (dest.section === "sub_1_5") fieldKey = "manfaatPenelitian";
+        else if (dest.section === "sub_2_1") fieldKey = "landasanTeori";
+        else if (dest.section === "sub_2_2") fieldKey = "kerangkaPemikiran";
+        else if (dest.section === "sub_3_1") fieldKey = "desainPenelitian";
+        else if (dest.section === "sub_3_2") fieldKey = "populasiSampel";
+        else if (dest.section === "sub_3_3") fieldKey = "teknikPengumpulanData";
+        else if (dest.section === "sub_3_4") fieldKey = "teknikAnalisisData";
+
+        await api.proposal.save(projectId, {
+          proposalData: {
+            [babKey]: {
+              [fieldKey]: textToSave,
+            },
+          },
+        }).catch(() => {});
+      } catch (e) {
+        console.warn("Direct proposal sync:", e);
+      }
+
       router.push(`/projects/${projectId}/proposal?tab=${dest.tab}&section=${encodeURIComponent(dest.section)}`);
     } else {
       notify.success("✨ Berhasil memulihkan & menggabungkan seluruh poin instruksi ke Naskah Draf Sub-bab!");

@@ -15,7 +15,8 @@ interface ReferencesSheetProps {
     refIndex: number,
     authors?: string,
     doi?: string,
-    e?: React.MouseEvent
+    e?: React.MouseEvent,
+    seqIndex?: number
   ) => void;
   onReorderReferences?: (newOrder: ReferenceItem[]) => void;
 }
@@ -152,8 +153,10 @@ export function ReferencesSheet({
                     </span>
                   )}
                   <p
-                    id={`ref-${isNumbered ? r.originalIndex : idx + 1}`}
-                    onClick={(e) => handleJumpToCitationInText(r.originalIndex, r.authors, r.doi, e)}
+                    id={`ref-${idx + 1}`}
+                    data-ref-seq={idx + 1}
+                    data-ref-orig={r.originalIndex}
+                    onClick={(e) => handleJumpToCitationInText(r.originalIndex, r.authors, r.doi, e, idx + 1)}
                     style={{
                       flex: 1,
                       textIndent: "-1.27cm",
