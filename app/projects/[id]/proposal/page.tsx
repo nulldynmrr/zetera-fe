@@ -213,6 +213,7 @@ export default function ProposalPage() {
             customSubChapters={editor.customSubChapters}
             setShowAddSubChapterModal={setShowAddSubChapterModal}
             handleGenerateProposal={editor.handleGenerateProposal}
+            customBabTitles={editor.customBabTitles}
           />
         )}
 
@@ -487,6 +488,7 @@ export default function ProposalPage() {
                 latarPage1={editor.latarPage1}
                 latarPage2={editor.latarPage2}
                 latarPage3={editor.latarPage3}
+                customBabTitle={editor.customBabTitles?.[1]}
               />
             )}
 
@@ -502,6 +504,7 @@ export default function ProposalPage() {
                 pageNumberPos={editor.pageNumberPos}
                 marginPreset={editor.marginPreset}
                 renderAcademicParagraphs={renderAcademicParagraphs}
+                customBabTitle={editor.customBabTitles?.[2]}
               />
             )}
 
@@ -516,6 +519,7 @@ export default function ProposalPage() {
                 pageNumberPos={editor.pageNumberPos}
                 marginPreset={editor.marginPreset}
                 renderAcademicParagraphs={renderAcademicParagraphs}
+                customBabTitle={editor.customBabTitles?.[3]}
               />
             )}
 

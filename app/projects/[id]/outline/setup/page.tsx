@@ -214,16 +214,27 @@ export default function CustomBabSetupPage() {
       } catch (e) {}
 
       const res = await api.projects.customOutline.get(projectId);
-      if (res.success && res.data?.customOutline && Array.isArray(res.data.customOutline) && res.data.customOutline.length > 0) {
+      const isDbCustomValid =
+        res.success &&
+        res.data?.customOutline &&
+        Array.isArray(res.data.customOutline) &&
+        res.data.customOutline.length > 0 &&
+        res.data.customOutline.some((b: any) => b && (b.babNumber || b.subChapters));
+
+      if (isDbCustomValid) {
         const normalized = res.data.customOutline.map((b: any) => ({
           ...b,
           subChapters: Array.isArray(b.subChapters) ? b.subChapters : [],
         }));
         setBabs(normalized);
         setIsCustomEnabled(true);
+        try {
+          localStorage.setItem(`zetera_custom_outline_${projectId}`, JSON.stringify(normalized));
+        } catch (e) {}
       } else if (localCachedOutline) {
         setBabs(localCachedOutline);
         setIsCustomEnabled(true);
+        api.projects.customOutline.save(projectId, localCachedOutline).catch(() => {});
       } else {
         const defaultList = getApproachBasedBabs(fetchedProject?.approachType || undefined, fetchedProject?.title || undefined);
         const normalized = defaultList.map((b: any) => ({
@@ -232,6 +243,7 @@ export default function CustomBabSetupPage() {
         }));
         setBabs(normalized);
         setIsCustomEnabled(true);
+        api.projects.customOutline.save(projectId, normalized).catch(() => {});
       }
     } catch (err) {
       console.error("Gagal memuat struktur bab:", err);
@@ -370,6 +382,12 @@ export default function CustomBabSetupPage() {
 
     setDraggedSub(null);
     setDragOverSub(null);
+  };
+
+  const handleBabTitleChange = (babNum: number, newTitle: string) => {
+    setBabs((prev) =>
+      prev.map((b) => (b.babNumber === babNum ? { ...b, title: newTitle } : b))
+    );
   };
 
   const handleSubChapterChange = (babNum: number, subIndex: number, newTitle: string) => {
@@ -742,7 +760,10 @@ export default function CustomBabSetupPage() {
                     userSelect: "none",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, marginRight: 16 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <span
                       style={{
                         fontSize: 11.5,
@@ -752,14 +773,40 @@ export default function CustomBabSetupPage() {
                         padding: "3px 10px",
                         borderRadius: 6,
                         letterSpacing: "0.04em",
+                        flexShrink: 0,
                       }}
                     >
                       {bab.roman}
                     </span>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>
-                      {bab.roman} {bab.title}
-                    </span>
-                    <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                    <input
+                      type="text"
+                      value={bab.title}
+                      onChange={(e) => handleBabTitleChange(bab.babNumber, e.target.value)}
+                      placeholder="Judul BAB..."
+                      title="Klik untuk mengubah judul BAB"
+                      style={{
+                        fontSize: 14.5,
+                        fontWeight: 700,
+                        color: "#0f172a",
+                        border: "1px solid #e2e8f0",
+                        background: "#ffffff",
+                        padding: "5px 10px",
+                        borderRadius: 6,
+                        flex: 1,
+                        maxWidth: 460,
+                        outline: "none",
+                        transition: "all 0.15s ease",
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = "#00C988";
+                        e.target.style.boxShadow = "0 0 0 2px rgba(0,201,136,0.15)";
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = "#e2e8f0";
+                        e.target.style.boxShadow = "none";
+                      }}
+                    />
+                    <span style={{ fontSize: 12, color: "#94a3b8", flexShrink: 0 }}>
                       ({(bab.subChapters || []).length} sub-bab)
                     </span>
                   </div>

@@ -11,6 +11,7 @@ interface Chapter3SheetProps {
   pageNumberPos: string;
   marginPreset: "4333" | "4433";
   renderAcademicParagraphs: (rawText?: string, placeholder?: string) => React.ReactNode;
+  customBabTitle?: string;
 }
 
 export function Chapter3Sheet({
@@ -22,6 +23,7 @@ export function Chapter3Sheet({
   pageNumberPos,
   marginPreset,
   renderAcademicParagraphs,
+  customBabTitle,
 }: Chapter3SheetProps) {
   const bab3Subs = customSubChapters.filter((s) => s.chapter === "bab3" && !s.hidden);
 
@@ -50,7 +52,7 @@ export function Chapter3Sheet({
           }}
         >
           BAB III<br />
-          METODOLOGI PENELITIAN
+          {customBabTitle || "METODOLOGI PENELITIAN"}
         </div>
 
         <div id="sub_3_1" style={{ fontWeight: 700, marginBottom: 6 }}>

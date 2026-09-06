@@ -12,6 +12,7 @@ interface Chapter2SheetProps {
   pageNumberPos: string;
   marginPreset: "4333" | "4433";
   renderAcademicParagraphs: (rawText?: string, placeholder?: string) => React.ReactNode;
+  customBabTitle?: string;
 }
 
 export function Chapter2Sheet({
@@ -24,6 +25,7 @@ export function Chapter2Sheet({
   pageNumberPos,
   marginPreset,
   renderAcademicParagraphs,
+  customBabTitle,
 }: Chapter2SheetProps) {
   const bab2Subs = customSubChapters.filter((s) => s.chapter === "bab2" && !s.hidden);
 
@@ -54,7 +56,7 @@ export function Chapter2Sheet({
             }}
           >
             BAB II<br />
-            TINJAUAN PUSTAKA & KERANGKA PEMIKIRAN
+            {customBabTitle || "TINJAUAN PUSTAKA & KERANGKA PEMIKIRAN"}
           </div>
 
           <div id="sub_2_1" style={{ fontWeight: 700, marginBottom: 8 }}>

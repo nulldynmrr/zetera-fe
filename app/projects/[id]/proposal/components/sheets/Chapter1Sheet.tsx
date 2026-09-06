@@ -15,6 +15,7 @@ interface Chapter1SheetProps {
   latarPage1: string;
   latarPage2: string;
   latarPage3: string;
+  customBabTitle?: string;
 }
 
 export function Chapter1Sheet({
@@ -30,6 +31,7 @@ export function Chapter1Sheet({
   latarPage1,
   latarPage2,
   latarPage3,
+  customBabTitle,
 }: Chapter1SheetProps) {
   const bab1Subs = customSubChapters.filter((s) => s.chapter === "bab1" && !s.hidden);
 
@@ -76,7 +78,7 @@ export function Chapter1Sheet({
             }}
           >
             BAB I<br />
-            PENDAHULUAN
+            {customBabTitle || "PENDAHULUAN"}
           </div>
 
           <div id="sub_1_1" style={{ fontWeight: 700, marginBottom: 8 }}>

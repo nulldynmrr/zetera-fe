@@ -61,6 +61,14 @@ const STATUS_CONFIG: Record<OutlineItemStatus, { label: string; color: string; b
   NEEDS_MORE: { label: "Butuh Lebih", color: "#dc2626", bg: "#fef2f2", icon: <AlertCircle size={12} /> },
 };
 
+const BAB_ROMANS: Record<number, string> = {
+  1: "BAB I",
+  2: "BAB II",
+  3: "BAB III",
+  4: "BAB IV",
+  5: "BAB V",
+};
+
 const BAB_LABELS: Record<number, string> = {
   1: "BAB I — PENDAHULUAN",
   2: "BAB II — LANDASAN TEORI & TINJAUAN PUSTAKA",
@@ -104,6 +112,9 @@ export default function OutlinePage() {
 
   const [items, setItems] = useState<ResearchOutlineItem[]>([]);
   const [project, setProject] = useState<any>(null);
+  const [customBabTitles, setCustomBabTitles] = useState<Record<number, string>>({});
+  const [editingBabNum, setEditingBabNum] = useState<number | null>(null);
+  const [editingBabInput, setEditingBabInput] = useState<string>("");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [expandedBabs, setExpandedBabs] = useState<Set<number>>(new Set([1]));
   const [focusActiveBabOnly, setFocusActiveBabOnly] = useState<boolean>(true);
@@ -243,6 +254,32 @@ export default function OutlinePage() {
             setSelectedItemId(firstActive.itemId);
           }
         }
+
+        // Auto-load custom BAB titles
+        const babMap: Record<number, string> = {};
+        const sourceOutline = (res.data.project as any)?.customOutline;
+        if (Array.isArray(sourceOutline) && sourceOutline.some((b: any) => b && (b.babNumber || b.subChapters))) {
+          sourceOutline.forEach((b: any) => {
+            if (b && b.babNumber && b.title) {
+              babMap[b.babNumber] = `${b.roman || BAB_ROMANS[b.babNumber] || `BAB ${b.babNumber}`} — ${b.title.toUpperCase()}`;
+            }
+          });
+        } else {
+          try {
+            const cached = localStorage.getItem(`zetera_custom_outline_${projectId}`);
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed)) {
+                parsed.forEach((b: any) => {
+                  if (b && b.babNumber && b.title) {
+                    babMap[b.babNumber] = `${b.roman || BAB_ROMANS[b.babNumber] || `BAB ${b.babNumber}`} — ${b.title.toUpperCase()}`;
+                  }
+                });
+              }
+            }
+          } catch (e) {}
+        }
+        setCustomBabTitles(babMap);
       }
     } catch (err) {
       console.error("Gagal memuat outline:", err);
@@ -250,6 +287,38 @@ export default function OutlinePage() {
       setLoading(false);
     }
   }, [projectId, selectedItemId]);
+
+  const handleInlineSaveBabTitle = async (babNum: number, newRawTitle: string) => {
+    if (!newRawTitle.trim() || !projectId) {
+      setEditingBabNum(null);
+      return;
+    }
+    const cleanTitle = newRawTitle.trim();
+    const roman = BAB_ROMANS[babNum] || `BAB ${babNum}`;
+    const fullLabel = `${roman} — ${cleanTitle.toUpperCase()}`;
+    setCustomBabTitles((prev) => ({ ...prev, [babNum]: fullLabel }));
+    setEditingBabNum(null);
+
+    try {
+      let currentBabs: any[] = [];
+      const res = await api.projects.customOutline.get(projectId);
+      if (res.success && Array.isArray(res.data?.customOutline) && res.data.customOutline.length > 0) {
+        currentBabs = res.data.customOutline;
+      } else {
+        const cached = localStorage.getItem(`zetera_custom_outline_${projectId}`);
+        if (cached) currentBabs = JSON.parse(cached);
+      }
+      if (currentBabs.length > 0) {
+        const updatedBabs = currentBabs.map((b: any) =>
+          b.babNumber === babNum ? { ...b, title: cleanTitle } : b
+        );
+        await api.projects.customOutline.save(projectId, updatedBabs);
+        localStorage.setItem(`zetera_custom_outline_${projectId}`, JSON.stringify(updatedBabs));
+      }
+    } catch (err) {
+      console.warn("Failed to persist edited BAB title:", err);
+    }
+  };
 
   useEffect(() => {
     loadOutline();
@@ -1611,10 +1680,99 @@ export default function OutlinePage() {
                           userSelect: "none",
                         }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 800, color: "#334155", letterSpacing: "0.02em" }}>
-                            {BAB_LABELS[babNum] || `BAB ${babNum}`}
-                          </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0, marginRight: 8 }}>
+                          {editingBabNum === babNum ? (
+                            <div
+                              style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <span style={{ fontSize: 11, fontWeight: 800, color: "#475569", whiteSpace: "nowrap" }}>
+                                {BAB_ROMANS[babNum] || `BAB ${babNum}`} —
+                              </span>
+                              <input
+                                type="text"
+                                autoFocus
+                                value={editingBabInput}
+                                onChange={(e) => setEditingBabInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") handleInlineSaveBabTitle(babNum, editingBabInput);
+                                  if (e.key === "Escape") setEditingBabNum(null);
+                                }}
+                                style={{
+                                  flex: 1,
+                                  padding: "2px 6px",
+                                  borderRadius: 4,
+                                  border: "1px solid #00C988",
+                                  fontSize: 11.5,
+                                  fontWeight: 700,
+                                  color: "#0f172a",
+                                  outline: "none",
+                                  minWidth: 80,
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleInlineSaveBabTitle(babNum, editingBabInput)}
+                                style={{ background: "#00C988", border: "none", color: "#fff", borderRadius: 4, padding: "2px 5px", cursor: "pointer" }}
+                              >
+                                <Check size={11} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingBabNum(null)}
+                                style={{ background: "#e2e8f0", border: "none", color: "#64748b", borderRadius: 4, padding: "2px 5px", cursor: "pointer" }}
+                              >
+                                <X size={11} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+                              <span
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingBabNum(babNum);
+                                  const current = customBabTitles[babNum] || BAB_LABELS[babNum] || "";
+                                  setEditingBabInput(current.replace(/^BAB\s+[IVXLCDM]+\s*—?\s*/i, ""));
+                                }}
+                                title="Klik 2x atau klik ikon pensil untuk mengubah nama BAB"
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  color: "#334155",
+                                  letterSpacing: "0.02em",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {customBabTitles[babNum] || BAB_LABELS[babNum] || `BAB ${babNum}`}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingBabNum(babNum);
+                                  const current = customBabTitles[babNum] || BAB_LABELS[babNum] || "";
+                                  setEditingBabInput(current.replace(/^BAB\s+[IVXLCDM]+\s*—?\s*/i, ""));
+                                }}
+                                title="Ubah nama BAB ini"
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: "#94a3b8",
+                                  cursor: "pointer",
+                                  padding: "1px 3px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  flexShrink: 0,
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.color = "#059669")}
+                                onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+                              >
+                                <Edit3 size={11} />
+                              </button>
+                            </div>
+                          )}
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span

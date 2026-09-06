@@ -9,6 +9,7 @@ interface ProposalOutlineSidebarProps {
   customSubChapters: CustomSubChapterItem[];
   setShowAddSubChapterModal: (show: boolean) => void;
   handleGenerateProposal: () => void;
+  customBabTitles?: Record<number, string>;
 }
 
 export function ProposalOutlineSidebar({
@@ -18,6 +19,7 @@ export function ProposalOutlineSidebar({
   customSubChapters,
   setShowAddSubChapterModal,
   handleGenerateProposal,
+  customBabTitles,
 }: ProposalOutlineSidebarProps) {
   const [expandedChapters, setExpandedChapters] = React.useState<Set<string>>(new Set([activeTab]));
   const activeRefsCount = references.filter((r) => r.selected).length;
@@ -32,7 +34,7 @@ export function ProposalOutlineSidebar({
     { id: "abstract" as TabKey, label: "Abstrak & Keywords", subs: [] },
     {
       id: "bab1" as TabKey,
-      label: "BAB I PENDAHULUAN",
+      label: customBabTitles?.[1] ? `BAB I ${customBabTitles[1]}` : "BAB I PENDAHULUAN",
       subs: [
         { label: "1.1 Latar Belakang", elementId: "sub_1_1" },
         { label: "1.2 Identifikasi Masalah", elementId: "sub_1_2" },
@@ -43,7 +45,7 @@ export function ProposalOutlineSidebar({
     },
     {
       id: "bab2" as TabKey,
-      label: "BAB II TINJAUAN PUSTAKA",
+      label: customBabTitles?.[2] ? `BAB II ${customBabTitles[2]}` : "BAB II TINJAUAN PUSTAKA",
       subs: [
         { label: "2.1 Landasan Teori", elementId: "sub_2_1" },
         { label: "2.2 Kerangka Berpikir", elementId: "sub_2_2" },
@@ -57,7 +59,7 @@ export function ProposalOutlineSidebar({
     },
     {
       id: "bab3" as TabKey,
-      label: "BAB III METODOLOGI PENELITIAN",
+      label: customBabTitles?.[3] ? `BAB III ${customBabTitles[3]}` : "BAB III METODOLOGI PENELITIAN",
       subs: [
         { label: "3.1 Jenis Penelitian & Desain", elementId: "sub_3_1" },
         { label: "3.2 Populasi dan Sampel", elementId: "sub_3_2" },

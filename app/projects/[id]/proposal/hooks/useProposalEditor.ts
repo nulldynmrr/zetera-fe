@@ -157,6 +157,11 @@ export function useProposalEditor(projectId: string) {
 
   // Sub-chapters state
   const [customSubChapters, setCustomSubChapters] = useState<CustomSubChapterItem[]>([]);
+  const [customBabTitles, setCustomBabTitles] = useState<Record<number, string>>({
+    1: "PENDAHULUAN",
+    2: "LANDASAN TEORI & TINJAUAN PUSTAKA",
+    3: "METODOLOGI PENELITIAN",
+  });
   const [structureChapter, setStructureChapter] = useState<"bab1" | "bab2" | "bab3">("bab1");
   const [showCitationPickerModal, setShowCitationPickerModal] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
@@ -217,6 +222,34 @@ export function useProposalEditor(projectId: string) {
         }
         if (res.data.project?.variableValues) {
           setVariableValues(res.data.project.variableValues);
+        }
+
+        // Auto-load custom BAB titles
+        const babMap: Record<number, string> = {};
+        const sourceOutline = res.data.project?.customOutline;
+        if (Array.isArray(sourceOutline) && sourceOutline.some((b: any) => b && (b.babNumber || b.subChapters))) {
+          sourceOutline.forEach((b: any) => {
+            if (b && b.babNumber && b.title) {
+              babMap[b.babNumber] = b.title.toUpperCase();
+            }
+          });
+        } else {
+          try {
+            const cached = localStorage.getItem(`zetera_custom_outline_${projectId}`);
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed)) {
+                parsed.forEach((b: any) => {
+                  if (b && b.babNumber && b.title) {
+                    babMap[b.babNumber] = b.title.toUpperCase();
+                  }
+                });
+              }
+            }
+          } catch (e) {}
+        }
+        if (Object.keys(babMap).length > 0) {
+          setCustomBabTitles((prev) => ({ ...prev, ...babMap }));
         }
 
         // RESTORE SAVED DRAFT FROM DATABASE IF AVAILABLE
@@ -781,6 +814,8 @@ export function useProposalEditor(projectId: string) {
     setAiChatMessages,
     customSubChapters,
     setCustomSubChapters,
+    customBabTitles,
+    setCustomBabTitles,
     structureChapter,
     setStructureChapter,
     showCitationPickerModal,
