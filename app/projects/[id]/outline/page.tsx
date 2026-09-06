@@ -836,7 +836,15 @@ export default function OutlinePage() {
         }).catch(() => {});
       } catch (e) {}
 
-      notify.success(`✨ Berhasil menjawab ${pointAnswers.length} butir instruksi dengan sitasi jurnal DOI!`);
+      if ((res.data as any)?.isSistematika) {
+        await loadOutline();
+      }
+
+      notify.success(
+        (res.data as any)?.isSistematika
+          ? `✨ Berhasil menyusun narasi Sistematika Penulisan dari ${pointAnswers.length} BAB di Daftar Isi Database!`
+          : `✨ Berhasil menjawab ${pointAnswers.length} butir instruksi dengan sitasi jurnal DOI!`
+      );
       setShowSynthesizeSuccessModal(true);
     } catch (err: any) {
       console.error("Sintesis poin error:", err);
@@ -844,6 +852,20 @@ export default function OutlinePage() {
     } finally {
       setIsSynthesizingPoints(false);
       setSynthesizeProgress("");
+    }
+  };
+
+  // ── Sinkronkan Sistematika Penulisan dengan BAB Daftar Isi Database ──
+  const handleSyncSistematikaWithDatabase = async () => {
+    if (!projectId || !selectedItemId) return;
+    try {
+      const res = await api.projects.outline.syncSistematika(projectId, selectedItemId);
+      if (res.success) {
+        notify.success("✓ Berhasil menyinkronkan butir Sistematika Penulisan dengan seluruh BAB di database!");
+        await loadOutline();
+      }
+    } catch (e: any) {
+      notify.error("Gagal sinkronisasi sistematika: " + (e.message || e));
     }
   };
 
@@ -2479,7 +2501,9 @@ export default function OutlinePage() {
                                         borderRadius: 7,
                                         background: isSynthesizingPoints
                                           ? "#64748b"
-                                          : "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
+                                          : (selectedItem?.tag === "sistematika_penulisan" || selectedItem?.itemId === "1.7")
+                                            ? "linear-gradient(135deg, #059669 0%, #0d9488 100%)"
+                                            : "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
                                         color: "#ffffff",
                                         border: "none",
                                         fontSize: 11.5,
@@ -2488,10 +2512,16 @@ export default function OutlinePage() {
                                         display: "inline-flex",
                                         alignItems: "center",
                                         gap: 6,
-                                        boxShadow: "0 2px 8px rgba(124, 58, 237, 0.35)",
+                                        boxShadow: (selectedItem?.tag === "sistematika_penulisan" || selectedItem?.itemId === "1.7")
+                                          ? "0 2px 8px rgba(13, 148, 136, 0.35)"
+                                          : "0 2px 8px rgba(124, 58, 237, 0.35)",
                                         transition: "all 0.15s ease",
                                       }}
-                                      title="Jawab otomatis seluruh butir instruksi riset menggunakan jurnal DOI terverifikasi pool proyek"
+                                      title={
+                                        (selectedItem?.tag === "sistematika_penulisan" || selectedItem?.itemId === "1.7")
+                                          ? "Susun narasi sistematika penulisan otomatis dari seluruh BAB di daftar isi database"
+                                          : "Jawab otomatis seluruh butir instruksi riset menggunakan jurnal DOI terverifikasi pool proyek"
+                                      }
                                     >
                                       {isSynthesizingPoints ? (
                                         <Loader2 size={13} className="animate-spin" />
@@ -2501,9 +2531,36 @@ export default function OutlinePage() {
                                       <span>
                                         {isSynthesizingPoints
                                           ? (synthesizeProgress || "Sedang Mengetik...")
-                                          : "⚡ AI Sintesis Semua Poin (Jurnal DOI)"}
+                                          : (selectedItem?.tag === "sistematika_penulisan" || selectedItem?.itemId === "1.7")
+                                            ? "⚡ AI Sintesis Sistematika (Sesuai Daftar Isi DB)"
+                                            : "⚡ AI Sintesis Semua Poin (Jurnal DOI)"}
                                       </span>
                                     </button>
+
+                                    {(selectedItem?.tag === "sistematika_penulisan" || selectedItem?.itemId === "1.7") && (
+                                      <button
+                                        type="button"
+                                        onClick={handleSyncSistematikaWithDatabase}
+                                        style={{
+                                          padding: "6px 11px",
+                                          borderRadius: 7,
+                                          background: "#f0fdf4",
+                                          color: "#15803d",
+                                          border: "1px solid #86efac",
+                                          fontSize: 11.5,
+                                          fontWeight: 700,
+                                          cursor: "pointer",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 5,
+                                          boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                                        }}
+                                        title="Sinkronkan butir sistematika dengan seluruh BAB dan sub-bab di database"
+                                      >
+                                        <RefreshCw size={12} />
+                                        <span>Sinkronkan Daftar Isi DB</span>
+                                      </button>
+                                    )}
 
                                     <button
                                       type="button"
@@ -2549,6 +2606,56 @@ export default function OutlinePage() {
                                     </button>
                                   </div>
                                 </div>
+
+                                {/* Banner Info Khusus Sistematika Penulisan */}
+                                {(selectedItem?.tag === "sistematika_penulisan" || selectedItem?.itemId === "1.7") && (
+                                  <div
+                                    style={{
+                                      background: "#f0fdf4",
+                                      border: "1px solid #86efac",
+                                      borderRadius: 10,
+                                      padding: "10px 14px",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      gap: 12,
+                                      boxShadow: "0 1px 4px rgba(22, 101, 52, 0.05)",
+                                    }}
+                                  >
+                                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                      <BookOpen size={18} color="#16a34a" />
+                                      <div>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>
+                                          Roadmap Sistematika Penulisan (Tersinkronisasi dengan Database)
+                                        </span>
+                                        <p style={{ fontSize: 11, color: "#15803d", margin: "2px 0 0", lineHeight: 1.4 }}>
+                                          Setiap butir di bawah merangkum alur per BAB sesuai struktur Daftar Isi resmi di database. Bagian ini murni deskripsi alur dokumen (bebas sitasi jurnal).
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={handleSyncSistematikaWithDatabase}
+                                      style={{
+                                        padding: "5px 10px",
+                                        borderRadius: 6,
+                                        background: "#ffffff",
+                                        border: "1px solid #86efac",
+                                        color: "#15803d",
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                        cursor: "pointer",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 5,
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      <RefreshCw size={11} />
+                                      <span>Perbarui dari DB</span>
+                                    </button>
+                                  </div>
+                                )}
 
                                 {/* List of Concrete Bullets */}
                                 {(() => {

@@ -645,8 +645,14 @@ export const api = {
             pointAnswers: { index: number; text: string; citedJournals: number[] }[];
             combinedDraft: string;
             totalPoints: number;
+            isSistematika?: boolean;
           };
         }>(`/api/projects/${projectId}/outline/${itemId}/synthesize-points`, {}),
+      syncSistematika: (projectId: string, itemId: string) =>
+        http.post<{
+          success: boolean;
+          data: ResearchOutlineItem;
+        }>(`/api/projects/${projectId}/outline/${itemId}/sync-sistematika`, {}),
     },
   },
 
