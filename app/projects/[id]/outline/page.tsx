@@ -1652,269 +1652,242 @@ export default function OutlinePage() {
                               <Fragment key={item.id}>
                                 <div
                                   onClick={() => {
-                                  if (!isEditing) {
-                                    setSelectedItemId(item.itemId);
-                                    if (focusActiveBabOnly) {
-                                      setExpandedBabs(new Set([babNum]));
+                                    if (!isEditing) {
+                                      setSelectedItemId(item.itemId);
+                                      if (focusActiveBabOnly) {
+                                        setExpandedBabs(new Set([babNum]));
+                                      }
+                                      setOpenMenuId(null);
                                     }
-                                    setOpenMenuId(null);
-                                  }
-                                }}
-                                style={{
-                                  padding: "8px 14px",
-                                  paddingLeft: isSubSub ? 28 : 16,
-                                  background: isSelected ? "#ecfdf5" : "transparent",
-                                  borderLeft: isSelected ? "3px solid #00C988" : "3px solid transparent",
-                                  borderBottom: "1px solid #f8fafc",
-                                  cursor: "pointer",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
-                                  gap: 6,
-                                  transition: "all 0.12s ease",
-                                  position: "relative",
-                                }}
-                              >
-                                <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
-                                  <span
-                                    style={{
-                                      fontSize: 11.5,
-                                      fontWeight: 700,
-                                      color: isSubSub ? "#0284c7" : isSelected ? "#059669" : "#64748b",
-                                      width: isSubSub ? 38 : 24,
-                                      flexShrink: 0,
-                                    }}
-                                  >
-                                    {item.itemId}
-                                  </span>
-
-                                  {isEditing ? (
-                                    <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }} onClick={(e) => e.stopPropagation()}>
-                                      <input
-                                        type="text"
-                                        autoFocus
-                                        value={editingTitle}
-                                        onChange={(e) => setEditingTitle(e.target.value)}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") handleInlineSaveRename(item.itemId, editingTitle);
-                                          if (e.key === "Escape") setEditingItemId(null);
-                                        }}
-                                        style={{
-                                          flex: 1,
-                                          padding: "3px 6px",
-                                          borderRadius: 4,
-                                          border: "1px solid #00C988",
-                                          fontSize: 12,
-                                          color: "#0f172a",
-                                          outline: "none",
-                                        }}
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => handleInlineSaveRename(item.itemId, editingTitle)}
-                                        style={{ background: "#00C988", border: "none", color: "#fff", borderRadius: 4, padding: "3px 6px", cursor: "pointer" }}
-                                      >
-                                        <Check size={11} />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setEditingItemId(null)}
-                                        style={{ background: "#e2e8f0", border: "none", color: "#64748b", borderRadius: 4, padding: "3px 6px", cursor: "pointer" }}
-                                      >
-                                        <X size={11} />
-                                      </button>
-                                    </div>
-                                  ) : (
+                                  }}
+                                  style={{
+                                    padding: "8px 14px",
+                                    paddingLeft: isSubSub ? 28 : 16,
+                                    background: isSelected ? "#ecfdf5" : "transparent",
+                                    borderLeft: isSelected ? "3px solid #00C988" : "3px solid transparent",
+                                    borderBottom: "1px solid #f8fafc",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    gap: 6,
+                                    transition: "all 0.12s ease",
+                                    position: "relative",
+                                  }}
+                                >
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
                                     <span
-                                      onDoubleClick={(e) => {
-                                        e.stopPropagation();
-                                        setEditingItemId(item.itemId);
-                                        setEditingTitle(item.title);
-                                      }}
-                                      title="Klik 2x untuk ubah nama langsung"
                                       style={{
-                                        fontSize: 12.5,
-                                        fontWeight: isSelected ? 700 : 500,
-                                        color: isSelected ? "#065f46" : "#1e293b",
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
-                                        flex: 1,
+                                        fontSize: 11.5,
+                                        fontWeight: 700,
+                                        color: isSubSub ? "#0284c7" : isSelected ? "#059669" : "#64748b",
+                                        width: isSubSub ? 38 : 24,
+                                        flexShrink: 0,
                                       }}
                                     >
-                                      {item.title}
+                                      {item.itemId}
                                     </span>
-                                  )}
-                                </div>
 
-                                {!isEditing && (
-                                  <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                                    {/* Jika dalam mode Susun BAB Aktif: tampilkan tombol cepat +Anakan, Edit, Hapus */}
-                                    {isStructureEditMode && (
-                                      <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                        {!isSubSub && (
+                                    {isEditing ? (
+                                      <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }} onClick={(e) => e.stopPropagation()}>
+                                        <input
+                                          type="text"
+                                          autoFocus
+                                          value={editingTitle}
+                                          onChange={(e) => setEditingTitle(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") handleInlineSaveRename(item.itemId, editingTitle);
+                                            if (e.key === "Escape") setEditingItemId(null);
+                                          }}
+                                          style={{
+                                            flex: 1,
+                                            padding: "3px 6px",
+                                            borderRadius: 4,
+                                            border: "1px solid #00C988",
+                                            fontSize: 12,
+                                            color: "#0f172a",
+                                            outline: "none",
+                                          }}
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleInlineSaveRename(item.itemId, editingTitle)}
+                                          style={{ background: "#00C988", border: "none", color: "#fff", borderRadius: 4, padding: "3px 6px", cursor: "pointer" }}
+                                        >
+                                          <Check size={11} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingItemId(null)}
+                                          style={{ background: "#e2e8f0", border: "none", color: "#64748b", borderRadius: 4, padding: "3px 6px", cursor: "pointer" }}
+                                        >
+                                          <X size={11} />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span
+                                        onDoubleClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingItemId(item.itemId);
+                                          setEditingTitle(item.title);
+                                        }}
+                                        title="Klik 2x untuk ubah nama langsung"
+                                        style={{
+                                          fontSize: 12.5,
+                                          fontWeight: isSelected ? 700 : 500,
+                                          color: isSelected ? "#065f46" : "#1e293b",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
+                                          flex: 1,
+                                        }}
+                                      >
+                                        {item.title}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {!isEditing && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                                      {/* Jika dalam mode Susun BAB Aktif: tampilkan tombol cepat +Anakan, Edit, Hapus */}
+                                      {isStructureEditMode && (
+                                        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                          {!isSubSub && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleInlineAddChild(item);
+                                              }}
+                                              title={`Tambah anakan di bawah ${item.itemId} (misal ${item.itemId}.1)`}
+                                              style={{
+                                                background: "#f0f9ff",
+                                                border: "1px solid #bae6fd",
+                                                color: "#0284c7",
+                                                padding: "1px 5px",
+                                                borderRadius: 4,
+                                                cursor: "pointer",
+                                                fontSize: 10,
+                                                fontWeight: 700,
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                              }}
+                                            >
+                                              +Anakan
+                                            </button>
+                                          )}
                                           <button
                                             type="button"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              handleInlineAddChild(item);
+                                              setEditingItemId(item.itemId);
+                                              setEditingTitle(item.title);
                                             }}
-                                            title={`Tambah anakan di bawah ${item.itemId} (misal ${item.itemId}.1)`}
+                                            title="Ubah judul sub-bab"
+                                            style={{ background: "none", border: "none", color: "#64748b", padding: 2, cursor: "pointer" }}
+                                          >
+                                            <Edit3 size={11} />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleInlineDelete(item.itemId);
+                                            }}
+                                            title="Hapus sub-bab ini"
+                                            style={{ background: "none", border: "none", color: "#94a3b8", padding: 2, cursor: "pointer" }}
+                                            onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+                                            onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+                                          >
+                                            <Trash2 size={11} />
+                                          </button>
+                                        </div>
+                                      )}
+
+                                      {/* Normal Clean Badges */}
+                                      {hasDraft && (
+                                        <span
+                                          title="Naskah sub-bab telah ditulis"
+                                          style={{
+                                            fontSize: 9.5,
+                                            fontWeight: 700,
+                                            background: "#e0f2fe",
+                                            color: "#0369a1",
+                                            padding: "1px 4px",
+                                            borderRadius: 3,
+                                          }}
+                                        >
+                                          ✍️
+                                        </span>
+                                      )}
+
+                                      {targetEvidence > 0 && (
+                                        <span
+                                          style={{
+                                            fontSize: 10,
+                                            fontWeight: 700,
+                                            color: evidenceCount >= targetEvidence ? "#059669" : "#d97706",
+                                            background: evidenceCount >= targetEvidence ? "#ecfdf5" : "#fffbeb",
+                                            padding: "1px 5px",
+                                            borderRadius: 3,
+                                          }}
+                                        >
+                                          {evidenceCount}
+                                        </span>
+                                      )}
+
+                                      {/* Titik 3 (More Action Menu) */}
+                                      {!isStructureEditMode && (
+                                        <div style={{ position: "relative" }}>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setOpenMenuId(openMenuId === item.itemId ? null : item.itemId);
+                                            }}
+                                            title="Opsi sub-bab"
                                             style={{
-                                              background: "#f0f9ff",
-                                              border: "1px solid #bae6fd",
-                                              color: "#0284c7",
-                                              padding: "1px 5px",
+                                              background: "none",
+                                              border: "none",
+                                              color: openMenuId === item.itemId ? "#0f172a" : "#94a3b8",
+                                              padding: "2px 4px",
                                               borderRadius: 4,
                                               cursor: "pointer",
-                                              fontSize: 10,
-                                              fontWeight: 700,
-                                              display: "inline-flex",
+                                              display: "flex",
                                               alignItems: "center",
+                                              justifyContent: "center",
+                                            }}
+                                            onMouseEnter={(e) => (e.currentTarget.style.color = "#0f172a")}
+                                            onMouseLeave={(e) => {
+                                              if (openMenuId !== item.itemId) e.currentTarget.style.color = "#94a3b8";
                                             }}
                                           >
-                                            +Anakan
+                                            <MoreVertical size={13} />
                                           </button>
-                                        )}
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingItemId(item.itemId);
-                                            setEditingTitle(item.title);
-                                          }}
-                                          title="Ubah judul sub-bab"
-                                          style={{ background: "none", border: "none", color: "#64748b", padding: 2, cursor: "pointer" }}
-                                        >
-                                          <Edit3 size={11} />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleInlineDelete(item.itemId);
-                                          }}
-                                          title="Hapus sub-bab ini"
-                                          style={{ background: "none", border: "none", color: "#94a3b8", padding: 2, cursor: "pointer" }}
-                                          onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
-                                          onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
-                                        >
-                                          <Trash2 size={11} />
-                                        </button>
-                                      </div>
-                                    )}
 
-                                    {/* Normal Clean Badges */}
-                                    {hasDraft && (
-                                      <span
-                                        title="Naskah sub-bab telah ditulis"
-                                        style={{
-                                          fontSize: 9.5,
-                                          fontWeight: 700,
-                                          background: "#e0f2fe",
-                                          color: "#0369a1",
-                                          padding: "1px 4px",
-                                          borderRadius: 3,
-                                        }}
-                                      >
-                                        ✍️
-                                      </span>
-                                    )}
-
-                                    {targetEvidence > 0 && (
-                                      <span
-                                        style={{
-                                          fontSize: 10,
-                                          fontWeight: 700,
-                                          color: evidenceCount >= targetEvidence ? "#059669" : "#d97706",
-                                          background: evidenceCount >= targetEvidence ? "#ecfdf5" : "#fffbeb",
-                                          padding: "1px 5px",
-                                          borderRadius: 3,
-                                        }}
-                                      >
-                                        {evidenceCount}
-                                      </span>
-                                    )}
-
-                                    {/* Titik 3 (More Action Menu) */}
-                                    {!isStructureEditMode && (
-                                      <div style={{ position: "relative" }}>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setOpenMenuId(openMenuId === item.itemId ? null : item.itemId);
-                                          }}
-                                          title="Opsi sub-bab"
-                                          style={{
-                                            background: "none",
-                                            border: "none",
-                                            color: openMenuId === item.itemId ? "#0f172a" : "#94a3b8",
-                                            padding: "2px 4px",
-                                            borderRadius: 4,
-                                            cursor: "pointer",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                          }}
-                                          onMouseEnter={(e) => (e.currentTarget.style.color = "#0f172a")}
-                                          onMouseLeave={(e) => {
-                                            if (openMenuId !== item.itemId) e.currentTarget.style.color = "#94a3b8";
-                                          }}
-                                        >
-                                          <MoreVertical size={13} />
-                                        </button>
-
-                                        {/* Dropdown Popup */}
-                                        {openMenuId === item.itemId && (
-                                          <div
-                                            onClick={(e) => e.stopPropagation()}
-                                            style={{
-                                              position: "absolute",
-                                              top: "100%",
-                                              right: 0,
-                                              zIndex: 999,
-                                              background: "#ffffff",
-                                              borderRadius: 8,
-                                              boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
-                                              border: "1px solid #e2e8f0",
-                                              padding: "4px 0",
-                                              minWidth: 160,
-                                            }}
-                                          >
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setOpenMenuId(null);
-                                                setEditingItemId(item.itemId);
-                                                setEditingTitle(item.title);
-                                              }}
+                                          {/* Dropdown Popup */}
+                                          {openMenuId === item.itemId && (
+                                            <div
+                                              onClick={(e) => e.stopPropagation()}
                                               style={{
-                                                width: "100%",
-                                                textAlign: "left",
-                                                padding: "6px 12px",
-                                                background: "none",
-                                                border: "none",
-                                                fontSize: 12,
-                                                color: "#334155",
-                                                cursor: "pointer",
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: 8,
+                                                position: "absolute",
+                                                top: "100%",
+                                                right: 0,
+                                                zIndex: 999,
+                                                background: "#ffffff",
+                                                borderRadius: 8,
+                                                boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+                                                border: "1px solid #e2e8f0",
+                                                padding: "4px 0",
+                                                minWidth: 160,
                                               }}
-                                              onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-                                              onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
                                             >
-                                              <Edit3 size={12} color="#64748b" />
-                                              <span>Ubah Judul</span>
-                                            </button>
-
-                                            {!isSubSub && (
                                               <button
                                                 type="button"
                                                 onClick={() => {
                                                   setOpenMenuId(null);
-                                                  handleInlineAddChild(item);
+                                                  setEditingItemId(item.itemId);
+                                                  setEditingTitle(item.title);
                                                 }}
                                                 style={{
                                                   width: "100%",
@@ -1923,58 +1896,85 @@ export default function OutlinePage() {
                                                   background: "none",
                                                   border: "none",
                                                   fontSize: 12,
-                                                  color: "#0284c7",
+                                                  color: "#334155",
                                                   cursor: "pointer",
                                                   display: "flex",
                                                   alignItems: "center",
                                                   gap: 8,
                                                 }}
-                                                onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f9ff")}
+                                                onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
                                                 onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
                                               >
-                                                <Plus size={12} color="#0284c7" />
-                                                <span>Tambah Anakan</span>
+                                                <Edit3 size={12} color="#64748b" />
+                                                <span>Ubah Judul</span>
                                               </button>
-                                            )}
 
-                                            <div style={{ height: 1, background: "#f1f5f9", margin: "3px 0" }} />
+                                              {!isSubSub && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setOpenMenuId(null);
+                                                    handleInlineAddChild(item);
+                                                  }}
+                                                  style={{
+                                                    width: "100%",
+                                                    textAlign: "left",
+                                                    padding: "6px 12px",
+                                                    background: "none",
+                                                    border: "none",
+                                                    fontSize: 12,
+                                                    color: "#0284c7",
+                                                    cursor: "pointer",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    gap: 8,
+                                                  }}
+                                                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f9ff")}
+                                                  onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                                                >
+                                                  <Plus size={12} color="#0284c7" />
+                                                  <span>Tambah Anakan</span>
+                                                </button>
+                                              )}
 
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setOpenMenuId(null);
-                                                handleInlineDelete(item.itemId);
-                                              }}
-                                              style={{
-                                                width: "100%",
-                                                textAlign: "left",
-                                                padding: "6px 12px",
-                                                background: "none",
-                                                border: "none",
-                                                fontSize: 12,
-                                                color: "#ef4444",
-                                                cursor: "pointer",
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: 8,
-                                              }}
-                                              onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
-                                              onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
-                                            >
-                                              <Trash2 size={12} color="#ef4444" />
-                                              <span>Hapus Sub-bab</span>
-                                            </button>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                              {renderInsertSlot(babNum, itemIdx + 1)}
-                            </Fragment>
-                          );
-                        })}
+                                              <div style={{ height: 1, background: "#f1f5f9", margin: "3px 0" }} />
+
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setOpenMenuId(null);
+                                                  handleInlineDelete(item.itemId);
+                                                }}
+                                                style={{
+                                                  width: "100%",
+                                                  textAlign: "left",
+                                                  padding: "6px 12px",
+                                                  background: "none",
+                                                  border: "none",
+                                                  fontSize: 12,
+                                                  color: "#ef4444",
+                                                  cursor: "pointer",
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  gap: 8,
+                                                }}
+                                                onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
+                                                onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                                              >
+                                                <Trash2 size={12} color="#ef4444" />
+                                                <span>Hapus Sub-bab</span>
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                                {renderInsertSlot(babNum, itemIdx + 1)}
+                              </Fragment>
+                            );
+                          })}
 
                           {/* Add Sub-chapter Button at Bottom of BAB (Hanya tampil saat mode Susun BAB) */}
                           {isStructureEditMode && (
@@ -2459,8 +2459,33 @@ export default function OutlinePage() {
                                   });
                                 })()}
 
-                                {/* Action button to finalize */}
+                                {/* Action button to finalize & polish */}
                                 <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                                  <button
+                                    type="button"
+                                    onClick={handlePolishDraft}
+                                    disabled={polishingDraft}
+                                    style={{
+                                      padding: "10px 14px",
+                                      borderRadius: 8,
+                                      background: "#f0fdf4",
+                                      border: "1.5px solid #a7f3d0",
+                                      color: "#059669",
+                                      fontSize: 12.5,
+                                      fontWeight: 700,
+                                      cursor: polishingDraft ? "not-allowed" : "pointer",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      gap: 6,
+                                      transition: "all 0.15s ease",
+                                    }}
+                                    title="Parafrasekan seluruh poin draf dengan preservasi 100% makna dan sitasi"
+                                  >
+                                    <Sparkles size={14} />
+                                    <span>{polishingDraft ? "Memoles AI..." : "✨ Parafrasekan (Tanpa Ubah Makna)"}</span>
+                                  </button>
+
                                   <button
                                     type="button"
                                     onClick={() => handleCombineBulletsToDraft(false)}
@@ -2663,7 +2688,7 @@ export default function OutlinePage() {
                                             flexShrink: 0,
                                           }}
                                         >
-                                          <Plus size={11} /> + Kutip Poin {activeBulletIndex + 1}
+                                          <Plus size={11} /> Kutip Poin {activeBulletIndex + 1}
                                         </button>
                                       </div>
                                     </div>
@@ -3047,7 +3072,7 @@ export default function OutlinePage() {
                                                   gap: 4,
                                                 }}
                                               >
-                                                <Plus size={12} /> + Tambah &amp; Kutip Poin {activeBulletIndex + 1}
+                                                <Plus size={12} /> Tambah &amp; Kutip Poin {activeBulletIndex + 1}
                                               </button>
                                             </div>
                                           </div>
@@ -3062,12 +3087,12 @@ export default function OutlinePage() {
                                         const displayJournals = topMatchedPool.length > 0
                                           ? topMatchedPool
                                           : poolJournals.filter((j) => {
-                                              if (!poolSearchFilter.trim()) return true;
-                                              const tokens = poolSearchFilter.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-                                              if (tokens.length === 0) return true;
-                                              const combined = `${j.title || ""} ${j.abstract || ""} ${j.authors || ""}`.toLowerCase();
-                                              return tokens.some(tok => combined.includes(tok));
-                                            });
+                                            if (!poolSearchFilter.trim()) return true;
+                                            const tokens = poolSearchFilter.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+                                            if (tokens.length === 0) return true;
+                                            const combined = `${j.title || ""} ${j.abstract || ""} ${j.authors || ""}`.toLowerCase();
+                                            return tokens.some(tok => combined.includes(tok));
+                                          });
 
                                         if (displayJournals.length === 0 && !searchingExternal && externalPapers.length === 0) {
                                           return (
@@ -3138,104 +3163,104 @@ export default function OutlinePage() {
                                               </div>
                                             )}
                                             {displayJournals.map((journal) => {
-                                          const isAttached = journal.isAttached;
-                                          const tierBadge =
-                                            journal.tier === "PRIMARY"
-                                              ? { label: "PRIMARY", color: "#0284c7", bg: "#e0f2fe" }
-                                              : journal.tier === "EXCLUDED"
-                                                ? { label: "EXCLUDED", color: "#e11d48", bg: "#ffe4e6" }
-                                                : { label: "SUPPORTING", color: "#059669", bg: "#ecfdf5" };
+                                              const isAttached = journal.isAttached;
+                                              const tierBadge =
+                                                journal.tier === "PRIMARY"
+                                                  ? { label: "PRIMARY", color: "#0284c7", bg: "#e0f2fe" }
+                                                  : journal.tier === "EXCLUDED"
+                                                    ? { label: "EXCLUDED", color: "#e11d48", bg: "#ffe4e6" }
+                                                    : { label: "SUPPORTING", color: "#059669", bg: "#ecfdf5" };
 
-                                          return (
-                                            <div
-                                              key={journal.id}
-                                              style={{
-                                                padding: "10px 12px",
-                                                borderRadius: 8,
-                                                border: "1px solid #e2e8f0",
-                                                background: "#fafafa",
-                                                display: "flex",
-                                                flexDirection: "column",
-                                                gap: 6,
-                                              }}
-                                            >
-                                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                                <span style={{ fontSize: 9.5, fontWeight: 800, background: tierBadge.bg, color: tierBadge.color, padding: "1px 5px", borderRadius: 4 }}>
-                                                  {tierBadge.label}
-                                                </span>
-                                                <span style={{ fontSize: 10.5, fontWeight: 700, color: (journal.relevanceScore || 0) >= 60 ? "#059669" : "#d97706" }}>
-                                                  {journal.relevanceScore || 0}% Cocok
-                                                </span>
-                                              </div>
-
-                                              <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", lineHeight: 1.35 }}>
-                                                {journal.title}
-                                              </div>
-
-                                              <div style={{ fontSize: 11, color: "#64748b" }}>
-                                                {journal.authors?.split(",")[0] || "Penulis"} ({journal.year || "Tahun"})
-                                              </div>
-
-                                              {/* Journal Actions: Lihat PDF & Kutip ke Poin Ini */}
-                                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => openInlinePdfReader(journal, 1)}
+                                              return (
+                                                <div
+                                                  key={journal.id}
                                                   style={{
-                                                    flex: 1,
-                                                    padding: "4px 6px",
-                                                    borderRadius: 6,
-                                                    background: "#f1f5f9",
-                                                    border: "1px solid #cbd5e1",
-                                                    color: "#334155",
-                                                    fontSize: 11,
-                                                    fontWeight: 600,
-                                                    cursor: "pointer",
-                                                    display: "inline-flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    gap: 3,
+                                                    padding: "10px 12px",
+                                                    borderRadius: 8,
+                                                    border: "1px solid #e2e8f0",
+                                                    background: "#fafafa",
+                                                    display: "flex",
+                                                    flexDirection: "column",
+                                                    gap: 6,
                                                   }}
                                                 >
-                                                  <Eye size={11} /> Lihat PDF
-                                                </button>
+                                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                                    <span style={{ fontSize: 9.5, fontWeight: 800, background: tierBadge.bg, color: tierBadge.color, padding: "1px 5px", borderRadius: 4 }}>
+                                                      {tierBadge.label}
+                                                    </span>
+                                                    <span style={{ fontSize: 10.5, fontWeight: 700, color: (journal.relevanceScore || 0) >= 60 ? "#059669" : "#d97706" }}>
+                                                      {journal.relevanceScore || 0}% Cocok
+                                                    </span>
+                                                  </div>
 
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleInsertCitationToActiveBullet(journal)}
-                                                  style={{
-                                                    flex: 1,
-                                                    padding: "4px 6px",
-                                                    borderRadius: 6,
-                                                    background: "#ecfdf5",
-                                                    border: "1px solid #a7f3d0",
-                                                    color: "#059669",
-                                                    fontSize: 11,
-                                                    fontWeight: 700,
-                                                    cursor: "pointer",
-                                                    display: "inline-flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    gap: 3,
-                                                  }}
-                                                  title={`Sisipkan sitasi ke Poin ${activeBulletIndex + 1}`}
-                                                >
-                                                  <Plus size={11} /> + Kutip Poin {activeBulletIndex + 1}
-                                                </button>
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
-                                      </>
-                                    );
-                                  })()}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </>
-                    ) : (
+                                                  <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", lineHeight: 1.35 }}>
+                                                    {journal.title}
+                                                  </div>
+
+                                                  <div style={{ fontSize: 11, color: "#64748b" }}>
+                                                    {journal.authors?.split(",")[0] || "Penulis"} ({journal.year || "Tahun"})
+                                                  </div>
+
+                                                  {/* Journal Actions: Lihat PDF & Kutip ke Poin Ini */}
+                                                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => openInlinePdfReader(journal, 1)}
+                                                      style={{
+                                                        flex: 1,
+                                                        padding: "4px 6px",
+                                                        borderRadius: 6,
+                                                        background: "#f1f5f9",
+                                                        border: "1px solid #cbd5e1",
+                                                        color: "#334155",
+                                                        fontSize: 11,
+                                                        fontWeight: 600,
+                                                        cursor: "pointer",
+                                                        display: "inline-flex",
+                                                        alignItems: "center",
+                                                        justifyContent: "center",
+                                                        gap: 3,
+                                                      }}
+                                                    >
+                                                      <Eye size={11} /> Lihat PDF
+                                                    </button>
+
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleInsertCitationToActiveBullet(journal)}
+                                                      style={{
+                                                        flex: 1,
+                                                        padding: "4px 6px",
+                                                        borderRadius: 6,
+                                                        background: "#ecfdf5",
+                                                        border: "1px solid #a7f3d0",
+                                                        color: "#059669",
+                                                        fontSize: 11,
+                                                        fontWeight: 700,
+                                                        cursor: "pointer",
+                                                        display: "inline-flex",
+                                                        alignItems: "center",
+                                                        justifyContent: "center",
+                                                        gap: 3,
+                                                      }}
+                                                      title={`Sisipkan sitasi ke Poin ${activeBulletIndex + 1}`}
+                                                    >
+                                                      <Plus size={11} /> Kutip Poin {activeBulletIndex + 1}
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </>
+                        ) : (
                           <div style={{ textAlign: "center", padding: "40px 20px", background: "#ffffff", borderRadius: 12, border: "1px solid #a7f3d0" }}>
                             <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
                             <h4 style={{ fontSize: 14, fontWeight: 700, color: "#065f46", margin: "0 0 6px" }}>
@@ -3776,10 +3801,10 @@ export default function OutlinePage() {
                 </div>
                 <div>
                   <h3 style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", margin: 0 }}>
-                    Pratinjau Hasil Pemolesan &amp; Parafrase Akademik
+                    Pratinjau Hasil Parafrase Akademik (Tanpa Mengubah Makna)
                   </h3>
                   <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 0" }}>
-                    Bandingkan draf asli dengan naskah yang telah disempurnakan tata bahasa, ejaan baku, dan kepadatan argumennya.
+                    Naskah diparafrasekan secara ilmiah baku (EYD V &amp; KBBI) dengan preservasi 100% inti argumen dan penanda sitasi.
                   </p>
                 </div>
               </div>
@@ -3912,7 +3937,7 @@ export default function OutlinePage() {
                   boxShadow: "0 2px 6px rgba(0, 201, 136, 0.3)",
                 }}
               >
-                <CheckCircle2 size={14} /> Terapkan ke Naskah Draf
+                <CheckCircle2 size={14} /> Tarik / Terapkan ke Naskah Draf
               </button>
             </div>
           </div>
