@@ -533,6 +533,40 @@ export default function OutlinePage() {
     }
   };
 
+  const getProposalDestination = (item?: ResearchOutlineItem | null) => {
+    if (!item) return { tab: "bab1", section: "sub_1_1" };
+    const bab = item.bab || 1;
+    const titleLower = (item.title || "").toLowerCase();
+    const id = item.itemId || "";
+
+    if (bab === 1) {
+      if (id === "1.1" || titleLower.includes("latar")) return { tab: "bab1", section: "sub_1_1" };
+      if (id === "1.2" || titleLower.includes("identifikasi")) return { tab: "bab1", section: "sub_1_2" };
+      if (id === "1.3" || titleLower.includes("rumusan")) return { tab: "bab1", section: "sub_1_3" };
+      if (id === "1.4" || titleLower.includes("tujuan")) return { tab: "bab1", section: "sub_1_4" };
+      if (id === "1.5" || titleLower.includes("manfaat")) return { tab: "bab1", section: "sub_1_5" };
+      return { tab: "bab1", section: id };
+    }
+
+    if (bab === 2) {
+      if (id === "2.1" || titleLower.includes("landasan") || titleLower.includes("teori")) return { tab: "bab2", section: "sub_2_1" };
+      if (id === "2.2" || titleLower.includes("matriks") || titleLower.includes("terdahulu")) return { tab: "bab2", section: "section_matrix" };
+      if (id === "2.3" || titleLower.includes("kerangka")) return { tab: "bab2", section: "sub_2_2" };
+      if (id === "2.4" || titleLower.includes("hipotesis")) return { tab: "bab2", section: "sub_2_3" };
+      return { tab: "bab2", section: id };
+    }
+
+    if (bab === 3) {
+      if (id === "3.1" || titleLower.includes("desain") || titleLower.includes("jenis")) return { tab: "bab3", section: "sub_3_1" };
+      if (id === "3.2" || titleLower.includes("populasi") || titleLower.includes("sampel") || titleLower.includes("subjek")) return { tab: "bab3", section: "sub_3_2" };
+      if (id === "3.3" || titleLower.includes("pengumpulan")) return { tab: "bab3", section: "sub_3_3" };
+      if (id === "3.4" || titleLower.includes("analisis")) return { tab: "bab3", section: "sub_3_4" };
+      return { tab: "bab3", section: id };
+    }
+
+    return { tab: `bab${bab}`, section: id };
+  };
+
   const handleCombineBulletsToDraft = async (redirectToProposal: boolean = false) => {
     if (!selectedItemId) return;
     const currentSubMap = bulletDrafts[selectedItemId] || {};
@@ -541,18 +575,23 @@ export default function OutlinePage() {
       .filter((b) => b.text.length > 0)
       .sort((a, b) => a.index - b.index);
 
-    if (bulletEntries.length === 0) {
-      notify.warning("Silakan tuliskan draf pada setidaknya satu butir instruksi di tab Instruksi Riset.");
+    let textToSave = writingContent.trim();
+    if (bulletEntries.length > 0) {
+      textToSave = bulletEntries.map((b) => b.text).join("\n\n");
+      setWritingContent(textToSave);
+    }
+
+    if (!textToSave) {
+      notify.warning("Silakan tuliskan draf naskah atau isi setidaknya satu butir instruksi.");
       return;
     }
 
-    const merged = bulletEntries.map((b) => b.text).join("\n\n");
-    setWritingContent(merged);
-    await handleSaveWriting(merged);
+    await handleSaveWriting(textToSave);
     setRightTab("write");
 
     if (redirectToProposal) {
-      router.push(`/projects/${projectId}/proposal?tab=bab1`);
+      const dest = getProposalDestination(selectedItem);
+      router.push(`/projects/${projectId}/proposal?tab=${dest.tab}&section=${encodeURIComponent(dest.section)}`);
     } else {
       notify.success("✨ Berhasil memulihkan & menggabungkan seluruh poin instruksi ke Naskah Draf Sub-bab!");
     }

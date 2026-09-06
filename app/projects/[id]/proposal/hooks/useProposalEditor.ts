@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import React from "react";
+import { useSearchParams } from "next/navigation";
 import { api, UserProfile, getToken, TOKEN_KEY, ProposalTemplate } from "@/lib/api-client";
 import { notify } from "@/lib/notification";
 import {
@@ -16,10 +17,35 @@ import {
 } from "../types";
 
 export function useProposalEditor(projectId: string) {
+  const searchParams = useSearchParams();
+  const urlTab = (searchParams?.get("tab") as TabKey) || null;
+  const urlSection = searchParams?.get("section") || null;
+
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState<TabKey>("bab1");
+  const [activeTab, setActiveTab] = useState<TabKey>(urlTab || "bab1");
+
+  useEffect(() => {
+    if (urlTab) {
+      setActiveTab(urlTab);
+    }
+    if (urlSection) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById(urlSection);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.style.transition = "all 0.5s ease";
+          el.style.backgroundColor = "rgba(16, 185, 129, 0.18)";
+          el.style.borderRadius = "6px";
+          setTimeout(() => {
+            el.style.backgroundColor = "";
+          }, 2500);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [urlTab, urlSection]);
 
   const [project, setProject] = useState<any>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -216,45 +242,99 @@ export function useProposalEditor(projectId: string) {
 
         // Sinkronkan draf sub-bab dari Outline Blueprint jika proposalData belum diisi
         if (res.data.outlineItems && res.data.outlineItems.length > 0) {
-          const findNotes = (id: string) => {
-            return (res.data.outlineItems || []).find((i: any) => i.itemId === id)?.userNotes?.trim() || "";
+          const items: any[] = res.data.outlineItems || [];
+          const findNotes = (id: string, keyword: string) => {
+            const found = items.find(
+              (i) => i.itemId === id || (i.title && i.title.toLowerCase().includes(keyword.toLowerCase()))
+            );
+            return found?.userNotes?.trim() || "";
           };
 
-          const notes1_1 = findNotes("1.1");
-          const notes1_2 = findNotes("1.2");
-          const notes1_3 = findNotes("1.3");
-          const notes1_4 = findNotes("1.4");
-          const notes2_1 = findNotes("2.1");
-          const notes2_2 = findNotes("2.2");
-          const notes2_3 = findNotes("2.3");
-          const notes3_1 = findNotes("3.1");
-          const notes3_2 = findNotes("3.2");
-          const notes3_3 = findNotes("3.3");
-          const notes3_4 = findNotes("3.4");
+          const parseList = (text: string): string[] => {
+            if (!text) return [];
+            return text
+              .split(/\n+/)
+              .map((line) => line.trim().replace(/^(\d+[\.\)\-:]|\*|\-)\s*/, "").trim())
+              .filter(Boolean);
+          };
+
+          const notesLatar = findNotes("1.1", "latar");
+          const notesIdentifikasi = findNotes("1.2", "identifikasi");
+          const notesRumusan = findNotes("1.3", "rumusan");
+          const notesTujuan = findNotes("1.4", "tujuan");
+          const notesManfaat = findNotes("1.5", "manfaat");
+          const notesTeori = findNotes("2.1", "landasan") || findNotes("2.1", "teori");
+          const notesTerdahulu = findNotes("2.2", "terdahulu") || findNotes("2.2", "matriks");
+          const notesKerangka = findNotes("2.3", "kerangka");
+          const notesHipotesis = findNotes("2.4", "hipotesis");
+          const notesDesain = findNotes("3.1", "desain") || findNotes("3.1", "jenis");
+          const notesPopulasi = findNotes("3.2", "populasi") || findNotes("3.2", "sampel") || findNotes("3.2", "subjek");
+          const notesPengumpulan = findNotes("3.3", "pengumpulan");
+          const notesAnalisis = findNotes("3.4", "analisis");
 
           setProposalData((prev: any) => ({
             ...(prev || {}),
             bab1: {
               ...(prev?.bab1 || {}),
-              ...(notes1_1 && !prev?.bab1?.latarBelakang ? { latarBelakang: notes1_1 } : {}),
-              ...(notes1_2 && !prev?.bab1?.rumusanMasalah ? { rumusanMasalah: notes1_2 } : {}),
-              ...(notes1_3 && !prev?.bab1?.tujuanPenelitian ? { tujuanPenelitian: notes1_3 } : {}),
-              ...(notes1_4 && !prev?.bab1?.manfaatPenelitian ? { manfaatPenelitian: notes1_4 } : {}),
+              ...(notesLatar && !prev?.bab1?.latarBelakang ? { latarBelakang: notesLatar } : {}),
+              ...(notesIdentifikasi && (!prev?.bab1?.identifikasiMasalah || prev.bab1.identifikasiMasalah.length === 0)
+                ? { identifikasiMasalah: parseList(notesIdentifikasi) }
+                : {}),
+              ...(notesRumusan && (!prev?.bab1?.rumusanMasalah || prev.bab1.rumusanMasalah.length === 0)
+                ? { rumusanMasalah: parseList(notesRumusan) }
+                : {}),
+              ...(notesTujuan && (!prev?.bab1?.tujuanPenelitian || prev.bab1.tujuanPenelitian.length === 0)
+                ? { tujuanPenelitian: parseList(notesTujuan) }
+                : {}),
+              ...(notesManfaat && !prev?.bab1?.manfaatPenelitian?.teoretis
+                ? {
+                    manfaatPenelitian: {
+                      teoretis: notesManfaat,
+                      praktis: prev?.bab1?.manfaatPenelitian?.praktis || "Hasil penelitian dapat menjadi masukan praktis bagi akademisi dan praktisi bidang terkait.",
+                    },
+                  }
+                : {}),
             },
             bab2: {
               ...(prev?.bab2 || {}),
-              ...(notes2_1 && !prev?.bab2?.landasanTeori ? { landasanTeori: notes2_1 } : {}),
-              ...(notes2_2 && !prev?.bab2?.penelitianTerdahulu ? { penelitianTerdahulu: notes2_2 } : {}),
-              ...(notes2_3 && !prev?.bab2?.kerangkaPemikiran ? { kerangkaPemikiran: notes2_3 } : {}),
+              ...(notesTeori && !prev?.bab2?.landasanTeori ? { landasanTeori: notesTeori } : {}),
+              ...(notesTerdahulu && !prev?.bab2?.penelitianTerdahulu ? { penelitianTerdahulu: notesTerdahulu } : {}),
+              ...(notesKerangka && !prev?.bab2?.kerangkaKonseptual ? { kerangkaKonseptual: notesKerangka } : {}),
+              ...(notesHipotesis && (!prev?.bab2?.hipotesis || prev.bab2.hipotesis.length === 0)
+                ? { hipotesis: parseList(notesHipotesis) }
+                : {}),
             },
             bab3: {
               ...(prev?.bab3 || {}),
-              ...(notes3_1 && !prev?.bab3?.desainPenelitian ? { desainPenelitian: notes3_1 } : {}),
-              ...(notes3_2 && !prev?.bab3?.populasiSampel ? { populasiSampel: notes3_2 } : {}),
-              ...(notes3_3 && !prev?.bab3?.teknikPengumpulanData ? { teknikPengumpulanData: notes3_3 } : {}),
-              ...(notes3_4 && !prev?.bab3?.teknikAnalisisData ? { teknikAnalisisData: notes3_4 } : {}),
+              ...(notesDesain && !prev?.bab3?.desainPenelitian ? { desainPenelitian: notesDesain } : {}),
+              ...(notesPopulasi && !prev?.bab3?.populasiSampel ? { populasiSampel: notesPopulasi } : {}),
+              ...(notesPengumpulan && !prev?.bab3?.teknikPengumpulanData ? { teknikPengumpulanData: notesPengumpulan } : {}),
+              ...(notesAnalisis && !prev?.bab3?.teknikAnalisisData ? { teknikAnalisisData: notesAnalisis } : {}),
             },
           }));
+
+          // Sinkronkan SEMUA sub-bab kustom atau sub-bab lain yang tidak ada di standar bawaan
+          const standardIds = new Set(["1.1", "1.2", "1.3", "1.4", "1.5", "2.1", "2.2", "2.3", "2.4", "3.1", "3.2", "3.3", "3.4"]);
+          const extraItems = items.filter((i) => !standardIds.has(i.itemId));
+          if (extraItems.length > 0) {
+            setCustomSubChapters((prevSubs) => {
+              const existingIds = new Set(prevSubs.map((s) => s.id));
+              const newSubs: CustomSubChapterItem[] = [...prevSubs];
+              extraItems.forEach((item) => {
+                if (!existingIds.has(item.itemId)) {
+                  newSubs.push({
+                    id: item.itemId,
+                    chapter: item.bab === 1 ? "bab1" : item.bab === 2 ? "bab2" : "bab3",
+                    level: "subbab",
+                    indentCm: 0,
+                    title: `${item.itemId} ${item.title}`,
+                    content: item.userNotes || "",
+                  });
+                }
+              });
+              return newSubs;
+            });
+          }
         }
       }
     } catch (err: any) {
