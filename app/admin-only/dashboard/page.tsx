@@ -68,6 +68,7 @@ import { useAuth } from "@/lib/auth-context";
 import { api, ProposalTemplate, AiSkillPrompt } from "@/lib/api-client";
 import { notify } from "@/lib/notification";
 import FeatureRoutingCanvas from "./FeatureRoutingCanvas";
+import { getSubchapterSpec } from "@/lib/subchapters";
 
 type AdminTab =
   | "AI_MODELS"
@@ -76,6 +77,7 @@ type AdminTab =
   | "AI_LOGS"
   | "AI_ROUTING_LOGS"
   | "AI_ENGINE"
+  | "SUBCHAPTER_RECIPES"
   | "PROMPTS_SKILLS"
   | "PRICING"
   | "TEMPLATES_LIBRARY"
@@ -92,6 +94,7 @@ const tabToParamMap: Record<AdminTab, string> = {
   AI_LOGS: "logs",
   AI_ROUTING_LOGS: "routing",
   AI_ENGINE: "models",
+  SUBCHAPTER_RECIPES: "subchapters",
   PROMPTS_SKILLS: "prompts",
   TEMPLATES_LIBRARY: "templates",
   RESEARCH_SYSTEM: "research",
@@ -109,6 +112,10 @@ const paramToTabMap: Record<string, AdminTab> = {
   routing: "AI_ROUTING",
   logs: "AI_LOGS",
   "usage-logs": "AI_LOGS",
+  subchapters: "SUBCHAPTER_RECIPES",
+  recipes: "SUBCHAPTER_RECIPES",
+  "subchapter-recipes": "SUBCHAPTER_RECIPES",
+  "prompt-subbab": "SUBCHAPTER_RECIPES",
   prompts: "PROMPTS_SKILLS",
   skills: "PROMPTS_SKILLS",
   templates: "TEMPLATES_LIBRARY",
@@ -119,6 +126,20 @@ const paramToTabMap: Record<string, AdminTab> = {
   packages: "PRICING",
   users: "USERS",
   secrets: "SECRETS",
+};
+
+/**
+ * Sanitasi judul prompt agar TIDAK terikat nomor sub-bab kaku (misal BAB 1.1:, BAB 1.2:, dsb)
+ * karena sistematika penomoran sub-bab berbeda-beda di setiap universitas.
+ */
+export const cleanPromptTitle = (title: string): string => {
+  if (!title) return "";
+  return title
+    .replace(/^BAB\s+[\d\.]+\s*:\s*/i, "")
+    .replace(/^BAB\s+[\d\.]+\s*-\s*/i, "")
+    .replace(/^Sub-?bab\s+[\d\.]+\s*:\s*/i, "")
+    .replace(/^[\d\.]+\s*:\s*/i, "")
+    .trim();
 };
 
 function AdminDashboardPageContent() {
@@ -240,14 +261,22 @@ function AdminDashboardPageContent() {
   const [loading, setLoading] = useState(true);
 
   // Prompts & Skills Admin State
-  const [promptSubTab, setPromptSubTab] = useState<"RECIPES" | "WRITING_STYLES" | "CODE_BINDING">("RECIPES");
+  const [promptSubTab, setPromptSubTab] = useState<"CORE_ENGINES" | "WRITING_STYLES" | "CODE_BINDING">("CORE_ENGINES");
   const [promptCategoryFilter, setPromptCategoryFilter] = useState<string>("ALL");
   const [promptTagFilter, setPromptTagFilter] = useState<string | null>(null);
   const [promptSearchQuery, setPromptSearchQuery] = useState("");
+  const [subchapterCategoryFilter, setSubchapterCategoryFilter] = useState<string>("ALL");
+  const [subchapterTagFilter, setSubchapterTagFilter] = useState<string | null>(null);
+  const [subchapterSearchQuery, setSubchapterSearchQuery] = useState("");
   const [copiedPromptCode, setCopiedPromptCode] = useState<string | null>(null);
   const [expandedRecipes, setExpandedRecipes] = useState<{ [id: string]: boolean }>({});
   const toggleExpandRecipe = (id: string) => {
     setExpandedRecipes((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const [cardViewModes, setCardViewModes] = useState<{ [id: string]: "OUTLINE" | "PAPER" }>({});
+  const setCardView = (id: string, mode: "OUTLINE" | "PAPER") => {
+    setCardViewModes((prev) => ({ ...prev, [id]: mode }));
   };
 
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -1373,6 +1402,7 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
       case "AI_ROUTING_LOGS":
       case "AI_ENGINE":
         return "AI & Engine";
+      case "SUBCHAPTER_RECIPES":
       case "PROMPTS_SKILLS":
       case "TEMPLATES_LIBRARY":
       case "RESEARCH_SYSTEM":
@@ -1400,8 +1430,10 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
         return "Feature-to-Model Routing Matrix";
       case "AI_LOGS":
         return "AI Usage Logs & Telemetri";
+      case "SUBCHAPTER_RECIPES":
+        return "Katalog Resep Prompt Sub-bab Penelitian (Daftar Isi Adaptif)";
       case "PROMPTS_SKILLS":
-        return "AI Skill Prompts, Gaya Penulisan & Code Binding";
+        return "Core AI Engines, Gaya Penulisan & Code Binding";
       case "PRICING":
         return "Harga & Langganan";
       case "TEMPLATES_LIBRARY":
@@ -1413,7 +1445,38 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
       case "USERS":
         return "Manajemen Pengguna";
       default:
-        return "Admin Portal";
+        return "Admin Panel";
+    }
+  };
+
+  const getTabDescription = () => {
+    switch (activeTab) {
+      case "DASHBOARD":
+        return "Metrik ringkasan platform Zetera AI, statistik eksekusi, dan status operasional sistem.";
+      case "SUBCHAPTER_RECIPES":
+        return "Manajemen resep baku dan prompt instruksi akademis per sub-bab. Mandiri dari nomor urut statis dan terhubung langsung ke struktur bab proposal.";
+      case "PROMPTS_SKILLS":
+        return "Kelola instruksi engine AI utama, konfigurasi gaya penulisan skripsi standar Dikti, dan panduan integrasi code.";
+      case "AI_MODELS":
+        return "Kelola model LLM aktif, base URL router, pricing token, dan kuota budget USD.";
+      case "AI_EXCHANGE":
+        return "Konfigurasi kurs USD/IDR dan margin profit untuk billing pengguna.";
+      case "AI_ROUTING":
+        return "Pemetaan fitur AI ke model LLM spesifik dengan fallback cerdas.";
+      case "AI_LOGS":
+        return "Riwayat eksekusi AI, durasi latensi, konsumsi token, dan biaya riil.";
+      case "PRICING":
+        return "Pengaturan paket kredit dan harga pembelian pengguna.";
+      case "TEMPLATES_LIBRARY":
+        return "Penyimpanan template LaTeX skripsi dan panduan format universitas.";
+      case "RESEARCH_SYSTEM":
+        return "Pemeriksaan integritas jurnal terverifikasi DOI dan sitasi terverifikasi per proyek skripsi.";
+      case "USERS":
+        return "Daftar pengguna terdaftar, peran akses, dan saldo kredit.";
+      case "SECRETS":
+        return "Kunci rahasia API provider yang tersimpan aman di database server.";
+      default:
+        return "Panel Kontrol Administrator Zetera.";
     }
   };
 
@@ -1435,7 +1498,7 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
           id: "AI_MODELS" as AdminTab,
           title: "Konfigurasi Model",
           icon: Cpu,
-          badge: aiModels.filter((m) => m.isActive).length ? `${aiModels.filter((m) => m.isActive).length}` : undefined,
+          badge: aiModels.length ? `${aiModels.length}` : undefined,
         },
         {
           id: "AI_EXCHANGE" as AdminTab,
@@ -1459,10 +1522,20 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
       category: "Riset & Konten",
       items: [
         {
+          id: "SUBCHAPTER_RECIPES" as AdminTab,
+          title: "Prompt Resep Sub-bab",
+          icon: ListOrdered,
+          badge: promptsList.filter((p) => p.category === "SUBCHAPTER" || p.code.startsWith("SUBCHAPTER_")).length
+            ? `${promptsList.filter((p) => p.category === "SUBCHAPTER" || p.code.startsWith("SUBCHAPTER_")).length}`
+            : undefined,
+        },
+        {
           id: "PROMPTS_SKILLS" as AdminTab,
-          title: "Skills & Prompts",
+          title: "Skills & Core Prompts",
           icon: Sparkles,
-          badge: promptsList.length ? `${promptsList.length}` : undefined,
+          badge: promptsList.filter((p) => p.category !== "SUBCHAPTER" && !p.code.startsWith("SUBCHAPTER_")).length
+            ? `${promptsList.filter((p) => p.category !== "SUBCHAPTER" && !p.code.startsWith("SUBCHAPTER_")).length}`
+            : undefined,
         },
         {
           id: "TEMPLATES_LIBRARY" as AdminTab,
@@ -1494,6 +1567,460 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
       ],
     },
   ];
+
+  // Card renderer helper for both Subchapters and Core Prompts
+  const renderPromptCard = (p: AiSkillPrompt) => {
+    const tags = Array.isArray(p.tags) ? p.tags : [];
+    const recipeSteps = Array.isArray(p.recipeSteps) ? p.recipeSteps : [];
+    const isExpanded = !!expandedRecipes[p.id];
+    const isSubchapter = p.category === "SUBCHAPTER" || p.code.startsWith("SUBCHAPTER_") || p.code.startsWith("SECTION_");
+    const isDocSection = p.code.startsWith("SECTION_");
+    const isSistematika = p.code === "SUBCHAPTER_1_7" || (p.title && p.title.toLowerCase().includes("sistematika"));
+
+    // Category badge style
+    let catBadgeBg = "#F4F4F5";
+    let catBadgeColor = "#52525B";
+    let catBadgeBorder = "#E4E4E9";
+    if (isDocSection) {
+      catBadgeBg = "#FAF5FF";
+      catBadgeColor = "#7E22CE";
+      catBadgeBorder = "#E9D5FF";
+    } else if (p.category === "SUBCHAPTER" || isSubchapter) {
+      catBadgeBg = "#EFF6FF";
+      catBadgeColor = "#1D4ED8";
+      catBadgeBorder = "#BFDBFE";
+    } else if (p.category === "PROPOSAL") {
+      catBadgeBg = "#FAF5FF";
+      catBadgeColor = "#7E22CE";
+      catBadgeBorder = "#E9D5FF";
+    } else if (p.category === "OUTLINE") {
+      catBadgeBg = "#ECFDF5";
+      catBadgeColor = "#059669";
+      catBadgeBorder = "#A7F3D0";
+    } else if (p.category === "SCREENING" || p.category === "LITERATURE") {
+      catBadgeBg = "#FFFBEB";
+      catBadgeColor = "#B45309";
+      catBadgeBorder = "#FDE68A";
+    }
+
+    const spec = getSubchapterSpec(p.code);
+    const paperRules = (p as any).paperRules || spec?.paper?.rules;
+    const previewExample = (p as any).previewExample || spec?.paper?.previewExample;
+    const activeView = isSubchapter ? (cardViewModes[p.id] || "OUTLINE") : "OUTLINE";
+
+    const displayTitle = cleanPromptTitle(p.title);
+
+    return (
+      <div
+        key={p.id}
+        style={{
+          background: "#FFFFFF",
+          border: isSistematika ? "1.5px solid #86EFAC" : isDocSection ? "1px solid #E9D5FF" : "1px solid #E4E4E9",
+          borderRadius: 10,
+          padding: 16,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          gap: 12,
+          boxShadow: isSistematika ? "0 2px 8px rgba(16,185,129,0.08)" : "0 1px 2px rgba(0,0,0,0.02)",
+          transition: "border-color 0.15s ease",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* Header: Badges & Code */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: "2px 7px",
+                  borderRadius: 5,
+                  background: catBadgeBg,
+                  color: catBadgeColor,
+                  border: `1px solid ${catBadgeBorder}`,
+                  letterSpacing: "0.02em",
+                }}
+              >
+                {isDocSection ? "DOKUMEN" : p.category || (isSubchapter ? "SUBCHAPTER" : "CORE")}
+              </span>
+              <span style={{ fontSize: 10, color: "#94A3B8", fontFamily: "monospace" }}>
+                v{p.version}
+              </span>
+              {isSistematika && (
+                <span
+                  style={{
+                    fontSize: 9.5,
+                    fontWeight: 700,
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    background: "#ECFDF5",
+                    color: "#059669",
+                    border: "1px solid #A7F3D0",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 3,
+                  }}
+                >
+                  <Sparkles size={10} />
+                  Tanpa Sitasi (Sinkron DB)
+                </span>
+              )}
+              {/* Status Sync Badge */}
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 600,
+                  padding: "2px 5px",
+                  borderRadius: 4,
+                  background: "#F0FDF4",
+                  color: "#15803D",
+                  border: "1px solid #BBF7D0",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 2.5,
+                }}
+                title="Tersinkron otomatis ke AI Router & Outline Engine"
+              >
+                <Check size={9.5} />
+                Sync Engine
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(p.code);
+                setCopiedPromptCode(p.code);
+                setTimeout(() => setCopiedPromptCode(null), 2000);
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 10.5,
+                fontFamily: "monospace",
+                color: copiedPromptCode === p.code ? "#059669" : "#52525B",
+                background: copiedPromptCode === p.code ? "#ECFDF5" : "#F7F7FB",
+                border: "1px solid #E4E4E9",
+                padding: "2px 7px",
+                borderRadius: 5,
+                cursor: "pointer",
+              }}
+              title="Salin kode pemanggilan di code"
+            >
+              {copiedPromptCode === p.code ? <Check size={11} /> : <Copy size={11} />}
+              <span>{p.code}</span>
+            </button>
+          </div>
+
+          {/* Title & Description without rigid numbering */}
+          <div>
+            <h4 style={{ fontSize: 14, fontWeight: 700, color: "#0F0F14", margin: "0 0 3px", lineHeight: 1.35 }}>
+              {displayTitle}
+            </h4>
+            <p style={{ fontSize: 12, color: "#71717A", margin: 0, lineHeight: 1.45 }}>
+              {p.description || "Panduan akademis dan instruksi pemodelan sistematis."}
+            </p>
+          </div>
+
+          {/* Dual-View Switcher for Subchapters & Document Sections */}
+          {isSubchapter && (
+            <div
+              style={{
+                display: "flex",
+                background: "#F1F5F9",
+                borderRadius: 7,
+                padding: 2,
+                gap: 2,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setCardView(p.id, "OUTLINE")}
+                style={{
+                  flex: 1,
+                  padding: "5px 8px",
+                  borderRadius: 5,
+                  border: "none",
+                  background: activeView === "OUTLINE" ? "#FFFFFF" : "transparent",
+                  color: activeView === "OUTLINE" ? "#0F172A" : "#64748B",
+                  fontSize: 11,
+                  fontWeight: activeView === "OUTLINE" ? 700 : 500,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                  boxShadow: activeView === "OUTLINE" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <ListOrdered size={12} color={activeView === "OUTLINE" ? "#2563EB" : "#64748B"} />
+                <span>Resep Outline ({recipeSteps.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCardView(p.id, "PAPER")}
+                style={{
+                  flex: 1,
+                  padding: "5px 8px",
+                  borderRadius: 5,
+                  border: "none",
+                  background: activeView === "PAPER" ? "#FFFFFF" : "transparent",
+                  color: activeView === "PAPER" ? "#0F172A" : "#64748B",
+                  fontSize: 11,
+                  fontWeight: activeView === "PAPER" ? 700 : 500,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                  boxShadow: activeView === "PAPER" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <FileText size={12} color={activeView === "PAPER" ? "#059669" : "#64748B"} />
+                <span>Output di Paper</span>
+              </button>
+            </div>
+          )}
+
+          {/* VIEW 1: RESEP OUTLINE */}
+          {activeView === "OUTLINE" && recipeSteps.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => toggleExpandRecipe(p.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  width: "100%",
+                  padding: "6px 10px",
+                  borderRadius: 6,
+                  background: isExpanded ? "#EEF2FF" : "#F7F7FB",
+                  border: `1px solid ${isExpanded ? "#C7D2FE" : "#E4E4E9"}`,
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  color: isExpanded ? "#4338CA" : "#52525B",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <ListOrdered size={13} color={isExpanded ? "#4338CA" : "#71717A"} />
+                  <span>Resep Standar ({recipeSteps.length} Langkah)</span>
+                </div>
+                <ChevronDown
+                  size={13}
+                  style={{
+                    transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.2s ease",
+                  }}
+                />
+              </button>
+
+              {isExpanded && (
+                <div
+                  style={{
+                    background: "#FAFAFC",
+                    borderRadius: 6,
+                    padding: "9px 11px",
+                    border: "1px solid #E4E4E9",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 5,
+                    maxHeight: 180,
+                    overflowY: "auto",
+                  }}
+                >
+                  {recipeSteps.map((step, sIdx) => (
+                    <div key={sIdx} style={{ fontSize: 11, color: "#3F3F46", display: "flex", gap: 6, lineHeight: 1.35 }}>
+                      <span style={{ color: "#4338CA", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>
+                        {sIdx + 1}.
+                      </span>
+                      <span>{step}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* VIEW 2: EXPECTED PAPER OUTPUT & RULES */}
+          {activeView === "PAPER" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {/* Paper Rules Pill Bar */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                {paperRules?.badgeText && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: "2px 7px",
+                      borderRadius: 4,
+                      background: "#F0FDF4",
+                      color: paperRules.badgeColor || "#059669",
+                      border: "1px solid #BBF7D0",
+                    }}
+                  >
+                    {paperRules.badgeText}
+                  </span>
+                )}
+                {paperRules?.alignmentRule && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: "#475569",
+                      background: "#F8FAFC",
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      border: "1px solid #E2E8F0",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    {paperRules.alignmentRule}
+                  </span>
+                )}
+              </div>
+
+              {/* Preview Example Box */}
+              {previewExample ? (
+                <div
+                  style={{
+                    background: "#F8FAFC",
+                    border: "1px solid #CBD5E1",
+                    borderRadius: 6,
+                    padding: "10px 12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    maxHeight: 200,
+                    overflowY: "auto",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px dashed #E2E8F0", paddingBottom: 4 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "#334155", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                      📄 Pratinjau Tampilan di Paper:
+                    </span>
+                    <span style={{ fontSize: 9.5, color: "#94A3B8" }}>Academic Format</span>
+                  </div>
+
+                  {previewExample.introSentence && (
+                    <div style={{ fontSize: 11, color: "#1E293B", fontStyle: "italic", lineHeight: 1.4, background: "#FFFFFF", padding: "4px 8px", borderRadius: 4, border: "1px solid #E2E8F0" }}>
+                      "{previewExample.introSentence}"
+                    </div>
+                  )}
+
+                  {Array.isArray(previewExample.points) && previewExample.points.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {previewExample.points.map((pt: string, ptIdx: number) => (
+                        <div key={ptIdx} style={{ fontSize: 10.5, color: "#334155", lineHeight: 1.35, display: "flex", gap: 5 }}>
+                          <span style={{ color: "#059669", fontWeight: 700 }}>•</span>
+                          <span>{pt}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ padding: "10px", background: "#F8FAFC", borderRadius: 6, border: "1px dashed #CBD5E1", fontSize: 11, color: "#94A3B8", textAlign: "center" }}>
+                  Pratinjau format standar disesuaikan secara dinamis oleh AI Engine.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Minimalist Tags & Aliases */}
+          {tags.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {tags.slice(0, 4).map((tag) => (
+                <span
+                  key={tag}
+                  onClick={() => {
+                    if (isSubchapter) {
+                      setSubchapterTagFilter(tag);
+                    } else {
+                      setPromptTagFilter(tag);
+                    }
+                  }}
+                  title={`Klik untuk filter tag #${tag}`}
+                  style={{
+                    fontSize: 10,
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    background: "#F7F7FB",
+                    color: "#71717A",
+                    border: "1px solid #E4E4E9",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  #{tag}
+                </span>
+              ))}
+              {tags.length > 4 && (
+                <span
+                  title={tags.slice(4).map(t => `#${t}`).join(", ")}
+                  style={{ fontSize: 10, color: "#A1A1AA", padding: "2px 4px", cursor: "help" }}
+                >
+                  +{tags.length - 4} lainnya
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid #F4F4F5" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: p.isActive ? "#10B981" : "#94A3B8" }} />
+            <span style={{ fontSize: 10.5, color: "#71717A", fontWeight: 500 }}>
+              {p.isSystem ? "Built-in System" : "Custom Admin"}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setEditingPrompt(p);
+              setIsCreatingPrompt(false);
+              setPromptFormData({
+                code: p.code,
+                title: cleanPromptTitle(p.title),
+                category: p.category,
+                tags: (Array.isArray(p.tags) ? p.tags : []).join(", "),
+                description: p.description || "",
+                systemPrompt: p.systemPrompt || "",
+                recipeSteps: Array.isArray(p.recipeSteps) ? [...p.recipeSteps] : [],
+                isActive: p.isActive,
+              });
+              setShowPromptModal(true);
+            }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "5px 10px",
+              borderRadius: 6,
+              background: "#F7F7FB",
+              border: "1px solid #E4E4E9",
+              fontSize: 11.5,
+              fontWeight: 600,
+              color: "#0F0F14",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <Pencil size={11} />
+            <span>Edit Prompt</span>
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: "#fafafa", fontFamily: "var(--font-body, 'Inter', sans-serif)", color: "#0f172a", display: "flex" }}>
@@ -2806,7 +3333,492 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
           })()}
 
           {/* ════════════════════════════════════════════════════════════════════════
-            TAB: AI SKILL PROMPTS, GAYA PENULISAN & CODE BINDING
+            TAB: PROMPT RESEP SUB-BAB & BAGIAN DOKUMEN (DAFTAR ISI ADAPTIF)
+           ════════════════════════════════════════════════════════════════════════ */}
+          {activeTab === "SUBCHAPTER_RECIPES" && (() => {
+            const subchapterPrompts = promptsList.filter(
+              (p) => p.category === "SUBCHAPTER" || p.code.startsWith("SUBCHAPTER_") || p.code.startsWith("SECTION_")
+            );
+
+            const docCount = subchapterPrompts.filter((p) => p.code.startsWith("SECTION_")).length;
+            const bab1Count = subchapterPrompts.filter((p) => p.code.startsWith("SUBCHAPTER_1_")).length;
+            const bab2Count = subchapterPrompts.filter((p) => p.code.startsWith("SUBCHAPTER_2_")).length;
+            const bab3Count = subchapterPrompts.filter((p) => p.code.startsWith("SUBCHAPTER_3_")).length;
+
+            const groups = [
+              {
+                id: "DOC_SECTIONS",
+                key: "DOCS",
+                title: "Klaster Kelengkapan Dokumen & Preliminaries",
+                subtitle: "Cover Skripsi, Lembar Persetujuan/Pengesahan, Abstrak Dwibahasa, Daftar Pustaka, dan Lampiran Riset",
+                icon: FileText,
+                color: "#7E22CE",
+                badgeBg: "#FAF5FF",
+                filterFn: (p: AiSkillPrompt) => p.code.startsWith("SECTION_"),
+              },
+              {
+                id: "BAB_1",
+                key: "BAB1",
+                title: "Klaster Bab I — Pendahuluan",
+                subtitle: "Latar Belakang, Identifikasi Masalah, Rumusan Masalah, Batasan, Tujuan, Manfaat, dan Sistematika Penulisan",
+                icon: BookOpen,
+                color: "#2563EB",
+                badgeBg: "#EFF6FF",
+                filterFn: (p: AiSkillPrompt) => p.code.startsWith("SUBCHAPTER_1_"),
+              },
+              {
+                id: "BAB_2",
+                key: "BAB2",
+                title: "Klaster Bab II — Tinjauan Pustaka & Landasan Teori",
+                subtitle: "Landasan Teori, Komparasi Matriks Penelitian Terdahulu, Kerangka Berpikir, dan Hipotesis Penelitian",
+                icon: Layers,
+                color: "#059669",
+                badgeBg: "#ECFDF5",
+                filterFn: (p: AiSkillPrompt) => p.code.startsWith("SUBCHAPTER_2_"),
+              },
+              {
+                id: "BAB_3",
+                key: "BAB3",
+                title: "Klaster Bab III — Metodologi Penelitian",
+                subtitle: "Pendekatan Riset, Objek/Subjek, Sampling Slovin, Teknik Pengumpulan Data, Kisi-Kisi Instrumen, Definisi Operasional, Teknik Analisis, Uji Validitas",
+                icon: GraduationCap,
+                color: "#D97706",
+                badgeBg: "#FFFBEB",
+                filterFn: (p: AiSkillPrompt) => p.code.startsWith("SUBCHAPTER_3_"),
+              },
+              {
+                id: "CUSTOM",
+                key: "CUSTOM",
+                title: "Resep Sub-bab Tambahan & Kustom",
+                subtitle: "Prompt sub-bab kustom khusus yang didaftarkan manual oleh administrator",
+                icon: Sparkles,
+                color: "#4338CA",
+                badgeBg: "#EEF2FF",
+                filterFn: (p: AiSkillPrompt) =>
+                  (p.category === "SUBCHAPTER" || p.code.startsWith("SUBCHAPTER_") || p.code.startsWith("SECTION_")) &&
+                  !p.code.startsWith("SECTION_") &&
+                  !p.code.startsWith("SUBCHAPTER_1_") &&
+                  !p.code.startsWith("SUBCHAPTER_2_") &&
+                  !p.code.startsWith("SUBCHAPTER_3_"),
+              },
+            ];
+
+            const matchesSearchAndTag = (p: AiSkillPrompt) => {
+              if (subchapterTagFilter) {
+                const tags = Array.isArray(p.tags) ? p.tags : [];
+                if (!tags.includes(subchapterTagFilter)) return false;
+              }
+              if (subchapterSearchQuery.trim()) {
+                const q = subchapterSearchQuery.toLowerCase();
+                const matchTitle = (cleanPromptTitle(p.title) || "").toLowerCase().includes(q);
+                const matchCode = (p.code || "").toLowerCase().includes(q);
+                const matchDesc = (p.description || "").toLowerCase().includes(q);
+                if (!matchTitle && !matchCode && !matchDesc) return false;
+              }
+              return true;
+            };
+
+            const filteredPrompts = subchapterPrompts.filter((p) => {
+              if (subchapterCategoryFilter !== "ALL") {
+                const grp = groups.find((g) => g.id === subchapterCategoryFilter);
+                if (grp && !grp.filterFn(p)) return false;
+              }
+              return matchesSearchAndTag(p);
+            });
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+                {/* Top Metrics Cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "16px 18px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500 }}>Total Resep & Bagian</span>
+                      <div style={{ width: 30, height: 30, borderRadius: 8, background: "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#2563EB" }}>
+                        <ListOrdered size={15} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#0F0F14" }}>{subchapterPrompts.length} Prompt</div>
+                    <div style={{ fontSize: 11, color: "#16A34A", fontWeight: 500, marginTop: 3 }}>
+                      Tersinkron Real-time di MySQL
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "16px 18px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500 }}>Kelengkapan Dokumen</span>
+                      <div style={{ width: 30, height: 30, borderRadius: 8, background: "#FAF5FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#7E22CE" }}>
+                        <FileText size={15} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#0F0F14" }}>{docCount} Dokumen</div>
+                    <div style={{ fontSize: 11, color: "#7E22CE", marginTop: 3 }}>Cover, Pengesahan, Abstrak, dsb</div>
+                  </div>
+
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "16px 18px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500 }}>Klaster Bab I</span>
+                      <div style={{ width: 30, height: 30, borderRadius: 8, background: "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#2563EB" }}>
+                        <BookOpen size={15} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#0F0F14" }}>{bab1Count} Sub-bab</div>
+                    <div style={{ fontSize: 11, color: "#71717A", marginTop: 3 }}>Pendahuluan & Sistematika</div>
+                  </div>
+
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "16px 18px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500 }}>Klaster Bab II</span>
+                      <div style={{ width: 30, height: 30, borderRadius: 8, background: "#ECFDF5", display: "flex", alignItems: "center", justifyContent: "center", color: "#059669" }}>
+                        <Layers size={15} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#0F0F14" }}>{bab2Count} Sub-bab</div>
+                    <div style={{ fontSize: 11, color: "#71717A", marginTop: 3 }}>Landasan Teori & Terdahulu</div>
+                  </div>
+
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "16px 18px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500 }}>Klaster Bab III</span>
+                      <div style={{ width: 30, height: 30, borderRadius: 8, background: "#FFFBEB", display: "flex", alignItems: "center", justifyContent: "center", color: "#D97706" }}>
+                        <GraduationCap size={15} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#0F0F14" }}>{bab3Count} Sub-bab</div>
+                    <div style={{ fontSize: 11, color: "#71717A", marginTop: 3 }}>Metodologi & Analisis</div>
+                  </div>
+                </div>
+
+                {/* Educational Banner */}
+                <div
+                  style={{
+                    background: "linear-gradient(135deg, #F0FDF4 0%, #EFF6FF 100%)",
+                    border: "1px solid #BFDBFE",
+                    borderRadius: 12,
+                    padding: "16px 20px",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 14,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 9,
+                      background: "#FFFFFF",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#2563EB",
+                      border: "1px solid #DBEAFE",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Sparkles size={18} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <h4 style={{ fontSize: 13.5, fontWeight: 700, color: "#1E3A8A", margin: 0 }}>
+                      Sistem Tagging & Resep Sub-bab Adaptif (Bebas Penomoran Kaku)
+                    </h4>
+                    <p style={{ fontSize: 12, color: "#334155", margin: 0, lineHeight: 1.55 }}>
+                      Seluruh resep sub-bab dan dokumen struktural di bawah terhubung langsung dengan AI Router melalui <strong>Sistem Tagging & Alias Otomatis</strong>. Apabila mahasiswa menulis nama sub-bab dengan variasi (misal: <em>Latar Belakang</em>, <em>Latar Belakang Masalah</em>, <em>Konteks Permasalahan</em>, atau bahkan salah ketik), sistem otomatis memetakannya ke kartu resep database yang sesuai.
+                      Khusus sub-bab <strong>Sistematika Penulisan</strong> (<code>SUBCHAPTER_1_7</code>), prompt disinkronkan dari daftar bab database proyek dan dipastikan <strong>tanpa sitasi pustaka</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Search & Actions Bar */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 260 }}>
+                    <div style={{ position: "relative", width: "100%", maxWidth: 360 }}>
+                      <Search size={14} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "#94A3B8" }} />
+                      <input
+                        type="text"
+                        placeholder="Cari nama sub-bab, kata kunci, atau identifier..."
+                        value={subchapterSearchQuery}
+                        onChange={(e) => setSubchapterSearchQuery(e.target.value)}
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px 8px 34px",
+                          borderRadius: 8,
+                          border: "1px solid #E4E4E9",
+                          fontSize: 12.5,
+                          outline: "none",
+                          background: "#FFFFFF",
+                        }}
+                      />
+                      {subchapterSearchQuery && (
+                        <button
+                          onClick={() => setSubchapterSearchQuery("")}
+                          style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94A3B8", cursor: "pointer" }}
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Filter Category Pills */}
+                    <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
+                      {[
+                        { id: "ALL", label: "Semua Klaster" },
+                        { id: "DOC_SECTIONS", label: "Kelengkapan Dokumen" },
+                        { id: "BAB_1", label: "Bab I" },
+                        { id: "BAB_2", label: "Bab II" },
+                        { id: "BAB_3", label: "Bab III" },
+                      ].map((c) => {
+                        const isCur = subchapterCategoryFilter === c.id;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => setSubchapterCategoryFilter(c.id)}
+                            style={{
+                              padding: "6px 12px",
+                              borderRadius: 6,
+                              fontSize: 12,
+                              fontWeight: isCur ? 600 : 500,
+                              background: isCur ? "#0F0F14" : "#F4F4F5",
+                              color: isCur ? "#FFFFFF" : "#52525B",
+                              border: "none",
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {c.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const res = await api.prompts.list();
+                        if (res.success) {
+                          setPromptsList(res.data);
+                          setFeedbackMsg({ type: "success", text: "Resep prompt sub-bab berhasil disinkronkan dari database." });
+                        }
+                      }}
+                      style={{
+                        background: "#FFFFFF",
+                        border: "1px solid #E4E4E9",
+                        color: "#3F3F46",
+                        padding: "8px 14px",
+                        borderRadius: 8,
+                        fontSize: 12.5,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <RefreshCw size={13} />
+                      <span>Sync DB</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingPrompt(null);
+                        setIsCreatingPrompt(true);
+                        setPromptFormData({
+                          code: "SUBCHAPTER_CUSTOM_" + Math.random().toString(36).substring(2, 6).toUpperCase(),
+                          title: "",
+                          category: "SUBCHAPTER",
+                          tags: "subchapter, kustom",
+                          description: "",
+                          systemPrompt: "",
+                          recipeSteps: [],
+                          isActive: true,
+                        });
+                        setShowPromptModal(true);
+                      }}
+                      style={{
+                        background: "#2563EB",
+                        color: "#FFFFFF",
+                        border: "none",
+                        padding: "8px 16px",
+                        borderRadius: 8,
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <Plus size={14} />
+                      <span>Tambah Resep Sub-bab</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Subchapter Tag Filter Bar */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 11, color: "#71717A", fontWeight: 600 }}>Filter Tag Populer:</span>
+                  {[
+                    "dokumen",
+                    "cover",
+                    "abstrak",
+                    "daftar_pustaka",
+                    "lampiran",
+                    "bab1",
+                    "latar_belakang",
+                    "rumusan_masalah",
+                    "sistematika_penulisan",
+                    "bab2",
+                    "landasan_teori",
+                    "penelitian_terdahulu",
+                    "kerangka_berpikir",
+                    "bab3",
+                    "metodologi",
+                    "instrumen",
+                  ].map((tg) => {
+                    const isSel = subchapterTagFilter === tg;
+                    return (
+                      <button
+                        key={tg}
+                        type="button"
+                        onClick={() => setSubchapterTagFilter(isSel ? null : tg)}
+                        style={{
+                          fontSize: 11,
+                          padding: "3px 8px",
+                          borderRadius: 5,
+                          background: isSel ? "#EFF6FF" : "#F4F4F5",
+                          color: isSel ? "#1D4ED8" : "#52525B",
+                          border: `1px solid ${isSel ? "#BFDBFE" : "#E4E4E9"}`,
+                          cursor: "pointer",
+                          fontWeight: isSel ? 600 : 400,
+                        }}
+                      >
+                        #{tg}
+                      </button>
+                    );
+                  })}
+                  {subchapterTagFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setSubchapterTagFilter(null)}
+                      style={{
+                        fontSize: 11,
+                        padding: "3px 8px",
+                        borderRadius: 5,
+                        background: "#FEF2F2",
+                        color: "#DC2626",
+                        border: "1px solid #FECACA",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <X size={11} />
+                      <span>Reset Tag</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Grouped View vs Filtered View */}
+                {subchapterCategoryFilter === "ALL" && !subchapterSearchQuery.trim() && !subchapterTagFilter ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+                    {groups.map((grp) => {
+                      const groupPrompts = subchapterPrompts.filter(grp.filterFn);
+                      if (groupPrompts.length === 0) return null;
+
+                      return (
+                        <div key={grp.id} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                          {/* Klaster Header */}
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              paddingBottom: 8,
+                              borderBottom: "1px solid #E4E4E9",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: 6,
+                                  background: grp.badgeBg,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  color: grp.color,
+                                }}
+                              >
+                                <grp.icon size={15} />
+                              </div>
+                              <div>
+                                <h3 style={{ fontSize: 14.5, fontWeight: 700, color: "#0F0F14", margin: 0 }}>
+                                  {grp.title} <span style={{ fontSize: 12, fontWeight: 500, color: "#71717A" }}>({groupPrompts.length})</span>
+                                </h3>
+                                <p style={{ fontSize: 11.5, color: "#71717A", margin: 0 }}>
+                                  {grp.subtitle}
+                                </p>
+                              </div>
+                            </div>
+                            <span style={{ fontSize: 11, color: "#71717A", background: "#F4F4F5", padding: "2px 8px", borderRadius: 10, fontWeight: 500 }}>
+                              {groupPrompts.length} Resep
+                            </span>
+                          </div>
+
+                          {/* Grid for this cluster */}
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
+                            {groupPrompts.map(renderPromptCard)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* Filtered or Search View */
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 6, borderBottom: "1px solid #E4E4E9" }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#0F0F14" }}>
+                        Menampilkan {filteredPrompts.length} Resep Sub-bab Ditemukan
+                      </span>
+                      {(subchapterSearchQuery || subchapterTagFilter || subchapterCategoryFilter !== "ALL") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSubchapterCategoryFilter("ALL");
+                            setSubchapterSearchQuery("");
+                            setSubchapterTagFilter(null);
+                          }}
+                          style={{ fontSize: 11.5, color: "#2563EB", background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}
+                        >
+                          Reset Semua Filter
+                        </button>
+                      )}
+                    </div>
+
+                    {filteredPrompts.length === 0 ? (
+                      <div style={{ padding: 40, textAlign: "center", background: "#F7F7FB", borderRadius: 10, border: "1px solid #E4E4E9" }}>
+                        <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
+                          Tidak ada resep sub-bab yang sesuai dengan kriteria filter atau pencarian.
+                        </p>
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
+                        {filteredPrompts.map(renderPromptCard)}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ════════════════════════════════════════════════════════════════════════
+            TAB: AI SKILL PROMPTS & CORE ENGINES
            ════════════════════════════════════════════════════════════════════════ */}
           {activeTab === "PROMPTS_SKILLS" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -2814,42 +3826,31 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
                 <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                    <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Total Skill Prompts</span>
+                    <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Core System Engines</span>
                     <div style={{ width: 32, height: 32, borderRadius: 8, background: "#EEEAFE", display: "flex", alignItems: "center", justifyContent: "center", color: "#4338CA" }}>
                       <Sparkles size={16} />
                     </div>
                   </div>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: "#0F0F14" }}>{promptsList.length}</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#0F0F14" }}>
+                    {promptsList.filter((p) => p.category !== "SUBCHAPTER" && !p.code.startsWith("SUBCHAPTER_")).length} Engines
+                  </div>
                   <div style={{ fontSize: 11.5, color: "#16A34A", fontWeight: 500, marginTop: 4 }}>
-                    Tersinkronisasi Real-time di Database
+                    Orkestrator Utama Zetera AI
                   </div>
                 </div>
 
                 <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                    <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Resep Baku Sub-bab 1-3</span>
+                    <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Resep Sub-bab Terpisah</span>
                     <div style={{ width: 32, height: 32, borderRadius: 8, background: "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#2563EB" }}>
                       <ListOrdered size={16} />
                     </div>
                   </div>
                   <div style={{ fontSize: 24, fontWeight: 700, color: "#0F0F14" }}>
-                    {promptsList.filter((p) => p.category === "SUBCHAPTER").length || 19} Sub-bab
+                    {promptsList.filter((p) => p.category === "SUBCHAPTER" || p.code.startsWith("SUBCHAPTER_")).length} Resep
                   </div>
-                  <div style={{ fontSize: 11.5, color: "#71717A", marginTop: 4 }}>
-                    1.1 s/d 1.7, 2.1 s/d 2.4, 3.1 s/d 3.8
-                  </div>
-                </div>
-
-                <div style={{ background: "#FFFFFF", border: "1px solid #E4E4E9", borderRadius: 12, padding: "18px 20px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                    <span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>Preset Gaya Penulisan</span>
-                    <div style={{ width: 32, height: 32, borderRadius: 8, background: "#FDF2F8", display: "flex", alignItems: "center", justifyContent: "center", color: "#DB2777" }}>
-                      <FileEdit size={16} />
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: "#0F0F14" }}>4 Gaya Formal</div>
-                  <div style={{ fontSize: 11.5, color: "#71717A", marginTop: 4 }}>
-                    APA 7th, Telaah Kritis, Metodologi, Implikasi
+                  <div style={{ fontSize: 11.5, color: "#2563EB", fontWeight: 600, marginTop: 4, cursor: "pointer" }} onClick={() => handleNavigateTab("SUBCHAPTER_RECIPES")}>
+                    Buka Menu Resep Sub-bab →
                   </div>
                 </div>
 
@@ -2867,11 +3868,49 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                 </div>
               </div>
 
+              {/* Informative Banner */}
+              <div
+                style={{
+                  background: "#F8FAFC",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 10,
+                  padding: "12px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <ListOrdered size={18} color="#2563EB" />
+                  <span style={{ fontSize: 12.5, color: "#334155" }}>
+                    <strong>Pemisahan Menu Resep Sub-bab:</strong> Seluruh resep baku prompt per sub-bab (Latar Belakang, Rumusan Masalah, Sistematika Penulisan, dsb.) kini telah dipisahkan ke menu baru <strong>Prompt Resep Sub-bab</strong> tanpa penomoran kaku.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleNavigateTab("SUBCHAPTER_RECIPES")}
+                  style={{
+                    background: "#2563EB",
+                    color: "#FFFFFF",
+                    border: "none",
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Buka Resep Sub-bab
+                </button>
+              </div>
+
               {/* Sub-Tab Navigation Bar */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #E4E4E9", paddingBottom: 12 }}>
                 <div style={{ display: "flex", gap: 8 }}>
                   {[
-                    { id: "RECIPES", label: "Katalog Prompt & 19 Resep Sub-bab", icon: ListOrdered },
+                    { id: "CORE_ENGINES", label: "Core AI System Engines", icon: Zap },
                     { id: "WRITING_STYLES", label: "Gaya Penulisan Akademik (Tone Presets)", icon: FileEdit },
                     { id: "CODE_BINDING", label: "Cara Terhubung ke Code & Dynamic Binding", icon: Code },
                   ].map((st) => {
@@ -2936,10 +3975,10 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                       setEditingPrompt(null);
                       setIsCreatingPrompt(true);
                       setPromptFormData({
-                        code: "CUSTOM_SKILL_" + Math.random().toString(36).substring(2, 6).toUpperCase(),
+                        code: "CORE_SKILL_" + Math.random().toString(36).substring(2, 6).toUpperCase(),
                         title: "",
-                        category: "SUBCHAPTER",
-                        tags: "kustom, riset",
+                        category: "PROPOSAL",
+                        tags: "core, engine",
                         description: "",
                         systemPrompt: "",
                         recipeSteps: [],
@@ -2967,63 +4006,49 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                 </div>
               </div>
 
-              {/* ── SUB-TAB 1: RECIPES & PROMPTS ── */}
-              {promptSubTab === "RECIPES" && (() => {
-                // Define clean logical groups
+              {/* ── SUB-TAB 1: CORE SYSTEM ENGINES ── */}
+              {promptSubTab === "CORE_ENGINES" && (() => {
+                const corePrompts = promptsList.filter(
+                  (p) => p.category !== "SUBCHAPTER" && !p.code.startsWith("SUBCHAPTER_")
+                );
+
                 const groups = [
                   {
                     id: "CORE_SYSTEM",
                     key: "CORE",
                     title: "Core System Engines",
-                    subtitle: "Prompt orkestrator sentral: Blueprint Generator, Proposal Synthesis SINTA, Screening Jurnal, & Chat Assistant",
+                    subtitle: "Prompt sentral: Blueprint Generator, Proposal Synthesis SINTA, Screening Jurnal, & Chat Assistant",
                     icon: Zap,
                     color: "#4338CA",
                     badgeBg: "#EEF2FF",
-                    filterFn: (p: AiSkillPrompt) => p.category !== "SUBCHAPTER" && !p.code.startsWith("SUBCHAPTER_"),
+                    filterFn: (p: AiSkillPrompt) => [
+                      "OUTLINE_BLUEPRINT_SYSTEM",
+                      "PROPOSAL_DRAFT_SYSTEM",
+                      "PROPOSAL_FULL_SYNTHESIS_SYSTEM",
+                      "PROPOSAL_CHAT_SYSTEM",
+                      "JOURNAL_SCREENING_SYSTEM",
+                      "LITERATURE_SEARCH_SYSTEM",
+                    ].includes(p.code),
                   },
                   {
-                    id: "BAB_1",
-                    key: "BAB1",
-                    title: "BAB I — Pendahuluan",
-                    subtitle: "Resep baku sub-bab 1.1 s/d 1.7 (Piramida terbalik, Fenomena empiris, Gap penelitian, Batasan, Tujuan, & Sistematika)",
-                    icon: BookOpen,
-                    color: "#2563EB",
-                    badgeBg: "#EFF6FF",
-                    filterFn: (p: AiSkillPrompt) => p.code.startsWith("SUBCHAPTER_1_"),
-                  },
-                  {
-                    id: "BAB_2",
-                    key: "BAB2",
-                    title: "BAB II — Landasan Teori & Tinjauan Pustaka",
-                    subtitle: "Resep baku sub-bab 2.1 s/d 2.4 (Landasan Teori, Matriks Komparasi Penelitian Terdahulu, Kerangka Berpikir, & Hipotesis)",
-                    icon: Layers,
-                    color: "#059669",
-                    badgeBg: "#ECFDF5",
-                    filterFn: (p: AiSkillPrompt) => p.code.startsWith("SUBCHAPTER_2_"),
-                  },
-                  {
-                    id: "BAB_3",
-                    key: "BAB3",
-                    title: "BAB III — Metodologi Penelitian",
-                    subtitle: "Resep baku sub-bab 3.1 s/d 3.8 (Desain Penelitian, Objek/Subjek, Sampling Slovin, Instrumen, Definisi Operasional, Validitas & Reliabilitas)",
-                    icon: GraduationCap,
-                    color: "#D97706",
-                    badgeBg: "#FFFBEB",
-                    filterFn: (p: AiSkillPrompt) => p.code.startsWith("SUBCHAPTER_3_"),
-                  },
-                  {
-                    id: "CUSTOM",
+                    id: "CUSTOM_SYSTEM",
                     key: "CUSTOM",
-                    title: "Custom Skill & Prompt Tambahan",
-                    subtitle: "Prompt kustom khusus yang didaftarkan manual oleh administrator",
+                    title: "Custom System Skills & Tools",
+                    subtitle: "Skill prompt sistem non-subbab yang didaftarkan administrator",
                     icon: Sparkles,
                     color: "#7E22CE",
                     badgeBg: "#FAF5FF",
-                    filterFn: (p: AiSkillPrompt) => p.category === "CUSTOM" || (!p.isSystem && !p.code.startsWith("SUBCHAPTER_") && !["OUTLINE_BLUEPRINT_SYSTEM", "PROPOSAL_CHAT_SYSTEM", "PROPOSAL_DRAFT_SYSTEM", "PROPOSAL_FULL_SYNTHESIS_SYSTEM", "JOURNAL_SCREENING_SYSTEM", "LITERATURE_SEARCH_SYSTEM"].includes(p.code)),
+                    filterFn: (p: AiSkillPrompt) => ![
+                      "OUTLINE_BLUEPRINT_SYSTEM",
+                      "PROPOSAL_DRAFT_SYSTEM",
+                      "PROPOSAL_FULL_SYNTHESIS_SYSTEM",
+                      "PROPOSAL_CHAT_SYSTEM",
+                      "JOURNAL_SCREENING_SYSTEM",
+                      "LITERATURE_SEARCH_SYSTEM",
+                    ].includes(p.code),
                   },
                 ];
 
-                // Filter logic
                 const matchesSearchAndTag = (p: AiSkillPrompt) => {
                   if (promptTagFilter) {
                     const tags = Array.isArray(p.tags) ? p.tags : [];
@@ -3031,7 +4056,7 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                   }
                   if (promptSearchQuery.trim()) {
                     const q = promptSearchQuery.toLowerCase();
-                    const matchTitle = (p.title || "").toLowerCase().includes(q);
+                    const matchTitle = (cleanPromptTitle(p.title) || "").toLowerCase().includes(q);
                     const matchCode = (p.code || "").toLowerCase().includes(q);
                     const matchDesc = (p.description || "").toLowerCase().includes(q);
                     if (!matchTitle && !matchCode && !matchDesc) return false;
@@ -3039,383 +4064,78 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                   return true;
                 };
 
-                const filteredPrompts = promptsList.filter((p) => {
+                const filteredPrompts = corePrompts.filter((p) => {
                   if (promptCategoryFilter !== "ALL") {
                     const grp = groups.find((g) => g.id === promptCategoryFilter);
                     if (grp && !grp.filterFn(p)) return false;
                   }
                   return matchesSearchAndTag(p);
                 });
-                const totalFilteredCount = filteredPrompts.length;
-
-                // Card renderer helper
-                const renderPromptCard = (p: AiSkillPrompt) => {
-                  const tags = Array.isArray(p.tags) ? p.tags : [];
-                  const recipeSteps = Array.isArray(p.recipeSteps) ? p.recipeSteps : [];
-                  const isExpanded = !!expandedRecipes[p.id];
-
-                  // Category badge style
-                  let catBadgeBg = "#F4F4F5";
-                  let catBadgeColor = "#52525B";
-                  let catBadgeBorder = "#E4E4E9";
-                  if (p.category === "SUBCHAPTER") {
-                    catBadgeBg = "#EFF6FF";
-                    catBadgeColor = "#1D4ED8";
-                    catBadgeBorder = "#BFDBFE";
-                  } else if (p.category === "PROPOSAL") {
-                    catBadgeBg = "#FAF5FF";
-                    catBadgeColor = "#7E22CE";
-                    catBadgeBorder = "#E9D5FF";
-                  } else if (p.category === "OUTLINE") {
-                    catBadgeBg = "#ECFDF5";
-                    catBadgeColor = "#059669";
-                    catBadgeBorder = "#A7F3D0";
-                  } else if (p.category === "SCREENING" || p.category === "LITERATURE") {
-                    catBadgeBg = "#FFFBEB";
-                    catBadgeColor = "#B45309";
-                    catBadgeBorder = "#FDE68A";
-                  }
-
-                  return (
-                    <div
-                      key={p.id}
-                      style={{
-                        background: "#FFFFFF",
-                        border: "1px solid #E4E4E9",
-                        borderRadius: 10,
-                        padding: 16,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-                        transition: "border-color 0.15s ease",
-                      }}
-                    >
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        {/* Header: Badges & Code */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span
-                              style={{
-                                fontSize: 10,
-                                fontWeight: 700,
-                                padding: "2px 7px",
-                                borderRadius: 5,
-                                background: catBadgeBg,
-                                color: catBadgeColor,
-                                border: `1px solid ${catBadgeBorder}`,
-                                letterSpacing: "0.02em",
-                              }}
-                            >
-                              {p.category}
-                            </span>
-                            <span style={{ fontSize: 10, color: "#94A3B8", fontFamily: "monospace" }}>
-                              v{p.version}
-                            </span>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(p.code);
-                              setCopiedPromptCode(p.code);
-                              setTimeout(() => setCopiedPromptCode(null), 2000);
-                            }}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                              fontSize: 10.5,
-                              fontFamily: "monospace",
-                              color: copiedPromptCode === p.code ? "#059669" : "#52525B",
-                              background: copiedPromptCode === p.code ? "#ECFDF5" : "#F7F7FB",
-                              border: "1px solid #E4E4E9",
-                              padding: "2px 7px",
-                              borderRadius: 5,
-                              cursor: "pointer",
-                            }}
-                            title="Salin kode pemanggilan di code"
-                          >
-                            {copiedPromptCode === p.code ? <Check size={11} /> : <Copy size={11} />}
-                            <span>{p.code}</span>
-                          </button>
-                        </div>
-
-                        {/* Title & Description */}
-                        <div>
-                          <h4 style={{ fontSize: 14, fontWeight: 700, color: "#0F0F14", margin: "0 0 3px", lineHeight: 1.3 }}>
-                            {p.title}
-                          </h4>
-                          <p style={{ fontSize: 12, color: "#71717A", margin: 0, lineHeight: 1.45 }}>
-                            {p.description || "Panduan akademis dan instruksi pemodelan sistematis."}
-                          </p>
-                        </div>
-
-                        {/* Collapsible Recipe Steps */}
-                        {recipeSteps.length > 0 && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                            <button
-                              type="button"
-                              onClick={() => toggleExpandRecipe(p.id)}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                width: "100%",
-                                padding: "6px 10px",
-                                borderRadius: 6,
-                                background: isExpanded ? "#EEF2FF" : "#F7F7FB",
-                                border: `1px solid ${isExpanded ? "#C7D2FE" : "#E4E4E9"}`,
-                                fontSize: 11.5,
-                                fontWeight: 600,
-                                color: isExpanded ? "#4338CA" : "#52525B",
-                                cursor: "pointer",
-                                transition: "all 0.15s ease",
-                              }}
-                            >
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <ListOrdered size={13} color={isExpanded ? "#4338CA" : "#71717A"} />
-                                <span>Resep Standar ({recipeSteps.length} Langkah)</span>
-                              </div>
-                              <ChevronDown
-                                size={13}
-                                style={{
-                                  transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                                  transition: "transform 0.2s ease",
-                                }}
-                              />
-                            </button>
-
-                            {isExpanded && (
-                              <div
-                                style={{
-                                  background: "#FAFAFC",
-                                  borderRadius: 6,
-                                  padding: "9px 11px",
-                                  border: "1px solid #E4E4E9",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 5,
-                                  maxHeight: 180,
-                                  overflowY: "auto",
-                                }}
-                              >
-                                {recipeSteps.map((step, sIdx) => (
-                                  <div key={sIdx} style={{ fontSize: 11, color: "#3F3F46", display: "flex", gap: 6, lineHeight: 1.35 }}>
-                                    <span style={{ color: "#4338CA", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>
-                                      {sIdx + 1}.
-                                    </span>
-                                    <span>{step}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Minimalist Tags (Max 2 displayed to eliminate visual noise) */}
-                        {tags.length > 0 && (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                            {tags.slice(0, 3).map((tag) => (
-                              <span
-                                key={tag}
-                                onClick={() => setPromptTagFilter(tag)}
-                                style={{
-                                  fontSize: 10,
-                                  padding: "2px 6px",
-                                  borderRadius: 4,
-                                  background: "#F7F7FB",
-                                  color: "#71717A",
-                                  border: "1px solid #E4E4E9",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                #{tag}
-                              </span>
-                            ))}
-                            {tags.length > 3 && (
-                              <span style={{ fontSize: 10, color: "#A1A1AA", padding: "2px 4px" }}>
-                                +{tags.length - 3} lainnya
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Footer Actions */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid #F4F4F5" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: p.isActive ? "#10B981" : "#94A3B8" }} />
-                          <span style={{ fontSize: 10.5, color: "#71717A", fontWeight: 500 }}>
-                            {p.isSystem ? "Built-in System" : "Custom Admin"}
-                          </span>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingPrompt(p);
-                            setIsCreatingPrompt(false);
-                            setPromptFormData({
-                              code: p.code,
-                              title: p.title,
-                              category: p.category,
-                              tags: (Array.isArray(p.tags) ? p.tags : []).join(", "),
-                              description: p.description || "",
-                              systemPrompt: p.systemPrompt || "",
-                              recipeSteps: Array.isArray(p.recipeSteps) ? [...p.recipeSteps] : [],
-                              isActive: p.isActive,
-                            });
-                            setShowPromptModal(true);
-                          }}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 4,
-                            padding: "5px 10px",
-                            borderRadius: 6,
-                            background: "#F7F7FB",
-                            border: "1px solid #E4E4E9",
-                            fontSize: 11.5,
-                            fontWeight: 600,
-                            color: "#0F0F14",
-                            cursor: "pointer",
-                            transition: "all 0.15s ease",
-                          }}
-                        >
-                          <Pencil size={11} />
-                          <span>Edit Prompt</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                };
 
                 return (
                   <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                    {/* Top Segmented Navigation & Search Row */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                      {/* Segmented Filter Pills */}
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                        <button
-                          type="button"
-                          onClick={() => setPromptCategoryFilter("ALL")}
+                    {/* Search & Tags Bar */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ position: "relative", width: "100%", maxWidth: 360 }}>
+                        <Search size={14} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "#94A3B8" }} />
+                        <input
+                          type="text"
+                          placeholder="Cari engine, kata kunci, atau identifier..."
+                          value={promptSearchQuery}
+                          onChange={(e) => setPromptSearchQuery(e.target.value)}
                           style={{
-                            padding: "6px 14px",
-                            borderRadius: 20,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            border: promptCategoryFilter === "ALL" ? "1px solid #4338CA" : "1px solid #E4E4E9",
-                            background: promptCategoryFilter === "ALL" ? "#4338CA" : "#FFFFFF",
-                            color: promptCategoryFilter === "ALL" ? "#FFFFFF" : "#52525B",
-                            transition: "all 0.15s ease",
+                            width: "100%",
+                            padding: "8px 12px 8px 34px",
+                            borderRadius: 8,
+                            border: "1px solid #E4E4E9",
+                            fontSize: 12.5,
+                            outline: "none",
+                            background: "#FFFFFF",
                           }}
-                        >
-                          Semua Prompt ({promptsList.length})
-                        </button>
-
-                        {groups.map((grp) => {
-                          const count = promptsList.filter(grp.filterFn).length;
-                          if (count === 0 && grp.id === "CUSTOM") return null;
-                          const isSelected = promptCategoryFilter === grp.id;
-                          return (
-                            <button
-                              key={grp.id}
-                              type="button"
-                              onClick={() => setPromptCategoryFilter(grp.id)}
-                              style={{
-                                padding: "6px 12px",
-                                borderRadius: 20,
-                                fontSize: 12,
-                                fontWeight: 500,
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 6,
-                                border: isSelected ? `1px solid ${grp.color}` : "1px solid #E4E4E9",
-                                background: isSelected ? grp.badgeBg : "#FFFFFF",
-                                color: isSelected ? grp.color : "#52525B",
-                                transition: "all 0.15s ease",
-                              }}
-                            >
-                              <grp.icon size={13} color={isSelected ? grp.color : "#71717A"} />
-                              <span>{grp.title.split("—")[0].trim()} ({count})</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Search Bar & Active Tag Filter */}
-                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                        <div style={{ position: "relative", flex: 1 }}>
-                          <Search size={15} color="#94a3b8" style={{ position: "absolute", left: 12, top: 11 }} />
-                          <input
-                            type="text"
-                            value={promptSearchQuery}
-                            onChange={(e) => setPromptSearchQuery(e.target.value)}
-                            placeholder="Cari prompt berdasarkan nama, kode (misal: SUBCHAPTER_1_1), atau deskripsi..."
-                            style={{
-                              width: "100%",
-                              height: 36,
-                              paddingLeft: 34,
-                              paddingRight: 12,
-                              borderRadius: 8,
-                              border: "1px solid #E4E4E9",
-                              background: "#FFFFFF",
-                              fontSize: 12.5,
-                              color: "#0F0F14",
-                              outline: "none",
-                            }}
-                          />
-                          {promptSearchQuery && (
-                            <button
-                              type="button"
-                              onClick={() => setPromptSearchQuery("")}
-                              style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}
-                            >
-                              <X size={14} />
-                            </button>
-                          )}
-                        </div>
-
-                        {promptTagFilter && (
+                        />
+                        {promptSearchQuery && (
                           <button
-                            type="button"
-                            onClick={() => setPromptTagFilter(null)}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 5,
-                              padding: "6px 10px",
-                              borderRadius: 6,
-                              background: "#ECFDF5",
-                              border: "1px solid #A7F3D0",
-                              color: "#059669",
-                              fontSize: 11.5,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              whiteSpace: "nowrap",
-                            }}
+                            onClick={() => setPromptSearchQuery("")}
+                            style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94A3B8", cursor: "pointer" }}
                           >
-                            <span>Tag: #{promptTagFilter}</span>
-                            <X size={12} />
+                            <X size={13} />
                           </button>
                         )}
                       </div>
+
+                      {promptTagFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setPromptTagFilter(null)}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                            padding: "6px 10px",
+                            borderRadius: 6,
+                            background: "#EEF2FF",
+                            border: "1px solid #C7D2FE",
+                            color: "#4338CA",
+                            fontSize: 11.5,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <span>Tag: #{promptTagFilter}</span>
+                          <X size={12} />
+                        </button>
+                      )}
                     </div>
 
-                    {/* Grouped Render Sections */}
+                    {/* Grouped View vs Filtered View */}
                     {promptCategoryFilter === "ALL" && !promptSearchQuery.trim() && !promptTagFilter ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
                         {groups.map((grp) => {
-                          const groupPrompts = promptsList.filter(grp.filterFn);
+                          const groupPrompts = corePrompts.filter(grp.filterFn);
                           if (groupPrompts.length === 0) return null;
 
                           return (
                             <div key={grp.id} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                              {/* Section Header */}
                               <div
                                 style={{
                                   display: "flex",
@@ -3450,11 +4170,10 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                                   </div>
                                 </div>
                                 <span style={{ fontSize: 11, color: "#71717A", background: "#F4F4F5", padding: "2px 8px", borderRadius: 10, fontWeight: 500 }}>
-                                  {groupPrompts.length} Prompt
+                                  {groupPrompts.length} Engine
                                 </span>
                               </div>
 
-                              {/* Grid for this group */}
                               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
                                 {groupPrompts.map(renderPromptCard)}
                               </div>
@@ -3463,11 +4182,10 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                         })}
                       </div>
                     ) : (
-                      /* Filtered or Search View */
                       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 6, borderBottom: "1px solid #E4E4E9" }}>
                           <span style={{ fontSize: 13, fontWeight: 600, color: "#0F0F14" }}>
-                            Menampilkan {totalFilteredCount} Prompt Ditemukan
+                            Menampilkan {filteredPrompts.length} Engine Ditemukan
                           </span>
                           {(promptSearchQuery || promptTagFilter || promptCategoryFilter !== "ALL") && (
                             <button
@@ -3484,7 +4202,7 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                           )}
                         </div>
 
-                        {totalFilteredCount === 0 ? (
+                        {filteredPrompts.length === 0 ? (
                           <div style={{ padding: 40, textAlign: "center", background: "#F7F7FB", borderRadius: 10, border: "1px solid #E4E4E9" }}>
                             <p style={{ fontSize: 13, color: "#71717A", margin: 0 }}>
                               Tidak ada skill prompt yang sesuai dengan kriteria filter atau pencarian.
@@ -3702,335 +4420,6 @@ const response = await executeAiCompletion({
                         Untuk menjamin performa tanpa overhead query ke database pada setiap token generation, prompt dicache selama 30 detik. Saat Admin mengklik <strong>"Simpan Perubahan"</strong> di UI Admin, cache otomatis dibersihkan seketika.
                       </p>
                     </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Prompt Modal (Create & Edit) */}
-              {showPromptModal && (
-                <div
-                  style={{
-                    position: "fixed",
-                    inset: 0,
-                    background: "rgba(15,23,42,0.6)",
-                    backdropFilter: "blur(4px)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    zIndex: 100,
-                    padding: 20,
-                  }}
-                >
-                  <div
-                    style={{
-                      background: "#FFFFFF",
-                      borderRadius: 16,
-                      maxWidth: 760,
-                      width: "100%",
-                      maxHeight: "90vh",
-                      overflowY: "auto",
-                      padding: 28,
-                      boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 20,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #E4E4E9", paddingBottom: 14 }}>
-                      <div>
-                        <h3 style={{ fontSize: 18, fontWeight: 700, color: "#0F0F14", margin: 0 }}>
-                          {isCreatingPrompt ? "Tambah Skill Prompt Baru" : `Edit Skill: ${promptFormData.title || promptFormData.code}`}
-                        </h3>
-                        <span style={{ fontSize: 12, color: "#71717A" }}>
-                          Identifier: <code style={{ color: "#4338CA", fontWeight: 700 }}>{promptFormData.code}</code>
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => setShowPromptModal(false)}
-                        style={{ background: "none", border: "none", color: "#71717A", cursor: "pointer" }}
-                      >
-                        <X size={20} />
-                      </button>
-                    </div>
-
-                    <form
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        setSavingPrompt(true);
-                        try {
-                          const tagArray = promptFormData.tags.split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
-                          if (isCreatingPrompt) {
-                            await api.prompts.create({
-                              code: promptFormData.code,
-                              title: promptFormData.title,
-                              category: promptFormData.category,
-                              tags: tagArray,
-                              description: promptFormData.description,
-                              systemPrompt: promptFormData.systemPrompt,
-                              recipeSteps: promptFormData.recipeSteps,
-                              isActive: promptFormData.isActive,
-                            });
-                            setFeedbackMsg({ type: "success", text: "Skill Prompt baru berhasil dibuat di database." });
-                          } else if (editingPrompt) {
-                            await api.prompts.update(editingPrompt.id, {
-                              title: promptFormData.title,
-                              category: promptFormData.category,
-                              tags: tagArray,
-                              description: promptFormData.description,
-                              systemPrompt: promptFormData.systemPrompt,
-                              recipeSteps: promptFormData.recipeSteps,
-                              isActive: promptFormData.isActive,
-                            });
-                            setFeedbackMsg({ type: "success", text: `Prompt "${promptFormData.title}" berhasil diperbarui.` });
-                          }
-                          const fresh = await api.prompts.list();
-                          if (fresh.success) setPromptsList(fresh.data);
-                          setShowPromptModal(false);
-                        } catch (err: any) {
-                          notify.error("Gagal menyimpan prompt: " + (err.message || err));
-                        } finally {
-                          setSavingPrompt(false);
-                        }
-                      }}
-                      style={{ display: "flex", flexDirection: "column", gap: 16 }}
-                    >
-                      {/* Row 0: Code Identifier (Locked on Edit) */}
-                      <div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                          <label style={{ fontSize: 12, fontWeight: 600, color: "#3F3F46" }}>
-                            Kode Identifier Pemanggilan di Code
-                          </label>
-                          {!isCreatingPrompt ? (
-                            <span style={{ fontSize: 11, background: "#EFF6FF", color: "#1D4ED8", padding: "2px 8px", borderRadius: 6, fontWeight: 700, border: "1px solid #BFDBFE" }}>
-                              🔒 Terkunci (Terhubung ke Backend)
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: 11, color: "#71717A" }}>
-                              Gunakan format UPPERCASE (Contoh: CUSTOM_ANALISIS_GAP)
-                            </span>
-                          )}
-                        </div>
-                        <input
-                          type="text"
-                          required
-                          disabled={!isCreatingPrompt}
-                          value={promptFormData.code}
-                          onChange={(e) => setPromptFormData({ ...promptFormData, code: e.target.value.toUpperCase().replace(/\s+/g, "_") })}
-                          placeholder="Contoh: SUBCHAPTER_1_1"
-                          style={{
-                            width: "100%",
-                            height: 38,
-                            padding: "0 12px",
-                            borderRadius: 8,
-                            border: "1px solid #E4E4E9",
-                            fontSize: 13,
-                            fontFamily: "monospace",
-                            fontWeight: 700,
-                            background: !isCreatingPrompt ? "#F1F5F9" : "#FFFFFF",
-                            color: !isCreatingPrompt ? "#64748B" : "#0F0F14",
-                            cursor: !isCreatingPrompt ? "not-allowed" : "text",
-                          }}
-                        />
-                      </div>
-
-                      {/* Title & Category */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 180px", gap: 14 }}>
-                        <div>
-                          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
-                            Judul Skill / Sub-bab
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={promptFormData.title}
-                            onChange={(e) => setPromptFormData({ ...promptFormData, title: e.target.value })}
-                            placeholder="Contoh: BAB 1.1: Latar Belakang (Piramida Terbalik)"
-                            style={{ width: "100%", height: 38, padding: "0 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13 }}
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
-                            Kategori
-                          </label>
-                          <select
-                            value={promptFormData.category}
-                            onChange={(e) => setPromptFormData({ ...promptFormData, category: e.target.value })}
-                            style={{ width: "100%", height: 38, padding: "0 8px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13, background: "#FFFFFF" }}
-                          >
-                            <option value="SUBCHAPTER">Sub-bab Outline</option>
-                            <option value="OUTLINE">Blueprint Architect</option>
-                            <option value="PROPOSAL">Proposal Drafter</option>
-                            <option value="SCREENING">Screening Jurnal</option>
-                            <option value="LITERATURE">Literature Search</option>
-                            <option value="CUSTOM">Custom Skill</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Tags & Description */}
-                      <div>
-                        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
-                          Tagging (Pisahkan dengan koma)
-                        </label>
-                        <input
-                          type="text"
-                          value={promptFormData.tags}
-                          onChange={(e) => setPromptFormData({ ...promptFormData, tags: e.target.value })}
-                          placeholder="bab1, latar_belakang, piramida_terbalik, 8_langkah, gap"
-                          style={{ width: "100%", height: 38, padding: "0 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13 }}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
-                          Deskripsi / Tujuan Akademis
-                        </label>
-                        <textarea
-                          rows={2}
-                          value={promptFormData.description}
-                          onChange={(e) => setPromptFormData({ ...promptFormData, description: e.target.value })}
-                          placeholder="Uraian singkat tujuan instruksional dan peran akademik prompt ini..."
-                          style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13, fontFamily: "inherit" }}
-                        />
-                      </div>
-
-                      {/* Step-by-Step Recipe Builder */}
-                      <div>
-                        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
-                          Resep Butir Langkah Baku ({promptFormData.recipeSteps.length} Butir)
-                        </label>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8, maxHeight: 180, overflowY: "auto" }}>
-                          {promptFormData.recipeSteps.map((step, idx) => (
-                            <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8, background: "#F7F7FB", padding: "6px 10px", borderRadius: 6, border: "1px solid #E4E4E9" }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: "#4338CA", width: 20 }}>{idx + 1}.</span>
-                              <span style={{ fontSize: 12, color: "#1E293B", flex: 1 }}>{step}</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPromptFormData({
-                                    ...promptFormData,
-                                    recipeSteps: promptFormData.recipeSteps.filter((_, i) => i !== idx),
-                                  });
-                                }}
-                                style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer" }}
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <input
-                            type="text"
-                            value={newStepInput}
-                            onChange={(e) => setNewStepInput(e.target.value)}
-                            placeholder="Ketik butir instruksi langkah baru..."
-                            style={{ flex: 1, height: 36, padding: "0 10px", borderRadius: 6, border: "1px solid #E4E4E9", fontSize: 12.5 }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                if (newStepInput.trim()) {
-                                  setPromptFormData({
-                                    ...promptFormData,
-                                    recipeSteps: [...promptFormData.recipeSteps, newStepInput.trim()],
-                                  });
-                                  setNewStepInput("");
-                                }
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (newStepInput.trim()) {
-                                setPromptFormData({
-                                  ...promptFormData,
-                                  recipeSteps: [...promptFormData.recipeSteps, newStepInput.trim()],
-                                });
-                                setNewStepInput("");
-                              }
-                            }}
-                            style={{
-                              background: "#F7F7FB",
-                              border: "1px solid #E4E4E9",
-                              padding: "6px 12px",
-                              borderRadius: 6,
-                              fontSize: 12.5,
-                              fontWeight: 500,
-                              cursor: "pointer",
-                            }}
-                          >
-                            + Tambah Butir
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* System Prompt Box */}
-                      <div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                          <label style={{ fontSize: 12, fontWeight: 600, color: "#3F3F46" }}>
-                            System Prompt Template (AI Instructions)
-                          </label>
-                          <span style={{ fontSize: 11, color: "#71717A" }}>
-                            Gunakan variabel: <code style={{ color: "#4338CA" }}>{"{{TOPIC}}"}</code>, <code style={{ color: "#4338CA" }}>{"{{PRODI}}"}</code>
-                          </span>
-                        </div>
-                        <textarea
-                          rows={6}
-                          required
-                          value={promptFormData.systemPrompt}
-                          onChange={(e) => setPromptFormData({ ...promptFormData, systemPrompt: e.target.value })}
-                          style={{
-                            width: "100%",
-                            padding: "10px 12px",
-                            borderRadius: 8,
-                            border: "1px solid #E4E4E9",
-                            fontSize: 12.5,
-                            fontFamily: "monospace",
-                            background: "#0F172A",
-                            color: "#F8FAFC",
-                            lineHeight: 1.45,
-                          }}
-                        />
-                      </div>
-
-                      {/* Submit Actions */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, paddingTop: 10, borderTop: "1px solid #E4E4E9" }}>
-                        <button
-                          type="button"
-                          onClick={() => setShowPromptModal(false)}
-                          style={{
-                            background: "#F7F7FB",
-                            border: "1px solid #E4E4E9",
-                            padding: "8px 14px",
-                            borderRadius: 6,
-                            fontSize: 13,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Batal
-                        </button>
-
-                        <button
-                          type="submit"
-                          disabled={savingPrompt}
-                          style={{
-                            background: "#4338CA",
-                            color: "#FFFFFF",
-                            border: "none",
-                            padding: "8px 18px",
-                            borderRadius: 6,
-                            fontSize: 13,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {savingPrompt ? "Menyimpan ke DB..." : "Simpan Perubahan ke Database"}
-                        </button>
-                      </div>
-                    </form>
                   </div>
                 </div>
               )}
@@ -8215,6 +8604,336 @@ const response = await executeAiCompletion({
                   style={{ background: "#0D9488", border: "none", borderRadius: 8, padding: "8px 20px", fontSize: 13, fontWeight: 600, color: "#FFFFFF", cursor: "pointer" }}
                 >
                   {savingCitation ? "Menyimpan..." : "Simpan Perubahan"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 7: Edit / Create AI Skill Prompt (Global & Instant) */}
+      {showPromptModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: "#FFFFFF",
+              borderRadius: 16,
+              maxWidth: 760,
+              width: "100%",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              padding: 28,
+              boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 20,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #E4E4E9", paddingBottom: 14 }}>
+              <div>
+                <h3 style={{ fontSize: 18, fontWeight: 700, color: "#0F0F14", margin: 0 }}>
+                  {isCreatingPrompt ? "Tambah Skill Prompt Baru" : `Edit Skill: ${promptFormData.title || promptFormData.code}`}
+                </h3>
+                <span style={{ fontSize: 12, color: "#71717A" }}>
+                  Identifier: <code style={{ color: "#4338CA", fontWeight: 700 }}>{promptFormData.code}</code>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPromptModal(false)}
+                style={{ background: "none", border: "none", color: "#71717A", cursor: "pointer" }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setSavingPrompt(true);
+                try {
+                  const tagArray = promptFormData.tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);
+                  if (isCreatingPrompt) {
+                    await api.prompts.create({
+                      code: promptFormData.code,
+                      title: promptFormData.title,
+                      category: promptFormData.category,
+                      tags: tagArray,
+                      description: promptFormData.description,
+                      systemPrompt: promptFormData.systemPrompt,
+                      recipeSteps: promptFormData.recipeSteps,
+                      isActive: promptFormData.isActive,
+                    });
+                    setFeedbackMsg({ type: "success", text: "Skill Prompt baru berhasil dibuat di database." });
+                  } else if (editingPrompt) {
+                    await api.prompts.update(editingPrompt.id, {
+                      title: promptFormData.title,
+                      category: promptFormData.category,
+                      tags: tagArray,
+                      description: promptFormData.description,
+                      systemPrompt: promptFormData.systemPrompt,
+                      recipeSteps: promptFormData.recipeSteps,
+                      isActive: promptFormData.isActive,
+                    });
+                    setFeedbackMsg({ type: "success", text: `Prompt "${promptFormData.title}" berhasil diperbarui.` });
+                  }
+                  const fresh = await api.prompts.list();
+                  if (fresh.success) setPromptsList(fresh.data);
+                  setShowPromptModal(false);
+                } catch (err: any) {
+                  notify.error("Gagal menyimpan prompt: " + (err.message || err));
+                } finally {
+                  setSavingPrompt(false);
+                }
+              }}
+              style={{ display: "flex", flexDirection: "column", gap: 16 }}
+            >
+              {/* Row 0: Code Identifier (Locked on Edit) */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#3F3F46" }}>
+                    Kode Identifier Pemanggilan di Code
+                  </label>
+                  {!isCreatingPrompt ? (
+                    <span style={{ fontSize: 11, background: "#EFF6FF", color: "#1D4ED8", padding: "2px 8px", borderRadius: 6, fontWeight: 700, border: "1px solid #BFDBFE" }}>
+                      🔒 Terkunci (Terhubung ke Backend)
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 11, color: "#71717A" }}>
+                      Gunakan format UPPERCASE (Contoh: CUSTOM_ANALISIS_GAP)
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  required
+                  disabled={!isCreatingPrompt}
+                  value={promptFormData.code}
+                  onChange={(e) => setPromptFormData({ ...promptFormData, code: e.target.value.toUpperCase().replace(/\s+/g, "_") })}
+                  placeholder="Contoh: SUBCHAPTER_1_1"
+                  style={{
+                    width: "100%",
+                    height: 38,
+                    padding: "0 12px",
+                    borderRadius: 8,
+                    border: "1px solid #E4E4E9",
+                    fontSize: 13,
+                    fontFamily: "monospace",
+                    fontWeight: 700,
+                    background: !isCreatingPrompt ? "#F1F5F9" : "#FFFFFF",
+                    color: !isCreatingPrompt ? "#64748B" : "#0F0F14",
+                    cursor: !isCreatingPrompt ? "not-allowed" : "text",
+                  }}
+                />
+              </div>
+
+              {/* Title & Category */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 180px", gap: 14 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
+                    Judul Skill / Sub-bab
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={promptFormData.title}
+                    onChange={(e) => setPromptFormData({ ...promptFormData, title: e.target.value })}
+                    placeholder="Contoh: BAB 1.1: Latar Belakang (Piramida Terbalik)"
+                    style={{ width: "100%", height: 38, padding: "0 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13 }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
+                    Kategori
+                  </label>
+                  <select
+                    value={promptFormData.category}
+                    onChange={(e) => setPromptFormData({ ...promptFormData, category: e.target.value })}
+                    style={{ width: "100%", height: 38, padding: "0 8px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13, background: "#FFFFFF" }}
+                  >
+                    <option value="SUBCHAPTER">Sub-bab Outline</option>
+                    <option value="OUTLINE">Blueprint Architect</option>
+                    <option value="PROPOSAL">Proposal Drafter</option>
+                    <option value="SCREENING">Screening Jurnal</option>
+                    <option value="LITERATURE">Literature Search</option>
+                    <option value="CUSTOM">Custom Skill</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Tags & Description */}
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
+                  Tagging (Pisahkan dengan koma)
+                </label>
+                <input
+                  type="text"
+                  value={promptFormData.tags}
+                  onChange={(e) => setPromptFormData({ ...promptFormData, tags: e.target.value })}
+                  placeholder="bab1, latar_belakang, piramida_terbalik, 8_langkah, gap"
+                  style={{ width: "100%", height: 38, padding: "0 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
+                  Deskripsi / Tujuan Akademis
+                </label>
+                <textarea
+                  rows={2}
+                  value={promptFormData.description}
+                  onChange={(e) => setPromptFormData({ ...promptFormData, description: e.target.value })}
+                  placeholder="Uraian singkat tujuan instruksional dan peran akademik prompt ini..."
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #E4E4E9", fontSize: 13, fontFamily: "inherit" }}
+                />
+              </div>
+
+              {/* Step-by-Step Recipe Builder */}
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3F3F46", marginBottom: 6 }}>
+                  Resep Butir Langkah Baku ({promptFormData.recipeSteps.length} Butir)
+                </label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8, maxHeight: 180, overflowY: "auto" }}>
+                  {promptFormData.recipeSteps.map((step, idx) => (
+                    <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8, background: "#F7F7FB", padding: "6px 10px", borderRadius: 6, border: "1px solid #E4E4E9" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#4338CA", width: 20 }}>{idx + 1}.</span>
+                      <span style={{ fontSize: 12, color: "#1E293B", flex: 1 }}>{step}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPromptFormData({
+                            ...promptFormData,
+                            recipeSteps: promptFormData.recipeSteps.filter((_, i) => i !== idx),
+                          });
+                        }}
+                        style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer" }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    type="text"
+                    value={newStepInput}
+                    onChange={(e) => setNewStepInput(e.target.value)}
+                    placeholder="Ketik butir instruksi langkah baru..."
+                    style={{ flex: 1, height: 36, padding: "0 10px", borderRadius: 6, border: "1px solid #E4E4E9", fontSize: 12.5 }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (newStepInput.trim()) {
+                          setPromptFormData({
+                            ...promptFormData,
+                            recipeSteps: [...promptFormData.recipeSteps, newStepInput.trim()],
+                          });
+                          setNewStepInput("");
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newStepInput.trim()) {
+                        setPromptFormData({
+                          ...promptFormData,
+                          recipeSteps: [...promptFormData.recipeSteps, newStepInput.trim()],
+                        });
+                        setNewStepInput("");
+                      }
+                    }}
+                    style={{
+                      background: "#F7F7FB",
+                      border: "1px solid #E4E4E9",
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      fontSize: 12.5,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    + Tambah Butir
+                  </button>
+                </div>
+              </div>
+
+              {/* System Prompt Box */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#3F3F46" }}>
+                    System Prompt Template (AI Instructions)
+                  </label>
+                  <span style={{ fontSize: 11, color: "#71717A" }}>
+                    Gunakan variabel: <code style={{ color: "#4338CA" }}>{"{{TOPIC}}"}</code>, <code style={{ color: "#4338CA" }}>{"{{PRODI}}"}</code>
+                  </span>
+                </div>
+                <textarea
+                  rows={6}
+                  required
+                  value={promptFormData.systemPrompt}
+                  onChange={(e) => setPromptFormData({ ...promptFormData, systemPrompt: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #E4E4E9",
+                    fontSize: 12.5,
+                    fontFamily: "monospace",
+                    background: "#0F172A",
+                    color: "#F8FAFC",
+                    lineHeight: 1.45,
+                  }}
+                />
+              </div>
+
+              {/* Submit Actions */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, paddingTop: 10, borderTop: "1px solid #E4E4E9" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowPromptModal(false)}
+                  style={{
+                    background: "#F7F7FB",
+                    border: "1px solid #E4E4E9",
+                    padding: "8px 14px",
+                    borderRadius: 6,
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  Batal
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={savingPrompt}
+                  style={{
+                    background: "#4338CA",
+                    color: "#FFFFFF",
+                    border: "none",
+                    padding: "8px 18px",
+                    borderRadius: 6,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {savingPrompt ? "Menyimpan ke DB..." : "Simpan Perubahan ke Database"}
                 </button>
               </div>
             </form>

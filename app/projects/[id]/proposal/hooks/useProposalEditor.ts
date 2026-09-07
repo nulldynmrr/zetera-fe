@@ -299,11 +299,29 @@ export function useProposalEditor(projectId: string) {
         if (res.data.outlineItems && res.data.outlineItems.length > 0) {
           const items: any[] = res.data.outlineItems || [];
           const findNotes = (id: string, keyword: string) => {
-            const found = items.find(
-              (i) => i.itemId === id || (i.title && i.title.toLowerCase().includes(keyword.toLowerCase()))
-            );
-            return found?.userNotes?.trim() || "";
+            // 1. Exact itemId match (highest priority)
+            const byId = items.find((i) => i.itemId === id);
+            if (byId) return byId.userNotes?.trim() || "";
+
+            // 2. Keyword match, but EXCLUDE Sistematika Penulisan (its content mentions all sub-chapter names)
+            const byKeyword = items.find((i) => {
+              if (!i.title) return false;
+              const tLower = i.title.toLowerCase();
+              const tagLower = (i.tag || "").toLowerCase();
+              // Jangan masukkan item Sistematika Penulisan ke keyword search
+              if (tLower.includes("sistematika") || tagLower.includes("sistematika")) return false;
+              return tLower.includes(keyword.toLowerCase());
+            });
+            return byKeyword?.userNotes?.trim() || "";
           };
+
+          const notesSistematika = (() => {
+            const s = items.find((i) =>
+              i.tag === "sistematika_penulisan" ||
+              (i.title && i.title.toLowerCase().includes("sistematika"))
+            );
+            return s?.userNotes?.trim() || "";
+          })();
 
           const parseList = (text: string): string[] => {
             if (!text) return [];
@@ -316,8 +334,9 @@ export function useProposalEditor(projectId: string) {
           const notesLatar = findNotes("1.1", "latar");
           const notesIdentifikasi = findNotes("1.2", "identifikasi");
           const notesRumusan = findNotes("1.3", "rumusan");
-          const notesTujuan = findNotes("1.4", "tujuan");
-          const notesManfaat = findNotes("1.5", "manfaat");
+          const notesBatasan = findNotes("1.4", "batasan");
+          const notesTujuan = findNotes("1.5", "tujuan") || findNotes("1.4", "tujuan");
+          const notesManfaat = findNotes("1.6", "manfaat") || findNotes("1.5", "manfaat");
           const notesTeori = findNotes("2.1", "landasan") || findNotes("2.1", "teori");
           const notesTerdahulu = findNotes("2.2", "terdahulu") || findNotes("2.2", "matriks");
           const notesKerangka = findNotes("2.3", "kerangka");
@@ -335,14 +354,17 @@ export function useProposalEditor(projectId: string) {
             bab1: {
               ...(prev?.bab1 || {}),
               latarBelakang: (isFromOutline && notesLatar) ? notesLatar : (prev?.bab1?.latarBelakang || notesLatar || ""),
-              ...(notesIdentifikasi && (isFromOutline || !prev?.bab1?.identifikasiMasalah || prev.bab1.identifikasiMasalah.length === 0)
-                ? { identifikasiMasalah: parseList(notesIdentifikasi) }
+              ...(notesIdentifikasi && (isFromOutline || !prev?.bab1?.identifikasiMasalah || (Array.isArray(prev.bab1.identifikasiMasalah) && prev.bab1.identifikasiMasalah.length === 0))
+                ? { identifikasiMasalah: notesIdentifikasi }
                 : {}),
-              ...(notesRumusan && (isFromOutline || !prev?.bab1?.rumusanMasalah || prev.bab1.rumusanMasalah.length === 0)
-                ? { rumusanMasalah: parseList(notesRumusan) }
+              ...(notesRumusan && (isFromOutline || !prev?.bab1?.rumusanMasalah || (Array.isArray(prev.bab1.rumusanMasalah) && prev.bab1.rumusanMasalah.length === 0))
+                ? { rumusanMasalah: notesRumusan }
                 : {}),
-              ...(notesTujuan && (isFromOutline || !prev?.bab1?.tujuanPenelitian || prev.bab1.tujuanPenelitian.length === 0)
-                ? { tujuanPenelitian: parseList(notesTujuan) }
+              ...(notesBatasan && (isFromOutline || !prev?.bab1?.batasanMasalah || (Array.isArray(prev.bab1.batasanMasalah) && prev.bab1.batasanMasalah.length === 0))
+                ? { batasanMasalah: notesBatasan }
+                : {}),
+              ...(notesTujuan && (isFromOutline || !prev?.bab1?.tujuanPenelitian || (Array.isArray(prev.bab1.tujuanPenelitian) && prev.bab1.tujuanPenelitian.length === 0))
+                ? { tujuanPenelitian: notesTujuan }
                 : {}),
               ...(notesManfaat && (isFromOutline || !prev?.bab1?.manfaatPenelitian?.teoretis)
                 ? {
@@ -351,6 +373,10 @@ export function useProposalEditor(projectId: string) {
                       praktis: prev?.bab1?.manfaatPenelitian?.praktis || "Hasil penelitian dapat menjadi masukan praktis bagi akademisi dan praktisi bidang terkait.",
                     },
                   }
+                : {}),
+              // ✅ Sistematika Penulisan disimpan ke field tersendiri (BUKAN latarBelakang!)
+              ...(notesSistematika && (isFromOutline || !prev?.bab1?.sistematikaPenulisan)
+                ? { sistematikaPenulisan: notesSistematika }
                 : {}),
             },
             bab2: {
@@ -372,8 +398,18 @@ export function useProposalEditor(projectId: string) {
           }));
 
           // Sinkronkan SEMUA sub-bab kustom atau sub-bab lain yang tidak ada di standar bawaan
-          const standardIds = new Set(["1.1", "1.2", "1.3", "1.4", "1.5", "2.1", "2.2", "2.3", "2.4", "3.1", "3.2", "3.3", "3.4"]);
-          const extraItems = items.filter((i) => !standardIds.has(i.itemId));
+          const standardIds = new Set(["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "2.1", "2.2", "2.3", "2.4", "3.1", "3.2", "3.3", "3.4"]);
+          const extraItems = items.filter((i) => {
+            if (standardIds.has(i.itemId)) return false;
+            const tLower = (i.title || "").toLowerCase();
+            const tagLower = (i.tag || "").toLowerCase();
+            if (tLower.includes("manfaat") || tagLower.includes("manfaat")) return false;
+            if (tLower.includes("tujuan") || tagLower.includes("tujuan")) return false;
+            if (tLower.includes("batasan") || tagLower.includes("batasan")) return false;
+            // ✅ KRITIS: Sistematika Penulisan dihandle tersendiri via sistematikaPenulisan field — jangan masukkan ke extraItems
+            if (tLower.includes("sistematika") || tagLower.includes("sistematika") || i.tag === "sistematika_penulisan") return false;
+            return true;
+          });
           if (extraItems.length > 0) {
             setCustomSubChapters((prevSubs) => {
               const newSubs: CustomSubChapterItem[] = [...prevSubs];

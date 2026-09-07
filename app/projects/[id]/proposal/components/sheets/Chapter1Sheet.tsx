@@ -35,21 +35,80 @@ export function Chapter1Sheet({
 }: Chapter1SheetProps) {
   const bab1Subs = customSubChapters.filter((s) => s.chapter === "bab1" && !s.hidden);
 
-  const normalizeList = (val: any): string[] => {
-    if (!val) return [];
-    if (Array.isArray(val)) return val.filter((x): x is string => typeof x === "string");
-    if (typeof val === "string" && val.trim()) {
-      return val.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  interface ParsedSubChapter {
+    intro: string;
+    items: string[];
+  }
+
+  const parseIntroAndList = (val: any): ParsedSubChapter => {
+    if (!val) return { intro: "", items: [] };
+
+    if (typeof val === "object" && !Array.isArray(val)) {
+      if (val.pengantar || val.intro || val.items) {
+        return {
+          intro: (val.pengantar || val.intro || "").trim(),
+          items: Array.isArray(val.items)
+            ? val.items.map((x: any) => String(x).replace(/^(\d+[\.\)]|[-*•])\s*/, "").trim()).filter(Boolean)
+            : [],
+        };
+      }
     }
-    if (typeof val === "object") {
-      return Object.values(val).filter((x): x is string => typeof x === "string");
+
+    const rawLines: string[] = [];
+    if (Array.isArray(val)) {
+      for (const item of val) {
+        if (typeof item === "string") {
+          rawLines.push(...item.split(/\n+/).map((s) => s.trim()).filter(Boolean));
+        }
+      }
+    } else if (typeof val === "string") {
+      rawLines.push(...val.split(/\n+/).map((s) => s.trim()).filter(Boolean));
     }
-    return [];
+
+    if (rawLines.length === 0) return { intro: "", items: [] };
+
+    const introLines: string[] = [];
+    const items: string[] = [];
+    let foundFirstNumbered = false;
+
+    for (const line of rawLines) {
+      const isNumbered = /^(\d+[\.\)]|[-*•])\s+/.test(line);
+      if (isNumbered) {
+        foundFirstNumbered = true;
+        items.push(line.replace(/^(\d+[\.\)]|[-*•])\s*/, "").trim());
+      } else if (!foundFirstNumbered) {
+        introLines.push(line);
+      } else {
+        if (items.length > 0) {
+          items[items.length - 1] += " " + line;
+        } else {
+          items.push(line);
+        }
+      }
+    }
+
+    if (items.length === 0 && introLines.length > 1) {
+      const first = introLines[0];
+      if (first.endsWith(":") || first.toLowerCase().includes("sebagai berikut") || first.toLowerCase().includes("yaitu")) {
+        return {
+          intro: first,
+          items: introLines.slice(1).map((s) => s.replace(/^(\d+[\.\)]|[-*•])\s*/, "").trim()),
+        };
+      }
+      return { intro: "", items: introLines };
+    }
+
+    return {
+      intro: introLines.join("\n"),
+      items,
+    };
   };
 
-  const identifikasiItems = normalizeList(proposalData?.bab1?.identifikasiMasalah);
-  const rumusanItems = normalizeList(proposalData?.bab1?.rumusanMasalah);
-  const tujuanItems = normalizeList(proposalData?.bab1?.tujuanPenelitian);
+  const identifikasiData = parseIntroAndList(proposalData?.bab1?.identifikasiMasalah);
+  const rumusanData = parseIntroAndList(proposalData?.bab1?.rumusanMasalah);
+  const batasanData = parseIntroAndList(proposalData?.bab1?.batasanMasalah);
+  const tujuanData = parseIntroAndList(proposalData?.bab1?.tujuanPenelitian);
+  const hasBatasan = batasanData.items.length > 0 || !!batasanData.intro;
 
   return (
     <>
@@ -136,7 +195,7 @@ export function Chapter1Sheet({
         </A4Sheet>
       ) : null}
 
-      {/* ── HALAMAN SUB-BAB INTI BAB I: 1.2 s/d 1.5 ── */}
+      {/* ── HALAMAN SUB-BAB INTI BAB I: 1.2 s/d 1.6 ── */}
       <A4Sheet
         sheetId="sheet_bab1_subs"
         isIncludedInPrint={pdfPageSelection.bab1}
@@ -154,15 +213,27 @@ export function Chapter1Sheet({
           <div id="sub_1_2" style={{ fontWeight: 700, marginBottom: 6, marginTop: 0 }}>
             1.2 Identifikasi Masalah
           </div>
-          {identifikasiItems.length > 0 ? (
+          {identifikasiData.intro ? (
+            <p
+              style={{
+                textIndent: paragraphStyle === "indent" ? "1.27cm" : "0",
+                marginBottom: 6,
+                lineHeight: 1.75,
+                whiteSpace: "pre-line",
+              }}
+            >
+              {identifikasiData.intro}
+            </p>
+          ) : null}
+          {identifikasiData.items.length > 0 ? (
             <div style={{ paddingLeft: "1.27cm", marginBottom: 10, lineHeight: 1.75 }}>
-              {identifikasiItems.map((im: string, idx: number) => (
+              {identifikasiData.items.map((im: string, idx: number) => (
                 <div
                   key={idx}
-                  style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 3 }}
+                  style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 4 }}
                 >
                   <span style={{ minWidth: 18 }}>{idx + 1}.</span>
-                  <span style={{ flex: 1, textAlign: "justify" }}>{im.replace(/^\d+\.\s*/, "")}</span>
+                  <span style={{ flex: 1, textAlign: "justify" }}>{im}</span>
                 </div>
               ))}
             </div>
@@ -171,39 +242,103 @@ export function Chapter1Sheet({
           <div id="sub_1_3" style={{ fontWeight: 700, marginBottom: 6, marginTop: 10 }}>
             1.3 Rumusan Masalah
           </div>
-          {rumusanItems.length > 0 ? (
+          {rumusanData.intro ? (
+            <p
+              style={{
+                textIndent: paragraphStyle === "indent" ? "1.27cm" : "0",
+                marginBottom: 6,
+                lineHeight: 1.75,
+                whiteSpace: "pre-line",
+              }}
+            >
+              {rumusanData.intro}
+            </p>
+          ) : null}
+          {rumusanData.items.length > 0 ? (
             <div style={{ paddingLeft: "1.27cm", marginBottom: 10, lineHeight: 1.75 }}>
-              {rumusanItems.map((r: string, idx: number) => (
+              {rumusanData.items.map((r: string, idx: number) => (
                 <div
                   key={idx}
-                  style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 3 }}
+                  style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 4 }}
                 >
                   <span style={{ minWidth: 18 }}>{idx + 1}.</span>
-                  <span style={{ flex: 1, textAlign: "justify" }}>{r.replace(/^\d+\.\s*/, "")}</span>
+                  <span style={{ flex: 1, textAlign: "justify" }}>{r}</span>
                 </div>
               ))}
             </div>
           ) : null}
 
-          <div id="sub_1_4" style={{ fontWeight: 700, marginBottom: 6, marginTop: 10 }}>
-            1.4 Tujuan Penelitian
+          {/* ── 1.4 Batasan Masalah (Jika ada) ── */}
+          {hasBatasan ? (
+            <>
+              <div id="sub_1_4" style={{ fontWeight: 700, marginBottom: 6, marginTop: 10 }}>
+                1.4 Batasan Masalah
+              </div>
+              {batasanData.intro ? (
+                <p
+                  style={{
+                    textIndent: paragraphStyle === "indent" ? "1.27cm" : "0",
+                    marginBottom: 6,
+                    lineHeight: 1.75,
+                    whiteSpace: "pre-line",
+                  }}
+                >
+                  {batasanData.intro}
+                </p>
+              ) : null}
+              {batasanData.items.length > 0 ? (
+                <div style={{ paddingLeft: "1.27cm", marginBottom: 10, lineHeight: 1.75 }}>
+                  {batasanData.items.map((bm: string, idx: number) => (
+                    <div
+                      key={idx}
+                      style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 4 }}
+                    >
+                      <span style={{ minWidth: 18 }}>{idx + 1}.</span>
+                      <span style={{ flex: 1, textAlign: "justify" }}>{bm}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
+          <div
+            id={hasBatasan ? "sub_1_5" : "sub_1_4"}
+            style={{ fontWeight: 700, marginBottom: 6, marginTop: 10 }}
+          >
+            {hasBatasan ? "1.5 Tujuan Penelitian" : "1.4 Tujuan Penelitian"}
           </div>
-          {tujuanItems.length > 0 ? (
+          {tujuanData.intro ? (
+            <p
+              style={{
+                textIndent: paragraphStyle === "indent" ? "1.27cm" : "0",
+                marginBottom: 6,
+                lineHeight: 1.75,
+                whiteSpace: "pre-line",
+              }}
+            >
+              {tujuanData.intro}
+            </p>
+          ) : null}
+          {tujuanData.items.length > 0 ? (
             <div style={{ paddingLeft: "1.27cm", marginBottom: 10, lineHeight: 1.75 }}>
-              {tujuanItems.map((t: string, idx: number) => (
+              {tujuanData.items.map((t: string, idx: number) => (
                 <div
                   key={idx}
-                  style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 3 }}
+                  style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 4 }}
                 >
                   <span style={{ minWidth: 18 }}>{idx + 1}.</span>
-                  <span style={{ flex: 1, textAlign: "justify" }}>{t.replace(/^\d+\.\s*/, "")}</span>
+                  <span style={{ flex: 1, textAlign: "justify" }}>{t}</span>
                 </div>
               ))}
             </div>
           ) : null}
 
-          <div id="sub_1_5" style={{ fontWeight: 700, marginBottom: 6, marginTop: 10 }}>
-            1.5 Manfaat Penelitian
+          <div
+            id={hasBatasan ? "sub_1_6" : "sub_1_5"}
+            style={{ fontWeight: 700, marginBottom: 6, marginTop: 10 }}
+          >
+            {hasBatasan ? "1.6 Manfaat Penelitian" : "1.5 Manfaat Penelitian"}
           </div>
           <p
             style={{
@@ -212,9 +347,9 @@ export function Chapter1Sheet({
               lineHeight: 1.75,
             }}
           >
-            <strong>1.5.1 Manfaat Teoretis:</strong>{" "}
+            <strong>{hasBatasan ? "1.6.1 Manfaat Teoretis:" : "1.5.1 Manfaat Teoretis:"}</strong>{" "}
             {proposalData?.bab1?.manfaatPenelitian?.teoretis ||
-              "Penelitian ini memberikan kontribusi empiris kuantitatif terhadap literatur pengalaman pengguna chatbot kesehatan mental pada populasi mahasiswa teknik informatika di Indonesia."}
+              "Penelitian ini memberikan kontribusi empiris terhadap literatur dan pengembangan keilmuan di bidang terkait."}
           </p>
           <p
             style={{
@@ -223,9 +358,9 @@ export function Chapter1Sheet({
               lineHeight: 1.75,
             }}
           >
-            <strong>1.5.2 Manfaat Praktis:</strong>{" "}
+            <strong>{hasBatasan ? "1.6.2 Manfaat Praktis:" : "1.5.2 Manfaat Praktis:"}</strong>{" "}
             {proposalData?.bab1?.manfaatPenelitian?.praktis ||
-              "Hasil penelitian dapat menjadi masukan bagi pengembang chatbot untuk meningkatkan kualitas interaksi, privasi, dan respons terhadap kebutuhan mahasiswa Informatika."}
+              "Hasil penelitian dapat menjadi rujukan praktis dan solusi terapan bagi objek penelitian dan pemangku kepentingan."}
           </p>
 
           {/* Custom sub-chapters for BAB 1 */}
