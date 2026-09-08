@@ -1549,14 +1549,6 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
             : undefined,
         },
         {
-          id: "PROMPTS_SKILLS" as AdminTab,
-          title: "Skills & Core Prompts",
-          icon: Sparkles,
-          badge: promptsList.filter((p) => p.category !== "SUBCHAPTER" && !p.code.startsWith("SUBCHAPTER_")).length
-            ? `${promptsList.filter((p) => p.category !== "SUBCHAPTER" && !p.code.startsWith("SUBCHAPTER_")).length}`
-            : undefined,
-        },
-        {
           id: "TEMPLATES_LIBRARY" as AdminTab,
           title: "Template & LaTeX",
           icon: FileCode,
