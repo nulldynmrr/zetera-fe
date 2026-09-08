@@ -455,8 +455,60 @@ export function useProposalEditor(projectId: string) {
   const handleSaveDraft = useCallback(async () => {
     setSaveDraftStatus("saving");
     try {
+      let currentProposalData = proposalData ? { ...proposalData } : {};
+
+      // Sync direct contentEditable paper edits from DOM if in browser
+      if (typeof document !== "undefined") {
+        const extractTextAndMedia = (containerId: string): string[] => {
+          const el = document.getElementById(containerId);
+          if (!el) return [];
+          const items: string[] = [];
+          const childNodes = Array.from(el.querySelectorAll("p, table, figure"));
+          if (childNodes.length > 0) {
+            childNodes.forEach((node) => {
+              if (node.tagName.toLowerCase() === "table") {
+                items.push(node.outerHTML);
+              } else if (node.tagName.toLowerCase() === "figure") {
+                const img = node.querySelector("img");
+                const cap = node.querySelector("figcaption")?.textContent?.trim() || "";
+                if (img) items.push(`![${cap}](${img.getAttribute("src") || ""})`);
+              } else {
+                const txt = node.textContent?.trim();
+                // Exclude static headers from extracted paragraph body
+                if (
+                  txt &&
+                  !/^BAB\s+[IVX0-9]+/i.test(txt) &&
+                  !/^PENDAHULUAN/i.test(txt) &&
+                  !/^1\.1\s+Latar\s+Belakang/i.test(txt) &&
+                  !/^TINJAUAN\s+PUSTAKA/i.test(txt) &&
+                  !/^METODOLOGI/i.test(txt)
+                ) {
+                  items.push(txt);
+                }
+              }
+            });
+          }
+          return items;
+        };
+
+        const latarP1 = extractTextAndMedia("section_bab1");
+        const latarP2 = extractTextAndMedia("section_bab1_p2");
+        const latarP3 = extractTextAndMedia("section_bab1_p3");
+        const combinedLatar = [...latarP1, ...latarP2, ...latarP3].join("\n\n").trim();
+        if (combinedLatar && combinedLatar.length > 30) {
+          currentProposalData = {
+            ...currentProposalData,
+            bab1: {
+              ...currentProposalData?.bab1,
+              latarBelakang: combinedLatar,
+            },
+          };
+          setProposalData(currentProposalData);
+        }
+      }
+
       const draftPayload = {
-        proposalData,
+        proposalData: currentProposalData,
         approvalData,
         abstractData,
         appendixData,
@@ -994,23 +1046,88 @@ export function useProposalEditor(projectId: string) {
         .filter(Boolean)
         .join(" ");
 
-      const rawLatar = sanitizeAcademicText(proposalData?.bab1?.latarBelakang || "");
-      const paras = rawLatar.split(/\n+/).map((p: string) => p.trim()).filter(Boolean);
-      const total = paras.length;
+      let rawLatar = sanitizeAcademicText(proposalData?.bab1?.latarBelakang || "");
+
+      // Auto-heal orphaned table tags if previously cut or malformed
+      if (rawLatar.includes("<td") && !rawLatar.includes("<table")) {
+        rawLatar = `<table style="width: 100%; border-collapse: collapse; margin: 16px 0;" data-caption="Tabel"><tbody>\n<tr>\n${rawLatar}\n</tbody></table>`;
+      }
+
+      // Split into atomic academic blocks (paragraphs, full HTML tables, full SVGs, code blocks)
+      const splitIntoAcademicBlocks = (text: string): string[] => {
+        if (!text) return [];
+        const result: string[] = [];
+        // Match complete <table...>...</table> or <svg...>...</svg> or ```...```
+        const blockRegex = /(<table[\s\S]*?<\/table>|<svg[\s\S]*?<\/svg>|```[\s\S]*?```)/gi;
+        let lastIdx = 0;
+        let m;
+        while ((m = blockRegex.exec(text)) !== null) {
+          const before = text.slice(lastIdx, m.index).trim();
+          if (before) {
+            const paras = before.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean);
+            result.push(...paras);
+          }
+          result.push(m[0].trim());
+          lastIdx = blockRegex.lastIndex;
+        }
+        const remaining = text.slice(lastIdx).trim();
+        if (remaining) {
+          const paras = remaining.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean);
+          result.push(...paras);
+        }
+        return result.filter(Boolean);
+      };
+
+      const blocks = splitIntoAcademicBlocks(rawLatar);
+      const totalBlocks = blocks.length;
 
       let l1 = rawLatar;
       let l2 = "";
       let l3 = "";
 
-      if (total > 18) {
-        const third = Math.ceil(total / 3);
-        l1 = paras.slice(0, third).join("\n\n");
-        l2 = paras.slice(third, third * 2).join("\n\n");
-        l3 = paras.slice(third * 2).join("\n\n");
-      } else if (total > 9) {
-        const mid = Math.ceil(total / 2);
-        l1 = paras.slice(0, mid).join("\n\n");
-        l2 = paras.slice(mid).join("\n\n");
+      // Distribute whole blocks across pages without ever cutting inside a table or block
+      if (totalBlocks > 8 || rawLatar.length > 3200) {
+        let currentLen = 0;
+        const page1Blocks: string[] = [];
+        const page2Blocks: string[] = [];
+        const page3Blocks: string[] = [];
+        const targetPerPage = Math.max(1400, Math.ceil(rawLatar.length / 3));
+
+        for (const b of blocks) {
+          const bLen = b.length;
+          if (currentLen + bLen <= targetPerPage || page1Blocks.length === 0) {
+            page1Blocks.push(b);
+            currentLen += bLen;
+          } else if (page2Blocks.length === 0 || (currentLen + bLen <= targetPerPage * 2 && page3Blocks.length === 0)) {
+            page2Blocks.push(b);
+            currentLen += bLen;
+          } else {
+            page3Blocks.push(b);
+          }
+        }
+
+        l1 = page1Blocks.join("\n\n");
+        l2 = page2Blocks.join("\n\n");
+        l3 = page3Blocks.join("\n\n");
+      } else if (totalBlocks > 4 || rawLatar.length > 1600) {
+        let currentLen = 0;
+        const page1Blocks: string[] = [];
+        const page2Blocks: string[] = [];
+        const targetPerPage = Math.max(1200, Math.ceil(rawLatar.length / 2));
+
+        for (const b of blocks) {
+          const bLen = b.length;
+          if (currentLen + bLen <= targetPerPage || page1Blocks.length === 0) {
+            page1Blocks.push(b);
+            currentLen += bLen;
+          } else {
+            page2Blocks.push(b);
+            currentLen += bLen;
+          }
+        }
+
+        l1 = page1Blocks.join("\n\n");
+        l2 = page2Blocks.join("\n\n");
       }
 
       // References

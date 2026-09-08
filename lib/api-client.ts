@@ -1334,6 +1334,62 @@ export const api = {
     delete: (idOrCode: string) =>
       http.delete<{ success: boolean; message: string }>(`/api/prompts/${encodeURIComponent(idOrCode)}`),
   },
+
+  // ── Rules & Multi-Variant Engine API ───────────────────
+  rules: {
+    list: (params?: { category?: string; search?: string; activeOnly?: boolean }) => {
+      const q = new URLSearchParams();
+      if (params?.category) q.set("category", params.category);
+      if (params?.search) q.set("search", params.search);
+      if (params?.activeOnly) q.set("activeOnly", "true");
+      return http.get<{ success: boolean; data: Rule[] }>(`/api/rules?${q.toString()}`);
+    },
+
+    get: (idOrSlug: string) =>
+      http.get<{ success: boolean; data: Rule }>(`/api/rules/${encodeURIComponent(idOrSlug)}`),
+
+    create: (data: Partial<Rule>) =>
+      http.post<{ success: boolean; data: Rule }>("/api/rules", data),
+
+    update: (idOrSlug: string, data: Partial<Rule>) =>
+      http.put<{ success: boolean; data: Rule }>(`/api/rules/${encodeURIComponent(idOrSlug)}`, data),
+
+    delete: (idOrSlug: string) =>
+      http.delete<{ success: boolean; message: string }>(`/api/rules/${encodeURIComponent(idOrSlug)}`),
+
+    upsertVariant: (idOrSlug: string, data: { researchApproach: string; systemPrompt: string }) =>
+      http.post<{ success: boolean; data: RuleVariant }>(`/api/rules/${encodeURIComponent(idOrSlug)}/variants`, data),
+
+    deleteVariant: (idOrSlug: string, variantId: string) =>
+      http.delete<{ success: boolean; message: string }>(`/api/rules/${encodeURIComponent(idOrSlug)}/variants/${encodeURIComponent(variantId)}`),
+  },
+
+  // ── Sub Bab & Output Spec Engine API ───────────────────
+  subbab: {
+    list: (params?: { bab?: number | string }) => {
+      const q = new URLSearchParams();
+      if (params?.bab !== undefined && params?.bab !== "") q.set("bab", String(params.bab));
+      return http.get<{ success: boolean; data: SubBab[] }>(`/api/subbab?${q.toString()}`);
+    },
+
+    get: (idOrTag: string) =>
+      http.get<{ success: boolean; data: SubBab }>(`/api/subbab/${encodeURIComponent(idOrTag)}`),
+
+    create: (data: { tag: string; title: string; bab?: number; order?: number; outputSpec?: Partial<OutputSpec>; ruleIds?: Array<string | { ruleId: string; order?: number; isRequired?: boolean }> }) =>
+      http.post<{ success: boolean; data: SubBab }>("/api/subbab", data),
+
+    update: (idOrTag: string, data: Partial<SubBab>) =>
+      http.put<{ success: boolean; data: SubBab }>(`/api/subbab/${encodeURIComponent(idOrTag)}`, data),
+
+    delete: (idOrTag: string) =>
+      http.delete<{ success: boolean; message: string }>(`/api/subbab/${encodeURIComponent(idOrTag)}`),
+
+    setRules: (idOrTag: string, rules: Array<{ ruleId: string; order?: number; isRequired?: boolean } | string>) =>
+      http.post<{ success: boolean; data: SubBab }>(`/api/subbab/${encodeURIComponent(idOrTag)}/rules`, { rules }),
+
+    updateOutputSpec: (idOrTag: string, data: Partial<OutputSpec>) =>
+      http.put<{ success: boolean; data: OutputSpec }>(`/api/subbab/${encodeURIComponent(idOrTag)}/output-spec`, data),
+  },
 };
 
 export interface AiSkillPrompt {
@@ -1351,6 +1407,62 @@ export interface AiSkillPrompt {
   isSystem: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RuleVariant {
+  id: string;
+  ruleId: string;
+  researchApproach: string;
+  systemPrompt: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Rule {
+  id: string;
+  slug: string;
+  name: string;
+  category: "WRITING_STYLE" | "STRUCTURAL" | "CITATION" | string;
+  description?: string | null;
+  systemPrompt: string;
+  isActive: boolean;
+  isSystem: boolean;
+  variants?: RuleVariant[];
+  _count?: { mappings: number };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface OutputSpec {
+  id: string;
+  subBabId: string;
+  formatStyle: "PARAGRAPH" | "ROADMAP" | "LIST" | "NUMBERED_LIST" | "TABLE" | string;
+  citationPolicy: "REQUIRED" | "OPTIONAL" | "NONE" | string;
+  jsonSchema?: any;
+  renderTemplate?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SubBabRuleMapping {
+  id: string;
+  subBabId: string;
+  ruleId: string;
+  order: number;
+  isRequired: boolean;
+  rule?: Rule;
+}
+
+export interface SubBab {
+  id: string;
+  tag: string;
+  title: string;
+  bab: number;
+  order: number;
+  outputSpec?: OutputSpec | null;
+  mappings?: SubBabRuleMapping[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 

@@ -10,6 +10,9 @@ import {
   Wand2,
   Printer,
   RefreshCw,
+  Table as TableIcon,
+  Image as ImageIcon,
+  GitPullRequest,
 } from "lucide-react";
 
 import { useProposalEditor } from "./hooks/useProposalEditor";
@@ -35,6 +38,7 @@ import { CitationPickerModal } from "./components/modals/CitationPickerModal";
 import { PdfExportModal } from "./components/modals/PdfExportModal";
 import { TypoTooltip } from "./components/modals/TypoTooltip";
 import { SwitchTemplateModal } from "./components/modals/SwitchTemplateModal";
+import { InsertMediaModal } from "./components/modals/InsertMediaModal";
 import { sanitizeAcademicText } from "./types";
 
 export default function ProposalPage() {
@@ -52,7 +56,56 @@ export default function ProposalPage() {
   );
 
   const [showAddSubChapterModal, setShowAddSubChapterModal] = React.useState(false);
+  const [showInsertMediaModal, setShowInsertMediaModal] = React.useState(false);
+  const [mediaModalInitialTab, setMediaModalInitialTab] = React.useState<"table" | "diagram" | "image">("table");
   const [focusActiveChapter, setFocusActiveChapter] = React.useState<boolean>(true);
+
+  const handleOpenInsertMedia = (tab: "table" | "diagram" | "image" = "table") => {
+    setMediaModalInitialTab(tab);
+    setShowInsertMediaModal(true);
+  };
+
+  // Insert custom media / diagram / table markdown snippet to target subchapter
+  const handleInsertMediaContent = (targetField: string, markdownSnippet: string) => {
+    if (targetField.startsWith("custom_")) {
+      const customId = targetField.replace("custom_", "");
+      editor.setCustomSubChapters((prev: any[]) =>
+        prev.map((s) =>
+          s.id === customId
+            ? { ...s, content: s.content ? `${s.content}\n\n${markdownSnippet}` : markdownSnippet }
+            : s
+        )
+      );
+    } else if (targetField.startsWith("bab1.")) {
+      const field = targetField.split(".")[1];
+      editor.setProposalData((prev: any) => ({
+        ...prev,
+        bab1: {
+          ...prev?.bab1,
+          [field]: prev?.bab1?.[field] ? `${prev.bab1[field]}\n\n${markdownSnippet}` : markdownSnippet,
+        },
+      }));
+    } else if (targetField.startsWith("bab2.")) {
+      const field = targetField.split(".")[1];
+      editor.setProposalData((prev: any) => ({
+        ...prev,
+        bab2: {
+          ...prev?.bab2,
+          [field]: prev?.bab2?.[field] ? `${prev.bab2[field]}\n\n${markdownSnippet}` : markdownSnippet,
+        },
+      }));
+    } else if (targetField.startsWith("bab3.")) {
+      const field = targetField.split(".")[1];
+      editor.setProposalData((prev: any) => ({
+        ...prev,
+        bab3: {
+          ...prev?.bab3,
+          [field]: prev?.bab3?.[field] ? `${prev.bab3[field]}\n\n${markdownSnippet}` : markdownSnippet,
+        },
+      }));
+    }
+    editor.triggerAutoSave();
+  };
 
   // Insert AI draft to active document chapter
   const handleInsertAiDraftToDocument = (text: string) => {
@@ -219,7 +272,203 @@ export default function ProposalPage() {
     });
   };
 
-  // Render text with typographical highlights, interactive citations, and indent styling
+  // Helper to parse blocks from cleanText (Paragraph, Image, Table)
+  const parseDocumentBlocks = (text: string) => {
+    const lines = text.split("\n");
+    const blocks: Array<
+      | { type: "PARAGRAPH"; text: string }
+      | { type: "IMAGE"; caption: string; src: string }
+      | {
+          type: "TABLE";
+          caption: string;
+          headers: string[];
+          rows: string[][];
+          headerRows?: Array<Array<{ text: string; colSpan?: number; rowSpan?: number }>>;
+          bodyRows?: Array<Array<{ text: string; colSpan?: number; rowSpan?: number }>>;
+        }
+    > = [];
+
+    let curPara: string[] = [];
+    let curTable: string[] = [];
+    let curHtmlTable: string[] = [];
+    let inHtmlTable = false;
+    let pendingCaption = "";
+
+    const flushPara = () => {
+      if (curPara.length > 0) {
+        const pText = curPara.join("\n").trim();
+        if (pText) blocks.push({ type: "PARAGRAPH", text: pText });
+        curPara = [];
+      }
+    };
+
+    const flushTable = () => {
+      if (curTable.length >= 2) {
+        const rawHeaders = curTable[0]
+          .replace(/^\|/, "")
+          .replace(/\|$/, "")
+          .split("|")
+          .map((c) => c.trim());
+        let startIndex = 1;
+        if (curTable.length > 1 && /^[\s|:-]+$/.test(curTable[1])) startIndex = 2;
+        const rows: string[][] = [];
+        for (let r = startIndex; r < curTable.length; r++) {
+          const cells = curTable[r]
+            .replace(/^\|/, "")
+            .replace(/\|$/, "")
+            .split("|")
+            .map((c) => c.trim());
+          rows.push(cells);
+        }
+        blocks.push({
+          type: "TABLE",
+          caption: pendingCaption,
+          headers: rawHeaders,
+          rows,
+          headerRows: [rawHeaders.map((h) => ({ text: h, colSpan: 1, rowSpan: 1 }))],
+          bodyRows: rows.map((r) => r.map((c) => ({ text: c, colSpan: 1, rowSpan: 1 }))),
+        });
+      }
+      curTable = [];
+      pendingCaption = "";
+    };
+
+    const flushHtmlTable = () => {
+      if (curHtmlTable.length > 0) {
+        let html = curHtmlTable.join("\n");
+        if (!html.includes("<table")) {
+          html = `<table>${html}</table>`;
+        }
+        const capMatch = html.match(/data-caption=["'](.*?)["']/i);
+        const caption = capMatch ? capMatch[1] : pendingCaption;
+        const theadMatch = html.match(/<thead>([\s\S]*?)<\/thead>/i);
+        const tbodyMatch = html.match(/<tbody>([\s\S]*?)<\/tbody>/i);
+
+        const parseRows = (sectionHtml: string, tag: string) => {
+          if (!sectionHtml) return [];
+          const rows: Array<Array<{ text: string; colSpan?: number; rowSpan?: number }>> = [];
+          const trRegex = /<tr[\s\S]*?>([\s\S]*?)<\/tr>/gi;
+          let trMatch;
+          while ((trMatch = trRegex.exec(sectionHtml)) !== null) {
+            const cellRegex = new RegExp('<(?:' + tag + ')(?:\\s+([^>]*))?>([\\s\\S]*?)<\\/(?:' + tag + ')>', 'gi');
+            const rowCells: Array<{ text: string; colSpan?: number; rowSpan?: number }> = [];
+            let cMatch;
+            while ((cMatch = cellRegex.exec(trMatch[1])) !== null) {
+              const attrs = cMatch[1] || "";
+              const cellText = cMatch[2].replace(/<[^>]*>/g, "").trim();
+              const cs = attrs.match(/colspan=["']?(\d+)["']?/i);
+              const rs = attrs.match(/rowspan=["']?(\d+)["']?/i);
+              rowCells.push({
+                text: cellText,
+                colSpan: cs ? parseInt(cs[1], 10) : 1,
+                rowSpan: rs ? parseInt(rs[1], 10) : 1,
+              });
+            }
+            if (rowCells.length > 0) rows.push(rowCells);
+          }
+          return rows;
+        };
+
+        let headerRows = parseRows(theadMatch ? theadMatch[1] : "", "th|td");
+        let bodyRows = parseRows(tbodyMatch ? tbodyMatch[1] : html, "td|th");
+
+        // If no explicit thead, but the first row has th or is headers
+        if (headerRows.length === 0 && bodyRows.length > 0) {
+          const firstRow = bodyRows[0];
+          const hasTh = firstRow.some((c) => /th/i.test(html.slice(0, 300)));
+          if (hasTh || bodyRows.length > 1) {
+            headerRows = [firstRow];
+            bodyRows = bodyRows.slice(1);
+          }
+        }
+
+        const headers = headerRows.length > 0 ? headerRows[headerRows.length - 1].map((c) => c.text) : [];
+        const rows = bodyRows.map((r) => r.map((c) => c.text));
+
+        blocks.push({
+          type: "TABLE",
+          caption,
+          headers,
+          rows,
+          headerRows,
+          bodyRows,
+        });
+
+        curHtmlTable = [];
+        pendingCaption = "";
+        inHtmlTable = false;
+      }
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      const isTableTag = /<(?:table|tr|td|th|tbody|thead|tfoot|\/table|\/tr|\/td|\/th|\/tbody|\/thead|\/tfoot)\b/i.test(trimmed);
+
+      // Check for HTML Table
+      if (trimmed.includes("<table") || isTableTag || inHtmlTable) {
+        if (!inHtmlTable) {
+          flushPara();
+          flushTable();
+          inHtmlTable = true;
+        }
+
+        // If in table mode but line is a completely separate heading or normal paragraph
+        if (inHtmlTable && !isTableTag && !trimmed.startsWith("<") && (trimmed.startsWith("#") || trimmed.startsWith("1.") || trimmed.startsWith("2.") || trimmed.startsWith("3."))) {
+          flushHtmlTable();
+          curPara.push(line);
+          continue;
+        }
+
+        curHtmlTable.push(line);
+        if (trimmed.includes("</table>")) {
+          flushHtmlTable();
+        }
+        continue;
+      }
+
+      const imgMatch = trimmed.match(/^!\[(.*?)\]\((.*?)\)$/);
+      if (imgMatch) {
+        flushPara();
+        flushTable();
+        blocks.push({
+          type: "IMAGE",
+          caption: imgMatch[1].trim(),
+          src: imgMatch[2].trim(),
+        });
+        continue;
+      }
+
+      const tableCapMatch = trimmed.match(/^(?:Tabel|Table)\s+(\d+(?:\.\d+)*\s*:\s*.+)$/i);
+      if (tableCapMatch && i + 1 < lines.length && (lines[i + 1].trim().startsWith("|") || lines[i + 1].trim().includes("<table"))) {
+        flushPara();
+        flushTable();
+        pendingCaption = trimmed;
+        continue;
+      }
+
+      if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+        flushPara();
+        curTable.push(trimmed);
+        continue;
+      }
+
+      if (curTable.length > 0) {
+        flushTable();
+      }
+
+      curPara.push(line);
+    }
+
+    flushPara();
+    flushTable();
+    flushHtmlTable();
+
+    return blocks;
+  };
+
+  // Render text with typographical highlights, interactive citations, images, and tables
   const renderAcademicParagraphs = (rawText?: string, placeholder?: string) => {
     const cleanText = sanitizeAcademicText(rawText);
     if (!cleanText || !cleanText.trim()) {
@@ -241,23 +490,171 @@ export default function ProposalPage() {
       return null;
     }
 
-    const paragraphs = cleanText.split(/\n+/).map((p) => p.trim()).filter(Boolean);
+    const blocks = parseDocumentBlocks(cleanText);
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
     return (
       <div>
-        {paragraphs.map((para, idx) => (
-          <p
-            key={idx}
-            style={{
-              textIndent: editor.paragraphStyle === "indent" ? "1.27cm" : "0",
-              marginBottom: editor.paragraphStyle === "indent" ? "0px" : "14px",
-              lineHeight: 1.8,
-              textAlign: "justify",
-            }}
-          >
-            {renderTextWithClickableCitations(para)}
-          </p>
-        ))}
+        {blocks.map((block, bIdx) => {
+          if (block.type === "IMAGE") {
+            const fullSrc = block.src.startsWith("/uploads/") ? `${apiUrl}${block.src}` : block.src;
+            return (
+              <figure
+                key={bIdx}
+                contentEditable={false}
+                style={{
+                  margin: "24px 0",
+                  textAlign: "center",
+                  userSelect: "none",
+                }}
+              >
+                <img
+                  src={fullSrc}
+                  alt={block.caption}
+                  style={{
+                    maxWidth: "88%",
+                    maxHeight: 400,
+                    margin: "0 auto",
+                    display: "block",
+                    borderRadius: 6,
+                    border: "1px solid #E2E8F0",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+                    background: "#FFFFFF",
+                    padding: 4,
+                  }}
+                />
+                {block.caption && (
+                  <figcaption
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12,
+                      fontStyle: "italic",
+                      fontFamily: "Times New Roman, serif",
+                      color: "#334155",
+                      textAlign: "center",
+                    }}
+                  >
+                    {block.caption}
+                  </figcaption>
+                )}
+              </figure>
+            );
+          }
+
+          if (block.type === "TABLE") {
+            return (
+              <div
+                key={bIdx}
+                contentEditable={false}
+                style={{
+                  margin: "20px 0",
+                  userSelect: "none",
+                }}
+              >
+                {block.caption && (
+                  <div
+                    style={{
+                      marginBottom: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      fontFamily: "Times New Roman, serif",
+                      color: "#0F172A",
+                      textAlign: "left",
+                    }}
+                  >
+                    {block.caption}
+                  </div>
+                )}
+                <div style={{ overflowX: "auto" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      border: "1px solid #CBD5E1",
+                      fontFamily: "Times New Roman, serif",
+                      fontSize: 12,
+                    }}
+                  >
+                    <thead>
+                      {(block.headerRows && block.headerRows.length > 0
+                        ? block.headerRows
+                        : [block.headers.map((h) => ({ text: h, colSpan: 1, rowSpan: 1 }))]
+                      ).map((hRow, hrIdx) => (
+                        <tr key={hrIdx} style={{ background: "#F1F5F9" }}>
+                          {hRow.map((cell, cIdx) => (
+                            <th
+                              key={cIdx}
+                              colSpan={cell.colSpan || 1}
+                              rowSpan={cell.rowSpan || 1}
+                              style={{
+                                border: "1px solid #CBD5E1",
+                                padding: "6px 10px",
+                                fontWeight: 700,
+                                textAlign: "center",
+                                color: "#0F172A",
+                              }}
+                            >
+                              {cell.text}
+                            </th>
+                          ))}
+                        </tr>
+                      ))}
+                    </thead>
+                    <tbody>
+                      {(block.bodyRows && block.bodyRows.length > 0
+                        ? block.bodyRows
+                        : block.rows.map((r) => r.map((c) => ({ text: c, colSpan: 1, rowSpan: 1 })))
+                      ).map((bRow, brIdx) => (
+                        <tr
+                          key={brIdx}
+                          style={{
+                            background: brIdx % 2 === 1 ? "#F8FAFC" : "#FFFFFF",
+                          }}
+                        >
+                          {bRow.map((cell, cIdx) => (
+                            <td
+                              key={cIdx}
+                              colSpan={cell.colSpan || 1}
+                              rowSpan={cell.rowSpan || 1}
+                              style={{
+                                border: "1px solid #CBD5E1",
+                                padding: "6px 10px",
+                                color: "#334155",
+                                textAlign: "left",
+                              }}
+                            >
+                              {cell.text}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          }
+
+          // Standard PARAGRAPH block
+          const paragraphs = block.text.split(/\n+/).map((p) => p.trim()).filter(Boolean);
+          return (
+            <React.Fragment key={bIdx}>
+              {paragraphs.map((para, idx) => (
+                <p
+                  key={idx}
+                  style={{
+                    textIndent: editor.paragraphStyle === "indent" ? "1.27cm" : "0",
+                    marginBottom: editor.paragraphStyle === "indent" ? "0px" : "14px",
+                    lineHeight: 1.8,
+                    textAlign: "justify",
+                  }}
+                >
+                  {renderTextWithClickableCitations(para)}
+                </p>
+              ))}
+            </React.Fragment>
+          );
+        })}
       </div>
     );
   };
@@ -297,6 +694,7 @@ export default function ProposalPage() {
         projectTitle={editor.project?.title || editor.coverData.title}
         activeTemplate={editor.activeTemplate}
         onOpenSwitchTemplate={() => editor.setShowSwitchTemplateModal(true)}
+        onOpenInsertMedia={handleOpenInsertMedia}
         isEditMode={editor.isEditMode}
         setIsEditMode={editor.setIsEditMode}
         saveDraftStatus={editor.saveDraftStatus}
@@ -817,6 +1215,79 @@ export default function ProposalPage() {
           <span>Generate Sub-Bab</span>
         </button>
 
+        {/* ── 3 ICON-ONLY BUTTONS: TABEL, GAMBAR, DIAGRAM ── */}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            background: "#EEF2FF",
+            border: "1px solid #C7D2FE",
+            borderRadius: 9999,
+            padding: "2px 4px",
+            gap: 2,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => handleOpenInsertMedia("table")}
+            title="Sisipkan Tabel (Docs Resizable Table)"
+            style={{
+              background: "transparent",
+              border: "none",
+              borderRadius: 9999,
+              padding: "5px 7px",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#4338CA",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <TableIcon size={14} />
+          </button>
+          <div style={{ width: 1, height: 14, background: "#C7D2FE" }} />
+          <button
+            type="button"
+            onClick={() => handleOpenInsertMedia("image")}
+            title="Sisipkan Gambar / Ilustrasi"
+            style={{
+              background: "transparent",
+              border: "none",
+              borderRadius: 9999,
+              padding: "5px 7px",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#4338CA",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <ImageIcon size={14} />
+          </button>
+          <div style={{ width: 1, height: 14, background: "#C7D2FE" }} />
+          <button
+            type="button"
+            onClick={() => handleOpenInsertMedia("diagram")}
+            title="Buat Diagram / Flowchart (Canva Style Studio)"
+            style={{
+              background: "transparent",
+              border: "none",
+              borderRadius: 9999,
+              padding: "5px 7px",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#4338CA",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <GitPullRequest size={14} />
+          </button>
+        </div>
+
         <button
           type="button"
           onClick={() => editor.handleNavigateToSection("matrix", "section_matrix")}
@@ -979,6 +1450,15 @@ export default function ProposalPage() {
         showTypoTooltip={typo.showTypoTooltip}
         setShowTypoTooltip={typo.setShowTypoTooltip}
         handleFixTypo={typo.handleFixTypo}
+      />
+
+      <InsertMediaModal
+        isOpen={showInsertMediaModal}
+        onClose={() => setShowInsertMediaModal(false)}
+        initialTab={mediaModalInitialTab}
+        activeTabKey={editor.activeTab}
+        customSubChapters={editor.customSubChapters}
+        onInsertContent={handleInsertMediaContent}
       />
 
       {/* ════ GLOBAL PRINT STYLESHEET ════ */}

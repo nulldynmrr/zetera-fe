@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
 import {
@@ -25,8 +27,11 @@ import {
   Check,
   Building,
   Quote,
-  Zap,
   Layers,
+  Image as ImageIcon,
+  Table as TableIcon,
+  GitPullRequest,
+  Zap,
 } from "lucide-react";
 import { TemplateType } from "../types";
 import { ProposalTemplate } from "@/lib/api-client";
@@ -35,7 +40,8 @@ interface ProposalRibbonProps {
   projectId: string;
   projectTitle?: string;
   activeTemplate?: ProposalTemplate | null;
-  onOpenSwitchTemplate?: () => void;
+  onOpenSwitchTemplate: () => void;
+  onOpenInsertMedia?: (tab?: "table" | "image" | "diagram") => void;
   isEditMode: boolean;
   setIsEditMode: (val: boolean) => void;
   saveDraftStatus: "idle" | "saving" | "saved";
@@ -78,6 +84,7 @@ export function ProposalRibbon({
   projectTitle,
   activeTemplate,
   onOpenSwitchTemplate,
+  onOpenInsertMedia,
   isEditMode,
   setIsEditMode,
   saveDraftStatus,
@@ -679,6 +686,78 @@ export function ProposalRibbon({
           <Quote size={12} />
           <span>+ Sitasi</span>
         </button>
+
+        {/* Sisipkan Media: Tabel, Gambar, Diagram (Icon Murni Berjejer) */}
+        {onOpenInsertMedia && (
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 2,
+              background: "#EEF2FF",
+              padding: "2px 4px",
+              borderRadius: 6,
+              border: "1px solid #C7D2FE",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => onOpenInsertMedia("table")}
+              style={{
+                padding: "4px 7px",
+                borderRadius: 4,
+                border: "none",
+                background: "transparent",
+                color: "#4338CA",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title="Sisipkan Tabel (Docs Grid & Merge)"
+            >
+              <TableIcon size={13} />
+            </button>
+            <div style={{ width: 1, height: 12, background: "#C7D2FE" }} />
+            <button
+              type="button"
+              onClick={() => onOpenInsertMedia("image")}
+              style={{
+                padding: "4px 7px",
+                borderRadius: 4,
+                border: "none",
+                background: "transparent",
+                color: "#4338CA",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title="Unggah Gambar Riset"
+            >
+              <ImageIcon size={13} />
+            </button>
+            <div style={{ width: 1, height: 12, background: "#C7D2FE" }} />
+            <button
+              type="button"
+              onClick={() => onOpenInsertMedia("diagram")}
+              style={{
+                padding: "4px 7px",
+                borderRadius: 4,
+                border: "none",
+                background: "transparent",
+                color: "#4338CA",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title="Studio Flowchart / Diagram Alir"
+            >
+              <GitPullRequest size={13} />
+            </button>
+          </div>
+        )}
 
         {/* Perbaiki Typo Otomatis */}
         <button

@@ -1492,6 +1492,25 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
       ],
     },
     {
+      category: "Sistem Aturan & Sub Bab",
+      items: [
+        {
+          id: "RULES_SYSTEM" as any,
+          title: "Rules & Varian Riset",
+          icon: SlidersHorizontal,
+          badge: "Baru",
+          customHref: "/admin-only/rules",
+        },
+        {
+          id: "SUBBAB_SYSTEM" as any,
+          title: "Sub Bab & Output Spec",
+          icon: Layers,
+          badge: "Baru",
+          customHref: "/admin-only/subbab",
+        },
+      ],
+    },
+    {
       category: "AI & Engine",
       items: [
         {
@@ -2094,7 +2113,13 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                   return (
                     <button
                       key={item.id}
-                      onClick={() => handleNavigateTab(item.id)}
+                      onClick={() => {
+                        if ((item as any).customHref) {
+                          router.push((item as any).customHref);
+                        } else {
+                          handleNavigateTab(item.id);
+                        }
+                      }}
                       style={{
                         display: "flex",
                         alignItems: "center",
