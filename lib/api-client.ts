@@ -148,6 +148,10 @@ export interface User {
   name: string;
   email: string;
   role?: "ADMIN" | "USER";
+  credits?: number;
+  partnerStatus?: string | null;
+  rewardDiamonds?: number;
+  isRewardPartner?: boolean;
   createdAt: string;
 }
 
@@ -1173,6 +1177,38 @@ export const api = {
         };
       }>("/api/admin/credit-packages/simulate", data),
 
+    // Business Insight Real-Time untuk Pembuatan Paket
+    calculatePackageInsight: (data: {
+      priceNormal: number;
+      firstMonthDiscountPrice?: number | null;
+      creditsGranted: number;
+      modelId?: string;
+    }) =>
+      http.post<{
+        success: boolean;
+        data: {
+          modelUsed: string;
+          modelPrices: { inputPer1M: number; outputPer1M: number };
+          kursEffective: number;
+          totalHppIdr: number;
+          normalPrice: number;
+          profitNormalIdr: number;
+          normalMarginPercent: number;
+          promoPrice: number;
+          profitPromoIdr: number;
+          promoMarginPercent: number;
+          breakEvenCalls: number;
+          healthStatus: "HEALTHY" | "MODERATE" | "RISKY";
+          warningMessage: string | null;
+        };
+      }>("/api/billing/packages/insight", data),
+
+    // Campaign Vouchers Management
+    getVouchers: () => http.get<{ success: boolean; data: any[] }>("/api/admin/vouchers"),
+    createVoucher: (data: any) => http.post<{ success: boolean; message: string; data: any }>("/api/admin/vouchers", data),
+    updateVoucher: (id: string, data: any) => http.patch<{ success: boolean; message: string; data: any }>(`/api/admin/vouchers/${id}`, data),
+    deleteVoucher: (id: string) => http.delete<{ success: boolean; message: string }>(`/api/admin/vouchers/${id}`),
+
     // Live AI Usage Logs
     getUsageLogs: (params?: { page?: number; limit?: number; isFreeTier?: string; modelId?: string; search?: string }) => {
       const q = new URLSearchParams();
@@ -1390,6 +1426,104 @@ export const api = {
     updateOutputSpec: (idOrTag: string, data: Partial<OutputSpec>) =>
       http.put<{ success: boolean; data: OutputSpec }>(`/api/subbab/${encodeURIComponent(idOrTag)}/output-spec`, data),
   },
+
+  // ── User Billing & Credit Package System ───────────────
+  billing: {
+    getPackages: () =>
+      http.get<{ success: boolean; data: CreditPackageItem[] }>("/api/billing/packages"),
+
+    getBalance: () =>
+      http.get<{
+        success: boolean;
+        data: {
+          totalCredits: number;
+          totalPurchased: number;
+          activeBalances: any[];
+          partnerStatus?: string | null;
+          rewardDiamonds?: number;
+          isRewardPartner?: boolean;
+        };
+      }>("/api/billing/balance"),
+
+    checkout: (packageId: string, paymentMethod: string = "SIMULATION", voucherCode?: string) =>
+      http.post<{
+        success: boolean;
+        message: string;
+        data: {
+          package?: CreditPackageItem;
+          creditsAdded: number;
+          totalCredits: number;
+          discountAmount?: number;
+          bonusCredits?: number;
+          finalPriceToPay?: number;
+          transactionId: string;
+        };
+      }>("/api/billing/checkout", { packageId, paymentMethod, voucherCode }),
+
+    validateVoucher: (code: string, packageId?: string) =>
+      http.post<{
+        success: boolean;
+        voucher: {
+          id: string;
+          code: string;
+          description?: string | null;
+          discountType: "PERCENTAGE" | "FIXED_AMOUNT" | "BONUS_CREDITS" | string;
+          discountValue: number;
+          bonusCredits: number;
+        };
+        calculation: {
+          originalPrice: number;
+          discountAmount: number;
+          finalPrice: number;
+          bonusCredits: number;
+        };
+      }>("/api/billing/voucher/validate", { code, packageId }),
+
+    getReferral: () =>
+      http.get<{
+        success: boolean;
+        data: {
+          referralCode: string;
+          totalReferred: number;
+          totalCoinsEarned: number;
+          shareUrl: string;
+          rewardsHistory: any[];
+        };
+      }>("/api/billing/referral"),
+
+    getTransactions: (page: number = 1, limit: number = 20, category?: string) =>
+      http.get<{
+        success: boolean;
+        data: CreditTransactionItem[];
+        pagination: { page: number; limit: number; total: number; totalPages: number };
+      }>(`/api/billing/transactions?page=${page}&limit=${limit}${category && category !== "ALL" ? `&category=${category}` : ""}`),
+
+    getRewardProfile: () =>
+      http.get<{
+        success: boolean;
+        data: {
+          isRewardPartner: boolean;
+          partnerStatus: string;
+          rewardDiamonds: number;
+          equivalentRupiah: number;
+          assignedVouchers: any[];
+          rewardLogs: any[];
+          redeemablePackages: any[];
+        };
+      }>("/api/billing/reward-profile"),
+
+    redeemDiamonds: (packageId: string) =>
+      http.post<{
+        success: boolean;
+        message: string;
+        data: {
+          package: any;
+          remainingDiamonds: number;
+          totalCredits: number;
+          transaction: any;
+        };
+      }>("/api/billing/reward/redeem", { packageId }),
+  },
 };
 
 export interface AiSkillPrompt {
@@ -1464,5 +1598,38 @@ export interface SubBab {
   createdAt?: string;
   updatedAt?: string;
 }
+
+export interface CreditPackageItem {
+  id: string;
+  name: string;
+  type: "ONE_TIME" | "SUBSCRIPTION";
+  creditsGranted: number;
+  durationDays?: number | null;
+  priceNormal: number;
+  priceDiscount?: number | null;
+  firstMonthDiscountPrice?: number | null;
+  discountStart?: string | null;
+  discountEnd?: string | null;
+  discountClaimLimit?: number | null;
+  discountClaimCount?: number;
+  perUserLimit?: number;
+  badgeLabel?: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreditTransactionItem {
+  id: string;
+  userId: string;
+  type: "PURCHASE" | "USAGE" | "BONUS" | "REFUND" | "ADMIN_ADJUSTMENT" | "REFERRAL_REWARD" | "DIAMOND_REDEMPTION" | "EXPIRED" | string;
+  category?: "REGULAR_PURCHASE" | "PROMO_PURCHASE" | "REWARD_EARNED" | "DIAMOND_REDEMPTION" | "AI_USAGE" | "REFUND" | string;
+  amount: number;
+  diamondAmount?: number;
+  balanceAfter: number;
+  description?: string | null;
+  refId?: string | null;
+  createdAt: string;
+}
+
 
 

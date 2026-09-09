@@ -12,6 +12,8 @@ import {
 } from "@/lib/api-client";
 import { ProjectSidebar } from "@/components/ui/ProjectSidebar";
 import { PdfPreviewModal } from "@/components/ui/PdfPreviewModal";
+import { CreditNavbarBadge } from "@/components/ui/CreditNavbarBadge";
+import { CreditTopupModal } from "@/components/ui/CreditTopupModal";
 import { notify } from "@/lib/notification";
 import {
   ChevronRight,
@@ -146,6 +148,10 @@ export default function OutlinePage() {
   const [activeBulletIndex, setActiveBulletIndex] = useState<number>(0);
   const [bulletDrafts, setBulletDrafts] = useState<Record<string, Record<number, string>>>({});
   const [poolSearchFilter, setPoolSearchFilter] = useState<string>("");
+
+  // Top Up Modal State
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const [creditRequiredAmount, setCreditRequiredAmount] = useState<number | undefined>(undefined);
 
   // External Literature Live Search State (OpenAlex & xAI Grok Fast-Reasoning)
   const [externalPapers, setExternalPapers] = useState<any[]>([]);
@@ -848,7 +854,12 @@ export default function OutlinePage() {
       setShowSynthesizeSuccessModal(true);
     } catch (err: any) {
       console.error("Sintesis poin error:", err);
-      notify.error("Gagal melakukan sintesis AI: " + (err.message || err));
+      if (err?.statusCode === 402 || err?.isPaymentRequired || err?.message?.includes("Saldo kredit riset tidak mencukupi")) {
+        setCreditRequiredAmount(err?.data?.details?.requiredCredits || 3);
+        setShowCreditModal(true);
+      } else {
+        notify.error("Gagal melakukan sintesis AI: " + (err.message || err));
+      }
     } finally {
       setIsSynthesizingPoints(false);
       setSynthesizeProgress("");
@@ -1626,6 +1637,9 @@ export default function OutlinePage() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* Indikator Kredit User di Navbar */}
+            <CreditNavbarBadge requiredCredits={creditRequiredAmount} />
+
             <Link href={`/projects/${projectId}/outline/setup`}>
               <button
                 style={{
@@ -1659,6 +1673,13 @@ export default function OutlinePage() {
             </Button>
           </div>
         </header>
+
+        {/* Modal Top Up Kredit saat saldo kurang / user klik top up */}
+        <CreditTopupModal
+          isOpen={showCreditModal}
+          onClose={() => setShowCreditModal(false)}
+          requiredCredits={creditRequiredAmount}
+        />
 
         {/* Main Split-Screen Workspace */}
         {loading ? (

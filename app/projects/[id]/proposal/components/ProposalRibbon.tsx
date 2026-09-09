@@ -33,8 +33,10 @@ import {
   GitPullRequest,
   Zap,
 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { CreditNavbarBadge } from "@/components/ui/CreditNavbarBadge";
+import type { ProposalTemplate } from "@/lib/api-client";
 import { TemplateType } from "../types";
-import { ProposalTemplate } from "@/lib/api-client";
 
 interface ProposalRibbonProps {
   projectId: string;
@@ -209,7 +211,10 @@ export function ProposalRibbon({
         </div>
 
         {/* Action buttons on top right */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Indikator Kredit User di Ribbon Navbar */}
+          <CreditNavbarBadge />
+
           {/* Template Switcher Button */}
           <button
             type="button"

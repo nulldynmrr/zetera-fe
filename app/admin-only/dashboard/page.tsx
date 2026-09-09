@@ -335,8 +335,35 @@ function AdminDashboardPageContent() {
     durationDays: 30,
     priceNormal: 25000,
     priceDiscount: 19000,
+    firstMonthDiscountPrice: null as number | null,
+    discountClaimLimit: null as number | null,
+    discountStart: "",
+    discountEnd: "",
+    perUserLimit: 1,
     badgeLabel: "HEMAT 24%",
     isActive: true,
+  });
+
+  const [liveInsight, setLiveInsight] = useState<any>(null);
+  const [calculatingInsight, setCalculatingInsight] = useState<boolean>(false);
+
+  const [adminVouchers, setAdminVouchers] = useState<any[]>([]);
+  const [showVoucherModal, setShowVoucherModal] = useState(false);
+  const [editingVoucherId, setEditingVoucherId] = useState<string | null>(null);
+  const [voucherFormData, setVoucherFormData] = useState({
+    code: "",
+    description: "",
+    discountType: "PERCENTAGE",
+    discountValue: 15,
+    bonusCredits: 10,
+    minPurchase: 0,
+    maxUsageTotal: null as number | null,
+    maxUsagePerUser: 1,
+    startDate: "",
+    endDate: "",
+    isActive: true,
+    partnerUserId: "" as string,
+    rewardDiamondAmount: 0,
   });
 
   const [simModelId, setSimModelId] = useState<string>("");
@@ -429,6 +456,7 @@ function AdminDashboardPageContent() {
         presetsRes,
         templatesRes,
         promptsRes,
+        vouchersRes,
       ] = await Promise.all([
         api.admin.getStats().catch(() => ({ success: false, data: null })),
         api.admin.getBillingConfig().catch(() => ({ success: false, data: null })),
@@ -441,7 +469,12 @@ function AdminDashboardPageContent() {
         api.admin.getPresets().catch(() => ({ success: false, data: [] })),
         api.templates.list().catch(() => ({ success: false, data: [] })),
         api.prompts.list().catch(() => ({ success: false, data: [] })),
+        api.admin.getVouchers().catch(() => ({ success: false, data: [] })),
       ]);
+
+      if (vouchersRes?.success && Array.isArray(vouchersRes.data)) {
+        setAdminVouchers(vouchersRes.data);
+      }
 
       if (promptsRes?.success && Array.isArray(promptsRes.data)) {
         setPromptsList(promptsRes.data);
@@ -688,6 +721,120 @@ function AdminDashboardPageContent() {
       console.warn("Simulator error:", err);
     }
   }
+
+  // ── Sync Saldo Maia / Live Provider API Balance ──
+  const [syncingModelId, setSyncingModelId] = useState<string | null>(null);
+
+  async function handleSyncModelBalance(modelId: string) {
+    setSyncingModelId(modelId);
+    try {
+      const res = await api.admin.syncAiModelBalance(modelId);
+      if (res.success) {
+        notify.success("Sinkronisasi Saldo", res.message || "Saldo Maia/Provider telah diperbarui.");
+        const freshModels = await api.admin.getAiModels();
+        if (freshModels.success) {
+          setAiModels(freshModels.data);
+        }
+      } else {
+        notify.error("Sinkronisasi Gagal", res.message);
+      }
+    } catch (err: any) {
+      notify.error("Sinkronisasi Gagal", err?.message || "Tidak dapat menghubungi provider API.");
+    } finally {
+      setSyncingModelId(null);
+    }
+  }
+
+  // ── Voucher & Referral Campaign Handlers ──
+  async function handleSaveVoucher(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const payload = {
+        ...voucherFormData,
+        partnerUserId: voucherFormData.partnerUserId ? voucherFormData.partnerUserId : null,
+        rewardDiamondAmount: Number(voucherFormData.rewardDiamondAmount) || 0,
+      };
+      if (editingVoucherId) {
+        const res = await api.admin.updateVoucher(editingVoucherId, payload);
+        if (res.success) notify.success("Voucher Diperbarui", res.message);
+      } else {
+        const res = await api.admin.createVoucher(payload);
+        if (res.success) notify.success("Voucher Ditambahkan", res.message);
+      }
+      setShowVoucherModal(false);
+      setEditingVoucherId(null);
+      const fresh = await api.admin.getVouchers();
+      if (fresh.success && Array.isArray(fresh.data)) {
+        setAdminVouchers(fresh.data);
+      }
+    } catch (err: any) {
+      notify.error("Gagal Menyimpan Voucher", err?.message || "Periksa form dan coba lagi.");
+    }
+  }
+
+  async function handleDeleteVoucher(id: string, code: string) {
+    notify.confirm({
+      title: "Hapus Voucher Promosi?",
+      message: `Hapus voucher "${code}"? Pengguna tidak akan dapat menggunakan kode ini lagi.`,
+      confirmLabel: "Hapus",
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          const res = await api.admin.deleteVoucher(id);
+          if (res.success) {
+            setAdminVouchers((prev) => prev.filter((v) => v.id !== id));
+            notify.success("Voucher Dihapus", "Kode promosi telah dinonaktifkan permanen.");
+          }
+        } catch (err: any) {
+          notify.error("Gagal Menghapus Voucher", err?.message);
+        }
+      },
+    });
+  }
+
+  async function handleToggleVoucherActive(id: string, currentActive: boolean) {
+    try {
+      const res = await api.admin.updateVoucher(id, { isActive: !currentActive });
+      if (res.success) {
+        setAdminVouchers((prev) =>
+          prev.map((v) => (v.id === id ? { ...v, isActive: !currentActive } : v))
+        );
+        notify.success("Status Voucher", !currentActive ? "Voucher diaktifkan" : "Voucher dinonaktifkan");
+      }
+    } catch (err: any) {
+      notify.error("Gagal Mengubah Status", err?.message);
+    }
+  }
+
+  // ── Real-Time Business Insight Calculation for Package Modal ──
+  useEffect(() => {
+    if (!showPackageModal) return;
+    const timer = setTimeout(async () => {
+      try {
+        setCalculatingInsight(true);
+        const res = await api.admin.calculatePackageInsight({
+          priceNormal: Number(packageFormData.priceNormal) || 0,
+          firstMonthDiscountPrice: packageFormData.firstMonthDiscountPrice ? Number(packageFormData.firstMonthDiscountPrice) : null,
+          creditsGranted: Number(packageFormData.creditsGranted) || 0,
+        });
+        if (res.success) {
+          setLiveInsight(res.data);
+        }
+      } catch (err) {
+        console.warn("Failed to calculate live insight:", err);
+      } finally {
+        setCalculatingInsight(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [
+    showPackageModal,
+    packageFormData.priceNormal,
+    packageFormData.firstMonthDiscountPrice,
+    packageFormData.creditsGranted,
+  ]);
+
 
   async function handleImportCurl(e: React.FormEvent) {
     e.preventDefault();
@@ -2592,10 +2739,34 @@ ${sectionsCode || "% Struktur bab belum ditambahkan"}
                       {/* Footer Row: Meta & Actions */}
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 4, borderTop: "1px solid #EFEFF3", gap: 4 }}>
                         <div style={{ fontSize: 10, color: "#71717A", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          RPM: <strong style={{ color: "#0F0F14" }}>{m.rpmLimit || 60}</strong> | In: <strong style={{ color: "#0F0F14" }}>${m.priceInputPer1M}/1M</strong>
+                          <div>RPM: <strong style={{ color: "#0F0F14" }}>{m.rpmLimit || 60}</strong> | In: <strong style={{ color: "#0F0F14" }}>${m.priceInputPer1M}/1M</strong></div>
+                          <div style={{ marginTop: 2, fontSize: 9.5, color: "#059669", fontWeight: 600 }}>
+                            Saldo: ${Number(m.lastSyncedBalance ?? m.currentBalanceUsd ?? 0).toFixed(2)} / ${m.maxBudgetUsd || 50}
+                          </div>
                         </div>
 
                         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                          <button
+                            onClick={() => handleSyncModelBalance(m.id)}
+                            disabled={syncingModelId === m.id}
+                            title="Sinkronisasi Saldo Maia Router / Provider"
+                            style={{
+                              background: "#ECFDF5",
+                              border: "1px solid #A7F3D0",
+                              borderRadius: 6,
+                              padding: "4px 7px",
+                              fontSize: 10.5,
+                              fontWeight: 500,
+                              color: "#059669",
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 3,
+                            }}
+                          >
+                            <RefreshCw size={10} className={syncingModelId === m.id ? "animate-spin" : ""} />
+                            <span>Sync</span>
+                          </button>
                           <button
                             onClick={() => handleTestModel(m)}
                             disabled={isTesting}
@@ -4468,6 +4639,11 @@ const response = await executeAiCompletion({
                       durationDays: null as any,
                       priceNormal: 25000,
                       priceDiscount: 19000,
+                      firstMonthDiscountPrice: null,
+                      discountClaimLimit: null,
+                      discountStart: "",
+                      discountEnd: "",
+                      perUserLimit: 1,
                       badgeLabel: "HEMAT 24%",
                       isActive: true,
                     });
@@ -4561,6 +4737,17 @@ const response = await executeAiCompletion({
                                 Rp {Number(pkg.priceNormal).toLocaleString("id-ID")}
                               </span>
                             )}
+                            {pkg.firstMonthDiscountPrice ? (
+                              <div style={{ marginTop: 3, fontSize: 11, color: "#4338CA", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
+                                <Sparkles size={11} />
+                                <span>Bln 1: Rp {Number(pkg.firstMonthDiscountPrice).toLocaleString("id-ID")}</span>
+                                {pkg.discountClaimLimit ? (
+                                  <span style={{ fontSize: 10, background: "#EEEAFE", padding: "1px 5px", borderRadius: 4 }}>
+                                    {pkg.discountClaimCount || 0}/{pkg.discountClaimLimit}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </td>
                           <td style={{ padding: "12px 14px" }}>
                             {pkg.isActive ? (
@@ -4603,6 +4790,11 @@ const response = await executeAiCompletion({
                                     durationDays: pkg.durationDays || 30,
                                     priceNormal: pkg.priceNormal,
                                     priceDiscount: pkg.priceDiscount || 0,
+                                    firstMonthDiscountPrice: pkg.firstMonthDiscountPrice || null,
+                                    discountClaimLimit: pkg.discountClaimLimit || null,
+                                    discountStart: pkg.discountStart ? new Date(pkg.discountStart).toISOString().slice(0, 16) : "",
+                                    discountEnd: pkg.discountEnd ? new Date(pkg.discountEnd).toISOString().slice(0, 16) : "",
+                                    perUserLimit: pkg.perUserLimit || 1,
                                     badgeLabel: pkg.badgeLabel || "",
                                     isActive: pkg.isActive,
                                   });
@@ -4756,6 +4948,246 @@ const response = await executeAiCompletion({
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* ── Manajemen Voucher Promosi & Referral Link (Share-to-Earn) ── */}
+              <div
+                style={{
+                  background: "#FFFFFF",
+                  border: "1px solid #E4E4E9",
+                  borderRadius: 12,
+                  padding: "20px 24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 16,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 8, background: "#ECFDF5", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Coins size={16} />
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 2px", color: "#0F0F14" }}>
+                        Voucher Promosi & Program Referral (Share-to-Earn)
+                      </h3>
+                      <p style={{ fontSize: 12.5, color: "#71717A", margin: 0 }}>
+                        Kelola voucher kampanye diskon, kuota klaim, dan voucher referral pengguna (+20 koin reward)
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setEditingVoucherId(null);
+                      setVoucherFormData({
+                        code: "",
+                        description: "",
+                        discountType: "PERCENTAGE",
+                        discountValue: 15,
+                        bonusCredits: 10,
+                        minPurchase: 0,
+                        maxUsageTotal: null,
+                        maxUsagePerUser: 1,
+                        startDate: "",
+                        endDate: "",
+                        isActive: true,
+                        partnerUserId: "",
+                        rewardDiamondAmount: 0,
+                      });
+                      setShowVoucherModal(true);
+                    }}
+                    style={{
+                      background: "#059669",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "8px 16px",
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Plus size={15} />
+                    <span>Buat Voucher Kampanye</span>
+                  </button>
+                </div>
+
+                {/* Voucher Table */}
+                <div style={{ overflowX: "auto", border: "1px solid #E4E4E9", borderRadius: 8 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 12.5 }}>
+                    <thead>
+                      <tr style={{ background: "#F7F7FB", borderBottom: "1px solid #E4E4E9", color: "#3F3F46", fontWeight: 500 }}>
+                        <th style={{ padding: "10px 14px" }}>Kode Voucher</th>
+                        <th style={{ padding: "10px 14px" }}>Benefit Diskon</th>
+                        <th style={{ padding: "10px 14px" }}>Min. Belanja</th>
+                        <th style={{ padding: "10px 14px" }}>Mitra Promoter (Reward)</th>
+                        <th style={{ padding: "10px 14px" }}>Pemakaian / Kuota</th>
+                        <th style={{ padding: "10px 14px" }}>Limit User</th>
+                        <th style={{ padding: "10px 14px" }}>Periode</th>
+                        <th style={{ padding: "10px 14px" }}>Status</th>
+                        <th style={{ padding: "10px 14px", textAlign: "right" }}>Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adminVouchers.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} style={{ padding: "24px 14px", textAlign: "center", color: "#71717A" }}>
+                            Belum ada voucher promosi. Klik <strong>"+ Buat Voucher Kampanye"</strong> untuk menambahkan.
+                          </td>
+                        </tr>
+                      ) : (
+                        adminVouchers.map((v) => {
+                          const isReferral = v.creatorUser != null || (v.code && v.code.startsWith("ZET-"));
+                          return (
+                            <tr key={v.id} style={{ borderBottom: "1px solid #EFEFF3" }}>
+                              <td style={{ padding: "10px 14px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontWeight: 700, color: "#0F0F14", letterSpacing: "0.03em" }}>
+                                    {v.code}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: 10,
+                                      fontWeight: 600,
+                                      padding: "1px 6px",
+                                      borderRadius: 4,
+                                      background: isReferral ? "#EEEAFE" : "#ECFDF5",
+                                      color: isReferral ? "#4338CA" : "#059669",
+                                    }}
+                                  >
+                                    {isReferral ? "REFERRAL" : "KAMPANYE"}
+                                  </span>
+                                </div>
+                                {v.description && (
+                                  <div style={{ fontSize: 11, color: "#71717A", marginTop: 2 }}>
+                                    {v.description}
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ padding: "10px 14px" }}>
+                                <div style={{ fontWeight: 600, color: "#0F0F14" }}>
+                                  {v.discountType === "PERCENTAGE" && `${v.discountValue}% OFF`}
+                                  {v.discountType === "FIXED_AMOUNT" && `Rp ${Number(v.discountValue).toLocaleString("id-ID")}`}
+                                  {v.discountType === "BONUS_CREDITS" && "Koin Ekstra Saja"}
+                                </div>
+                                {v.bonusCredits > 0 && (
+                                  <div style={{ fontSize: 10.5, color: "#059669", fontWeight: 500 }}>
+                                    +{v.bonusCredits} Koin Ekstra
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ padding: "10px 14px", color: "#71717A" }}>
+                                {v.minPurchase > 0 ? `Rp ${Number(v.minPurchase).toLocaleString("id-ID")}` : "Tanpa Min."}
+                              </td>
+                              <td style={{ padding: "10px 14px" }}>
+                                {v.partnerUser ? (
+                                  <div>
+                                    <div style={{ fontWeight: 600, color: "#0F0F14", fontSize: 12 }}>
+                                      {v.partnerUser.name || "Mitra"}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: "#71717A" }}>{v.partnerUser.email}</div>
+                                    <div style={{ marginTop: 2 }}>
+                                      <span
+                                        style={{
+                                          fontSize: 10,
+                                          fontWeight: 700,
+                                          padding: "1px 6px",
+                                          borderRadius: 4,
+                                          background: "#FEF3C7",
+                                          color: "#B45309",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 2,
+                                        }}
+                                      >
+                                        +{Number(v.rewardDiamondAmount || 0).toLocaleString("id-ID")} 💎 / klaim
+                                      </span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span style={{ color: "#9CA3AF", fontSize: 11 }}>Umum (Tanpa Mitra)</span>
+                                )}
+                              </td>
+                              <td style={{ padding: "10px 14px" }}>
+                                <span style={{ fontWeight: 600, color: "#0F0F14" }}>
+                                  {v.claimCount || 0}
+                                </span>
+                                <span style={{ color: "#71717A" }}>
+                                  {" "}/ {v.maxUsageTotal || "∞"}
+                                </span>
+                              </td>
+                              <td style={{ padding: "10px 14px", color: "#71717A" }}>
+                                {v.maxUsagePerUser || 1}x / user
+                              </td>
+                              <td style={{ padding: "10px 14px", fontSize: 11, color: "#71717A" }}>
+                                {v.startDate ? new Date(v.startDate).toLocaleDateString("id-ID") : "Sekarang"}
+                                {" - "}
+                                {v.endDate ? new Date(v.endDate).toLocaleDateString("id-ID") : "Selamanya"}
+                              </td>
+                              <td style={{ padding: "10px 14px" }}>
+                                <button
+                                  onClick={() => handleToggleVoucherActive(v.id, v.isActive)}
+                                  style={{
+                                    border: "none",
+                                    background: v.isActive ? "#DCFCE7" : "#F3F4F6",
+                                    color: v.isActive ? "#16A34A" : "#6B7280",
+                                    padding: "2px 8px",
+                                    borderRadius: 9999,
+                                    fontSize: 10.5,
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  {v.isActive ? "AKTIF" : "NONAKTIF"}
+                                </button>
+                              </td>
+                              <td style={{ padding: "10px 14px", textAlign: "right" }}>
+                                <div style={{ display: "inline-flex", gap: 6 }}>
+                                  <button
+                                    onClick={() => {
+                                      setEditingVoucherId(v.id);
+                                      setVoucherFormData({
+                                        code: v.code,
+                                        description: v.description || "",
+                                        discountType: v.discountType,
+                                        discountValue: v.discountValue,
+                                        bonusCredits: v.bonusCredits || 0,
+                                        minPurchase: v.minPurchase || 0,
+                                        maxUsageTotal: v.maxUsageTotal || null,
+                                        maxUsagePerUser: v.maxUsagePerUser || 1,
+                                        startDate: v.startDate ? new Date(v.startDate).toISOString().slice(0, 10) : "",
+                                        endDate: v.endDate ? new Date(v.endDate).toISOString().slice(0, 10) : "",
+                                        isActive: v.isActive,
+                                        partnerUserId: v.partnerUserId || "",
+                                        rewardDiamondAmount: v.rewardDiamondAmount || 0,
+                                      });
+                                      setShowVoucherModal(true);
+                                    }}
+                                    style={{ background: "transparent", border: "none", cursor: "pointer", color: "#3F3F46" }}
+                                    title="Edit Voucher"
+                                  >
+                                    <Pencil size={13} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteVoucher(v.id, v.code)}
+                                    style={{ background: "transparent", border: "none", cursor: "pointer", color: "#BE123C" }}
+                                    title="Hapus Voucher"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -8202,20 +8634,25 @@ const response = await executeAiCompletion({
         </div>
       )}
 
-      {/* MODAL 3: Tambah / Edit Paket Harga */}
+      {/* MODAL 3: Tambah / Edit Paket Harga + Real-Time Business Insight */}
       {showPackageModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
-          <div style={{ background: "#FFFFFF", borderRadius: 12, width: "100%", maxWidth: 460, padding: "22px 26px", border: "1px solid #E4E4E9" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
+          <div style={{ background: "#FFFFFF", borderRadius: 12, width: "100%", maxWidth: 680, maxHeight: "90vh", overflowY: "auto", padding: "24px 28px", border: "1px solid #E4E4E9", boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: "#0F0F14" }}>
-                {editingPackageId ? "Edit Paket Harga" : "Tambah Paket Harga"}
-              </h3>
-              <button onClick={() => setShowPackageModal(false)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 16 }}>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: "#0F0F14" }}>
+                  {editingPackageId ? "Edit Paket Harga" : "Tambah Paket Harga"}
+                </h3>
+                <p style={{ fontSize: 12, color: "#71717A", margin: "2px 0 0" }}>
+                  Kalkulasi HPP API dan proyeksi margin laba berjalan otomatis secara real-time.
+                </p>
+              </div>
+              <button onClick={() => setShowPackageModal(false)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 16, color: "#71717A" }}>
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSavePackage} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <form onSubmit={handleSavePackage} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div>
                 <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
                   Nama Paket
@@ -8226,11 +8663,11 @@ const response = await executeAiCompletion({
                   placeholder="e.g. StarterPack, Student Pack, Pro Monthly"
                   value={packageFormData.name}
                   onChange={(e) => setPackageFormData({ ...packageFormData, name: e.target.value })}
-                  style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, color: "#0F0F14" }}
+                  style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, color: "#0F0F14" }}
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
                     Tipe Paket
@@ -8238,27 +8675,28 @@ const response = await executeAiCompletion({
                   <select
                     value={packageFormData.type}
                     onChange={(e) => setPackageFormData({ ...packageFormData, type: e.target.value })}
-                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }}
+                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}
                   >
-                    <option value="ONE_TIME">ONTIME (Permanen)</option>
-                    <option value="SUBSCRIPTION">SUBSCRIPTION (Langganan)</option>
+                    <option value="ONE_TIME">ONTIME (Permanen / Top Up)</option>
+                    <option value="SUBSCRIPTION">SUBSCRIPTION (Langganan Bulanan)</option>
                   </select>
                 </div>
                 <div>
                   <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
-                    Jumlah Koin/Kredit
+                    Jumlah Koin / Kredit Diberikan
                   </label>
                   <input
                     type="number"
                     required
+                    min={1}
                     value={packageFormData.creditsGranted}
                     onChange={(e) => setPackageFormData({ ...packageFormData, creditsGranted: Number(e.target.value) })}
-                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }}
+                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}
                   />
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
                     Harga Normal (Rp)
@@ -8266,22 +8704,97 @@ const response = await executeAiCompletion({
                   <input
                     type="number"
                     required
+                    min={1000}
                     value={packageFormData.priceNormal}
                     onChange={(e) => setPackageFormData({ ...packageFormData, priceNormal: Number(e.target.value) })}
-                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }}
+                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}
                   />
                 </div>
                 <div>
                   <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
-                    Harga Diskon (Rp)
+                    Harga Coret Reguler (Rp)
                   </label>
                   <input
                     type="number"
-                    placeholder="Opsional"
+                    placeholder="Opsional (Diskon Coret)"
                     value={packageFormData.priceDiscount || ""}
                     onChange={(e) => setPackageFormData({ ...packageFormData, priceDiscount: Number(e.target.value) || 0 })}
-                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }}
+                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}
                   />
+                </div>
+              </div>
+
+              {/* ── Section Promo Bulan Pertama & Kuota Terbatas ── */}
+              <div style={{ background: "#F8FAFC", border: "1px dashed #CBD5E1", borderRadius: 8, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Sparkles size={14} color="#4338CA" />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>
+                    Promo Khusus / Bulan Pertama & Batas Kuota Klaim
+                  </span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 500, color: "#64748B", display: "block", marginBottom: 3 }}>
+                      Harga Promo Bulan Pertama (Rp)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="Contoh: 44000 (normal 55000)"
+                      value={packageFormData.firstMonthDiscountPrice || ""}
+                      onChange={(e) => setPackageFormData({ ...packageFormData, firstMonthDiscountPrice: e.target.value ? Number(e.target.value) : null })}
+                      style={{ width: "100%", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 6, padding: "7px 10px", fontSize: 12 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 500, color: "#64748B", display: "block", marginBottom: 3 }}>
+                      Batas Kuota Pengklaim (Orang)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="Contoh: 50 (kosong = tak terbatas)"
+                      value={packageFormData.discountClaimLimit || ""}
+                      onChange={(e) => setPackageFormData({ ...packageFormData, discountClaimLimit: e.target.value ? Number(e.target.value) : null })}
+                      style={{ width: "100%", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 6, padding: "7px 10px", fontSize: 12 }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 500, color: "#64748B", display: "block", marginBottom: 3 }}>
+                      Maks Klaim / User
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={packageFormData.perUserLimit || 1}
+                      onChange={(e) => setPackageFormData({ ...packageFormData, perUserLimit: Number(e.target.value) || 1 })}
+                      style={{ width: "100%", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 6, padding: "7px 10px", fontSize: 12 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 500, color: "#64748B", display: "block", marginBottom: 3 }}>
+                      Mulai Promo
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={packageFormData.discountStart || ""}
+                      onChange={(e) => setPackageFormData({ ...packageFormData, discountStart: e.target.value })}
+                      style={{ width: "100%", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 6, padding: "6px 8px", fontSize: 11 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 500, color: "#64748B", display: "block", marginBottom: 3 }}>
+                      Berakhir Promo
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={packageFormData.discountEnd || ""}
+                      onChange={(e) => setPackageFormData({ ...packageFormData, discountEnd: e.target.value })}
+                      style={{ width: "100%", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 6, padding: "6px 8px", fontSize: 11 }}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -8291,26 +8804,351 @@ const response = await executeAiCompletion({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. TERPOPULER, HEMAT 24%"
+                  placeholder="e.g. TERPOPULER, HEMAT 24%, PROMO MABA"
                   value={packageFormData.badgeLabel}
                   onChange={(e) => setPackageFormData({ ...packageFormData, badgeLabel: e.target.value })}
-                  style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }}
+                  style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}
                 />
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
+              {/* ── Real-Time Business Insight Panel ── */}
+              <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "14px 16px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <BarChart3 size={15} color="#4338CA" />
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "#1E293B" }}>
+                      Business Insight & Margin API (Real-Time DB)
+                    </span>
+                    {calculatingInsight && (
+                      <RefreshCw size={11} className="animate-spin" color="#64748B" />
+                    )}
+                  </div>
+                  {liveInsight && (
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: 9999,
+                        background:
+                          liveInsight.healthStatus === "HEALTHY"
+                            ? "#DCFCE7"
+                            : liveInsight.healthStatus === "MODERATE"
+                            ? "#FEF3C7"
+                            : "#FEE2E2",
+                        color:
+                          liveInsight.healthStatus === "HEALTHY"
+                            ? "#16A34A"
+                            : liveInsight.healthStatus === "MODERATE"
+                            ? "#D97706"
+                            : "#DC2626",
+                      }}
+                    >
+                      {liveInsight.healthStatus === "HEALTHY"
+                        ? "MARGIN AMAN"
+                        : liveInsight.healthStatus === "MODERATE"
+                        ? "MARGIN TIPIS"
+                        : "RISIKO RUGI"}
+                    </span>
+                  )}
+                </div>
+
+                {liveInsight ? (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 8 }}>
+                      <div style={{ background: "#FFFFFF", padding: "8px 10px", borderRadius: 6, border: "1px solid #E2E8F0" }}>
+                        <div style={{ fontSize: 10, color: "#64748B" }}>Total Modal LLM</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>
+                          Rp {Number(liveInsight.totalHppIdr || 0).toLocaleString("id-ID")}
+                        </div>
+                      </div>
+                      <div style={{ background: "#FFFFFF", padding: "8px 10px", borderRadius: 6, border: "1px solid #E2E8F0" }}>
+                        <div style={{ fontSize: 10, color: "#64748B" }}>Profit Normal</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: liveInsight.profitNormalIdr >= 0 ? "#16A34A" : "#DC2626" }}>
+                          Rp {Number(liveInsight.profitNormalIdr || 0).toLocaleString("id-ID")}
+                          <span style={{ fontSize: 10, fontWeight: 500, marginLeft: 3 }}>
+                            ({liveInsight.normalMarginPercent}%)
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ background: "#FFFFFF", padding: "8px 10px", borderRadius: 6, border: "1px solid #E2E8F0" }}>
+                        <div style={{ fontSize: 10, color: "#64748B" }}>Profit Promo Bln 1</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: liveInsight.profitPromoIdr >= 0 ? "#4338CA" : "#DC2626" }}>
+                          Rp {Number(liveInsight.profitPromoIdr || 0).toLocaleString("id-ID")}
+                          <span style={{ fontSize: 10, fontWeight: 500, marginLeft: 3 }}>
+                            ({liveInsight.promoMarginPercent}%)
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ background: "#FFFFFF", padding: "8px 10px", borderRadius: 6, border: "1px solid #E2E8F0" }}>
+                        <div style={{ fontSize: 10, color: "#64748B" }}>Titik Impas</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>
+                          {liveInsight.breakEvenCalls}x AI Call
+                        </div>
+                      </div>
+                    </div>
+
+                    {liveInsight.warningMessage && (
+                      <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#B91C1C", padding: "6px 10px", borderRadius: 6, fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+                        <AlertTriangle size={13} />
+                        <span>{liveInsight.warningMessage}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ fontSize: 11.5, color: "#94A3B8", textAlign: "center", padding: "10px 0" }}>
+                    Masukkan harga dan kredit untuk melihat proyeksi laba otomatis.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
                 <button
                   type="button"
                   onClick={() => setShowPackageModal(false)}
-                  style={{ background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 14px", fontSize: 12.5, fontWeight: 500, color: "#71717A", cursor: "pointer" }}
+                  style={{ background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 16px", fontSize: 12.5, fontWeight: 500, color: "#71717A", cursor: "pointer" }}
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  style={{ background: "#4338CA", border: "none", borderRadius: 8, padding: "7px 18px", fontSize: 12.5, fontWeight: 500, color: "#FFFFFF", cursor: "pointer" }}
+                  style={{ background: "#4338CA", border: "none", borderRadius: 8, padding: "8px 20px", fontSize: 12.5, fontWeight: 500, color: "#FFFFFF", cursor: "pointer" }}
                 >
                   Simpan Paket
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3B: Buat / Edit Voucher Promosi Kampanye */}
+      {showVoucherModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
+          <div style={{ background: "#FFFFFF", borderRadius: 12, width: "100%", maxWidth: 520, maxHeight: "90vh", overflowY: "auto", padding: "24px 26px", border: "1px solid #E4E4E9", boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: "#0F0F14" }}>
+                  {editingVoucherId ? "Edit Voucher Promosi" : "Buat Voucher Promosi Baru"}
+                </h3>
+                <p style={{ fontSize: 12, color: "#71717A", margin: "2px 0 0" }}>
+                  Atur kode voucher diskon, bonus koin, dan batas kuota klaim untuk pengguna.
+                </p>
+              </div>
+              <button onClick={() => setShowVoucherModal(false)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 16, color: "#71717A" }}>
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveVoucher} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
+                  Kode Voucher (Huruf Besar & Angka)
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. DISKONMABA, SEMESTERBARU, PROMO2026"
+                  value={voucherFormData.code}
+                  onChange={(e) => setVoucherFormData({ ...voucherFormData, code: e.target.value.toUpperCase().replace(/\s+/g, "") })}
+                  style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 13, fontWeight: 600, letterSpacing: "0.05em", color: "#0F0F14" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
+                  Deskripsi Voucher
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Diskon 20% khusus mahasiswa baru penyusunan skripsi"
+                  value={voucherFormData.description}
+                  onChange={(e) => setVoucherFormData({ ...voucherFormData, description: e.target.value })}
+                  style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
+                    Tipe Diskon
+                  </label>
+                  <select
+                    value={voucherFormData.discountType}
+                    onChange={(e) => setVoucherFormData({ ...voucherFormData, discountType: e.target.value })}
+                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}
+                  >
+                    <option value="PERCENTAGE">Persentase (%)</option>
+                    <option value="FIXED_AMOUNT">Potongan Tetap (Rp)</option>
+                    <option value="BONUS_CREDITS">Bonus Koin Ekstra Saja</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
+                    {voucherFormData.discountType === "PERCENTAGE" ? "Nilai Diskon (%)" : "Nilai Potongan (Rp)"}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    disabled={voucherFormData.discountType === "BONUS_CREDITS"}
+                    value={voucherFormData.discountValue}
+                    onChange={(e) => setVoucherFormData({ ...voucherFormData, discountValue: Number(e.target.value) })}
+                    style={{ width: "100%", background: voucherFormData.discountType === "BONUS_CREDITS" ? "#E2E8F0" : "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
+                    Bonus Koin Ekstra (+Koin)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={voucherFormData.bonusCredits}
+                    onChange={(e) => setVoucherFormData({ ...voucherFormData, bonusCredits: Number(e.target.value) })}
+                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
+                    Min. Pembelian (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={voucherFormData.minPurchase}
+                    onChange={(e) => setVoucherFormData({ ...voucherFormData, minPurchase: Number(e.target.value) })}
+                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
+                    Total Kuota Penggunaan
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="Kosong = Tak Terbatas"
+                    value={voucherFormData.maxUsageTotal || ""}
+                    onChange={(e) => setVoucherFormData({ ...voucherFormData, maxUsageTotal: e.target.value ? Number(e.target.value) : null })}
+                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
+                    Maks Klaim per User
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={voucherFormData.maxUsagePerUser}
+                    onChange={(e) => setVoucherFormData({ ...voucherFormData, maxUsagePerUser: Number(e.target.value) || 1 })}
+                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
+                    Tanggal Mulai
+                  </label>
+                  <input
+                    type="date"
+                    value={voucherFormData.startDate}
+                    onChange={(e) => setVoucherFormData({ ...voucherFormData, startDate: e.target.value })}
+                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 500, color: "#71717A", display: "block", marginBottom: 3 }}>
+                    Tanggal Berakhir
+                  </label>
+                  <input
+                    type="date"
+                    value={voucherFormData.endDate}
+                    onChange={(e) => setVoucherFormData({ ...voucherFormData, endDate: e.target.value })}
+                    style={{ width: "100%", background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "7px 10px", fontSize: 12 }}
+                  />
+                </div>
+              </div>
+
+              {/* Mitra Promoter & Diamond Reward Commission */}
+              <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 10, padding: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                  <span style={{ fontSize: 13 }}>💎</span>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>
+                    Tautkan Mitra Promoter &amp; Komisi Diamond
+                  </label>
+                </div>
+                <p style={{ fontSize: 11, color: "#15803D", margin: "0 0 10px", lineHeight: 1.35 }}>
+                  Jika voucher ini dibagikan oleh mitra/promoter khusus, pilih akun pengguna di bawah. Setiap ada transaksi sukses menggunakan voucher ini, mitra otomatis menerima komisi Diamond reward (1 💎 = Rp 1).
+                </p>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#374151", display: "block", marginBottom: 3 }}>
+                      Pilih Akun Pengguna Mitra
+                    </label>
+                    <select
+                      value={voucherFormData.partnerUserId || ""}
+                      onChange={(e) => setVoucherFormData({ ...voucherFormData, partnerUserId: e.target.value })}
+                      style={{ width: "100%", background: "#FFFFFF", border: "1px solid #86EFAC", borderRadius: 8, padding: "7px 10px", fontSize: 12, color: "#0F0F14" }}
+                    >
+                      <option value="">-- Tidak Ditautkan (Voucher Umum) --</option>
+                      {usersList.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name || u.email} ({u.email}) {u.partnerStatus ? `[${u.partnerStatus}]` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#374151", display: "block", marginBottom: 3 }}>
+                      Komisi Diamond per Klaim (💎)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="e.g. 5000 (= Rp 5.000)"
+                      value={voucherFormData.rewardDiamondAmount || 0}
+                      onChange={(e) => setVoucherFormData({ ...voucherFormData, rewardDiamondAmount: Number(e.target.value) })}
+                      style={{ width: "100%", background: "#FFFFFF", border: "1px solid #86EFAC", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 600 }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                <input
+                  type="checkbox"
+                  id="voucherActiveCheck"
+                  checked={voucherFormData.isActive}
+                  onChange={(e) => setVoucherFormData({ ...voucherFormData, isActive: e.target.checked })}
+                />
+                <label htmlFor="voucherActiveCheck" style={{ fontSize: 12.5, color: "#3F3F46", cursor: "pointer" }}>
+                  Status Voucher Langsung Aktif
+                </label>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowVoucherModal(false)}
+                  style={{ background: "#F7F7FB", border: "1px solid #E4E4E9", borderRadius: 8, padding: "8px 16px", fontSize: 12.5, fontWeight: 500, color: "#71717A", cursor: "pointer" }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  style={{ background: "#059669", border: "none", borderRadius: 8, padding: "8px 20px", fontSize: 12.5, fontWeight: 500, color: "#FFFFFF", cursor: "pointer" }}
+                >
+                  Simpan Voucher
                 </button>
               </div>
             </form>

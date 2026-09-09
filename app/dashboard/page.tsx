@@ -29,6 +29,7 @@ import { AcademicMark, Button } from "@/components/ui/Button";
 import { MvpMatrix } from "@/components/ui/MvpMatrix";
 import { Input } from "@/components/ui/Input";
 import { CreateProjectWizard } from "@/components/proposal/CreateProjectWizard";
+import { CreditNavbarBadge } from "@/components/ui/CreditNavbarBadge";
 import { useRequireAuth, useAuth } from "@/lib/auth-context";
 import { api, type ResearchProject } from "@/lib/api-client";
 
@@ -324,7 +325,9 @@ export default function DashboardPage() {
           </nav>
 
           {/* Right Utility Actions */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <CreditNavbarBadge />
+
             <Button
               variant="emerald"
               size="sm"
